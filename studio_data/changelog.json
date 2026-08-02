@@ -144,6 +144,16 @@
     },
     {
       "date": "2026-08-02",
+      "summary": "FX editor gets group/color/dim reference dropdowns + theme and v0.15",
+      "details": [
+        "Each layer row in the FX preset editor now shows three compact combo boxes (Grp / Col / Dim) for assigning live GroupPool, ColorPool, and DimPool references. Saved through preset.add_layer() and persist to fx_pool.json.",
+        "FX editor layer list now scrolls vertically when there are more layers than fit in the 270px window.",
+        "Global theme: added FrameBgActive (active input highlight) and alternating TableRowBgAlt so table rows have a subtle tint.",
+        "Version bumped to v0.15."
+      ]
+    }
+    {
+      "date": "2026-08-02",
       "summary": "MIDI startup hardened against missing MIDI backend entirely (not just missing device)",
       "details": [
         "Found while re-verifying the headless smoke test in a fresh container: MIDIEngine.list_ports() and start() both called mido.get_input_names() unguarded. That call raises an rtmidi-internal exception (not OSError/IOError, so the existing 'no port found' handling didn't catch it) when there's no ALSA/CoreMIDI backend available at all — e.g. a container with no /dev/snd/seq — as opposed to a backend that's present but has zero devices plugged in. Previously this crashed the whole app at import time, before the GUI or dry-run pipeline ever started.",

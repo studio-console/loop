@@ -4209,6 +4209,9 @@ def _apply_theme():
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,   _C_BTN_A)
             dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (30, 22, 58, 255))
             dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (48, 36, 88, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (72, 52, 128, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,     ( 0,  0,  0,   0))
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (38, 28, 72,  40))
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,     _C_SLIDER_G)
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, _C_ACCENT)
             dpg.add_theme_color(dpg.mvThemeCol_Header,         _C_CUE_ACT)
@@ -4435,7 +4438,7 @@ class GUIEngine:
 
     def _build_header(self):
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.14", color=_C_ACCENT)
+            dpg.add_text("studio console  v0.15", color=_C_ACCENT)
             dpg.add_text("   |   ", color=_C_BORDER)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
             dpg.add_text("   |   ", color=_C_BORDER)
@@ -5905,8 +5908,7 @@ class GUIEngine:
             # ── Layer list ────────────────────────────────────
             dpg.add_text("Layers:", color=_C_DIM)
             with dpg.child_window(tag="fxed_layers_win",
-                                  width=-1, height=270, border=True,
-                                  no_scrollbar=True, no_scroll_with_mouse=True):
+                                  width=-1, height=270, border=True):
                 # column headers
                 with dpg.group(horizontal=True):
                     dpg.add_text("Waveform",    color=_C_ACCENT, indent=4)
