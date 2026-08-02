@@ -2160,6 +2160,23 @@ class FadeEngine:
                 self._fades = [f for f in self._fades if not f.done]
             time.sleep(1 / 44)
 
+    def fade_progress(self, executor):
+        """Return (elapsed_fraction, total_seconds) for the most recent active fade on
+        this executor, or None if no fade is currently running."""
+        now = time.monotonic()
+        best = None
+        with self._lock:
+            for fade in self._fades:
+                if fade.executor is executor and not fade.done:
+                    ft = fade._default_ft
+                    elapsed = now - fade._default_start
+                    t = 1.0 if ft == 0 else min(1.0, max(0.0, elapsed / ft))
+                    if best is None or elapsed > best[0]:
+                        best = (elapsed, t, ft)
+        if best is None:
+            return None
+        return best[1], best[2]   # (progress 0–1, total_seconds)
+
     def stop(self):
         self._running = False
 
@@ -4249,6 +4266,14 @@ def _make_go_theme():
     return t
 
 
+def _make_fade_bar_theme():
+    """Amber progress bar for executor fade progress indicator."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvProgressBar):
+            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram, (200, 130, 20, 200))
+    return t
+
+
 def _make_back_theme():
     """Muted blue theme for the BACK ◀ button."""
     with dpg.theme() as t:
@@ -4363,8 +4388,9 @@ class GUIEngine:
         dpg.create_context()
         _apply_theme()
         _load_console_font()
-        self._go_theme   = _make_go_theme()
-        self._back_theme = _make_back_theme()
+        self._go_theme       = _make_go_theme()
+        self._back_theme     = _make_back_theme()
+        self._fade_bar_theme = _make_fade_bar_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
                             # non-resizable full-height viewport, clipping the bottom
@@ -6878,6 +6904,18 @@ class GUIEngine:
                 callback=self._on_exec_fader,
                 user_data=ex.exec_id,
                 parent="playbacks_list")
+            # Fade progress bar (thin, amber) — shows crossfade progress live
+            dpg.add_progress_bar(
+                tag=f"exec_fade_{ex.exec_id}",
+                default_value=0.0,
+                width=-1, height=4,
+                overlay="",
+                parent="playbacks_list")
+            try:
+                dpg.bind_item_theme(f"exec_fade_{ex.exec_id}",
+                                    self._fade_bar_theme)
+            except Exception:
+                pass
 
     def _on_exec_time_toggle(self, sender, app_data, user_data):  # noqa: ARG002
         """Toggle executor time override on/off from playbacks panel."""
@@ -7040,7 +7078,7 @@ class GUIEngine:
             except Exception:
                 pass
 
-        # Sync executor fader sliders to current level (when not being dragged)
+        # Sync executor fader sliders and fade progress bars
         if self._executor_pool:
             for eid, ex in self._executor_pool.executors.items():
                 if not ex.is_active:
@@ -7049,6 +7087,20 @@ class GUIEngine:
                 try:
                     if not dpg.is_item_active(tag):
                         dpg.set_value(tag, ex.level)
+                except Exception:
+                    pass
+                # Fade progress bar
+                try:
+                    fp = self._fade.fade_progress(ex) if self._fade else None
+                    fade_tag = f"exec_fade_{eid}"
+                    if fp is not None:
+                        prog, secs = fp
+                        dpg.set_value(fade_tag, prog)
+                        dpg.configure_item(fade_tag,
+                                           overlay=f"fade  {prog*100:.0f}%  ({secs:.1f}s)")
+                    else:
+                        dpg.set_value(fade_tag, 0.0)
+                        dpg.configure_item(fade_tag, overlay="")
                 except Exception:
                     pass
 
