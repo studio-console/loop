@@ -1608,6 +1608,7 @@ class Executor:
         self.form_pool  = None    # injected from ExecutorPool
         self.color_pool = None    # injected from ExecutorPool
         self.dim_pool   = None    # injected from ExecutorPool
+        self.group_pool = None    # injected from ExecutorPool
         # Time overrides — None means "use cue's own time"
         self.time_override_fade  = None   # float seconds or None
         self.time_override_delay = None   # float seconds or None
@@ -1660,6 +1661,10 @@ class Executor:
             if fx_defs:
                 fx_defs_by_fid[fid_str] = fx_defs
 
+        # Expand color_id refs and resolve group_id targets
+        expanded = _expand_color_fx(fx_defs_by_fid, self.color_pool)
+        expanded = _expand_group_fx(expanded, patch, self.group_pool)
+
         def _add(ld, ch, targets):
             self._fx_counter += 1
             fxid = self.exec_id * 10000 + self._fx_counter
@@ -1674,6 +1679,7 @@ class Executor:
                 rate_id      = ld.get('rate_id'),
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
+                dim_id       = ld.get('dim_id'),
                 infade       = ld.get('infade',        0.0),
                 outfade      = ld.get('outfade',       0.0),
                 block_size   = ld.get('block_size',      1),
@@ -1685,7 +1691,7 @@ class Executor:
         # _bucket_fx_defs (module-level, defined near FXEngine) merges
         # identical defs across fixtures into one layer so spread/chase can
         # cross fixture boundaries — see target_scope in FX command docs.
-        for ld, targets in _bucket_fx_defs(fx_defs_by_fid, patch):
+        for ld, targets in _bucket_fx_defs(expanded, patch):
             _add(ld, ld['channel'], targets)
 
     # ── Playback ─────────────────────────────────────────────
@@ -1757,11 +1763,12 @@ class ExecutorPool:
     def __init__(self):
         self.executors       = {}    # { int: Executor }
         self._fire_order     = []    # exec_ids ordered by last GO (last = highest priority)
-        self.default_fx_engine  = None
-        self.default_form_pool  = None
-        self.default_color_pool = None
-        self.default_dim_pool   = None
-        self.default_attr_pools = None   # dict of {attribute_name: AttributePool}
+        self.default_fx_engine   = None
+        self.default_form_pool   = None
+        self.default_color_pool  = None
+        self.default_dim_pool    = None
+        self.default_group_pool  = None
+        self.default_attr_pools  = None   # dict of {attribute_name: AttributePool}
         # Pages group executor slots for display/navigation — organizational
         # only, doesn't affect playback. { int: {'name': str, 'slots': [int, ...]} }
         self.pages = {}
@@ -1774,6 +1781,7 @@ class ExecutorPool:
             ex.form_pool  = self.default_form_pool
             ex.color_pool = self.default_color_pool
             ex.dim_pool   = self.default_dim_pool
+            ex.group_pool = self.default_group_pool
             ex.attr_pools = self.default_attr_pools
             self.executors[n] = ex
         return self.executors[n]
@@ -1849,6 +1857,7 @@ class FXPreset:
 
     def add_layer(self, waveform, channel, rate_bpm=60.0, size=100.0, spread=0.0,
                   form_id=None, rate_id=None, size_id=None, spread_id=None, bpm=None,
+                  dim_id=None, color_id=None, group_id=None,
                   phase_offset=0.0, block_size=1, order='linear', direction='forward',
                   target_scope=None):
         self.layers.append({
@@ -1862,6 +1871,9 @@ class FXPreset:
             'rate_id':       rate_id,
             'size_id':       size_id,
             'spread_id':     spread_id,
+            'dim_id':        dim_id,
+            'color_id':      color_id,
+            'group_id':      group_id,
             'block_size':    block_size,
             'order':         order,
             'direction':     direction,
@@ -1885,6 +1897,7 @@ class FXPreset:
                 rate_id      = ld.get('rate_id'),
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
+                dim_id       = ld.get('dim_id'),
                 block_size   = ld.get('block_size', 1),
                 order        = ld.get('order', 'linear'),
                 direction    = ld.get('direction', 'forward'),
@@ -2649,7 +2662,9 @@ class FXLayer:
     def __init__(self, fx_id, waveform, channel, rate_bpm, size,
                  targets, spread=0.0,
                  form_pool=None, rate_pool=None, size_pool=None, spread_pool=None,
+                 dim_pool=None,
                  form_id=None, rate_id=None, size_id=None, spread_id=None,
+                 dim_id=None,
                  phase_offset=0.0, infade=0.0, outfade=0.0,
                  block_size=1, order='linear', direction='forward'):
         self.fx_id        = fx_id
@@ -2681,12 +2696,14 @@ class FXLayer:
         self._rate_pool   = rate_pool
         self._size_pool   = size_pool
         self._spread_pool = spread_pool
+        self._dim_pool    = dim_pool
 
         # Pool IDs — live-tracked via properties
         self.form_id     = form_id
         self._rate_id    = rate_id
         self._size_id    = size_id
         self._spread_id  = spread_id
+        self._dim_id     = dim_id   # DimmerPreset.level used as amplitude ceiling
 
         # Inline fallback values
         self._bpm_inline    = float(rate_bpm)
@@ -2725,8 +2742,15 @@ class FXLayer:
     def size(self):
         if self._size_pool and self._size_id is not None:
             p = self._size_pool.get(self._size_id)
-            if p: return p.size
-        return self._size_inline
+            val = p.size if p else self._size_inline
+        else:
+            val = self._size_inline
+        # dim_id: live ceiling — DimmerPreset.level (0-1) scales max amplitude
+        if self._dim_pool and self._dim_id is not None:
+            dp = self._dim_pool.get(self._dim_id)
+            if dp:
+                val = val * dp.level
+        return val
 
     @size.setter
     def size(self, val):
@@ -2825,6 +2849,7 @@ class FXLayer:
         if self._rate_id   is not None: refs.append(f"rate:{self._rate_id}")
         if self._size_id   is not None: refs.append(f"size:{self._size_id}")
         if self._spread_id is not None: refs.append(f"spread:{self._spread_id}")
+        if self._dim_id    is not None: refs.append(f"dimref:{self._dim_id}")
         ref_s = f" [{','.join(refs)}]" if refs else ""
         dist = []
         if self.block_size != 1:    dist.append(f"block:{self.block_size}")
@@ -2851,12 +2876,13 @@ class FXEngine:
                 are used automatically.
     """
     def __init__(self, output_state, form_pool=None, rate_pool=None,
-                 size_pool=None, spread_pool=None):
+                 size_pool=None, spread_pool=None, dim_pool=None):
         self.output_state = output_state
         self.form_pool    = form_pool
         self.rate_pool    = rate_pool
         self.size_pool    = size_pool
         self.spread_pool  = spread_pool
+        self.dim_pool     = dim_pool
         self._layers      = {}
         self._lock        = threading.Lock()
         self._running     = True
@@ -2865,13 +2891,14 @@ class FXEngine:
 
     def add(self, fx_id, waveform, channel, rate_bpm, size,
             targets, spread=1.0, form_id=None,
-            rate_id=None, size_id=None, spread_id=None, phase_offset=0.0,
-            infade=0.0, outfade=0.0,
+            rate_id=None, size_id=None, spread_id=None, dim_id=None,
+            phase_offset=0.0, infade=0.0, outfade=0.0,
             block_size=1, order='linear', direction='forward'):
         """
         Add an FX layer.
         waveform    — name string ('sine', 'ramp' …) or ignored when form_id given.
         form_id     — explicit FormPool slot; overrides waveform name lookup.
+        dim_id      — DimmerPool slot; live ceiling on amplitude (0–1 scales size).
         infade      — seconds to ramp amplitude 0→1 from layer start.
         outfade     — seconds to ramp amplitude 1→0 when remove() is called.
         block_size  — adjacent targets grouped per step (default 1).
@@ -2884,10 +2911,12 @@ class FXEngine:
             rate_pool    = self.rate_pool,
             size_pool    = self.size_pool,
             spread_pool  = self.spread_pool,
+            dim_pool     = self.dim_pool,
             form_id      = form_id,
             rate_id      = rate_id,
             size_id      = size_id,
             spread_id    = spread_id,
+            dim_id       = dim_id,
             phase_offset = phase_offset,
             infade       = infade,
             outfade      = outfade,
@@ -2994,7 +3023,8 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
                    round(ld.get('spread',  0.0), 4),
                    ld.get('phase_offset', 0.0),
                    ld.get('form_id'), ld.get('rate_id'),
-                   ld.get('size_id'), ld.get('spread_id'),
+                   ld.get('size_id'), ld.get('spread_id'), ld.get('dim_id'),
+                   ld.get('group_id'), ld.get('color_id'),
                    scope,
                    ld.get('block_size', 1),
                    ld.get('order',      'linear'),
@@ -3012,6 +3042,64 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
             targets = masters
         grouped.append((ld, targets))
     return grouped
+
+
+def _expand_color_fx(fx_defs_by_fid, color_pool):
+    """
+    Expand any fx_def with channel='rgb' and color_id into three separate
+    defs (red, green, blue) with sizes scaled by the preset's RGB values.
+    Defs on other channels are passed through unchanged.
+    color_pool may be None — in that case 'rgb' defs are dropped with a warning.
+    """
+    expanded = {}
+    for fid, defs in fx_defs_by_fid.items():
+        out = []
+        for ld in defs:
+            cid = ld.get('color_id')
+            if ld.get('channel') == 'rgb' and cid is not None:
+                cp = color_pool.get(cid) if color_pool else None
+                if cp:
+                    base_size = ld.get('size', 100.0)
+                    for ch, val in (('red', cp.red), ('green', cp.green), ('blue', cp.blue)):
+                        if val > 0:
+                            sub = dict(ld)
+                            sub['channel'] = ch
+                            sub['size']    = (val / 255.0) * base_size
+                            out.append(sub)
+                else:
+                    print(f"FX color_id {cid} not found — skipping rgb layer for fixture {fid}")
+            else:
+                out.append(ld)
+        if out:
+            expanded[fid] = out
+    return expanded
+
+
+def _expand_group_fx(fx_defs_by_fid, patch, group_pool):
+    """
+    For any fx_def with a group_id set, add that def to every fixture
+    in the referenced group (in addition to whatever fixture already holds it).
+    The group_id is kept in the def so _bucket_fx_defs can form a shared layer.
+    Defs without group_id are passed through unchanged.
+    """
+    if not group_pool:
+        return fx_defs_by_fid
+    out = dict(fx_defs_by_fid)
+    for fid, defs in fx_defs_by_fid.items():
+        for ld in defs:
+            gid = ld.get('group_id')
+            if gid is None:
+                continue
+            grp = group_pool.get(gid)
+            if not grp:
+                continue
+            for master in grp.recall(patch):
+                mfid = str(master.fixture_id)
+                if mfid not in out:
+                    out[mfid] = []
+                if ld not in out[mfid]:
+                    out[mfid].append(ld)
+    return out
 
 
 # ------------------------------------------------------------
@@ -7387,12 +7475,13 @@ size_pool    = SizePool()
 spread_pool  = SpreadPool()
 fx_engine    = FXEngine(output_state, form_pool=form_pool,
                         rate_pool=rate_pool, size_pool=size_pool,
-                        spread_pool=spread_pool)
+                        spread_pool=spread_pool, dim_pool=dim_pool)
 # Wire fx_engine + form_pool into executor_pool so new executors inherit them
 executor_pool.default_fx_engine  = fx_engine
 executor_pool.default_form_pool  = form_pool
 executor_pool.default_color_pool = color_pool
 executor_pool.default_dim_pool   = dim_pool
+executor_pool.default_group_pool = group_pool
 # STUDIO_DRY_RUN=1 disables real sACN output (no socket, nothing sent to the
 # tubes) while still running the full FX/cue/output pipeline — used for
 # unattended/automated testing. STUDIO_HEADLESS=1 additionally skips the
@@ -8686,13 +8775,14 @@ def run_command(cmd_str):
         Start live-preview FX layers for the given fixture→fx_defs mapping.
         fx_defs_by_fid: {fixture_id (int): [fx_def, ...]}
 
-        Uses the shared _bucket_fx_defs() grouping: identical defs across
-        fixtures merge into one layer whose targets depend on target_scope
-        ('fixture' = whole tubes step together; 'pixel' = flattened pixels
-        across all matching tubes) — see _bucket_fx_defs for the default
-        per channel.
+        Tree references are expanded before bucketing:
+          color_id  → 'rgb' channel split into R/G/B layers scaled by preset
+          group_id  → fixture list replaced by group members
+          dim_id    → passed live to FXLayer as a size ceiling (no expansion needed)
         """
-        for ld, targets in _bucket_fx_defs(fx_defs_by_fid, patch):
+        expanded = _expand_color_fx(fx_defs_by_fid, color_pool)
+        expanded = _expand_group_fx(expanded, patch, group_pool)
+        for ld, targets in _bucket_fx_defs(expanded, patch):
             fxid = max(_prog_fx_ids, default=8999) + 1
             layer = fx_engine.add(
                 fxid,
@@ -8709,6 +8799,7 @@ def run_command(cmd_str):
                 rate_id      = ld.get('rate_id'),
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
+                dim_id       = ld.get('dim_id'),
                 block_size   = ld.get('block_size',      1),
                 order        = ld.get('order',    'linear'),
                 direction    = ld.get('direction','forward'),
@@ -8893,16 +8984,23 @@ def run_command(cmd_str):
                 lines.append("Pool: (empty)")
             return "\n".join(lines)
 
-        # FX [ADD] <waveform|FORM n> <channel> [BPM n] [SIZE n] [SPREAD n]
-        #   [BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
+        # FX [ADD] <waveform|FORM n|COLOR n> [channel] [BPM n] [SIZE n] [SPREAD n]
+        #   [GROUP n] [DIMREF n] [BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
+        #
+        # Tree references:
+        #   COLOR n  — drives R/G/B from ColorPreset n (waveform drives intensity of that color)
+        #   GROUP n  — target only fixtures in GroupPool slot n instead of programmer selection
+        #   DIMREF n — live size ceiling: DimmerPreset n's level scales FX amplitude (0–1)
         add_mode = (sub == 'ADD')
         base_idx = 2 if add_mode else 1
 
         if base_idx >= len(tokens):
-            return ("Usage: FX [ADD] <waveform|FORM n> <channel> [BPM n] [SIZE n] [SPREAD n] "
-                     "[BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]")
+            return ("Usage: FX [ADD] <waveform|FORM n|COLOR n> [channel] "
+                    "[BPM n] [SIZE n] [SPREAD n] [GROUP n] [DIMREF n] "
+                    "[BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE]")
 
         form_id  = None
+        color_id = None
         waveform = tokens[base_idx]
         ch_idx   = base_idx + 1
 
@@ -8914,12 +9012,32 @@ def run_command(cmd_str):
                 ch_idx   = base_idx + 2
             except (IndexError, ValueError):
                 return "Usage: FX [ADD] FORM <n> <channel> [...]"
+        elif waveform == 'COLOR':
+            # FX COLOR <preset_id> — drives R/G/B channels from the preset's color
+            try:
+                color_id = int(tokens[base_idx + 1])
+                ch_idx   = base_idx + 2
+            except (IndexError, ValueError):
+                return "Usage: FX [ADD] COLOR <preset_id> [BPM n] [SIZE n] [GROUP n] [DIMREF n]"
+            waveform = 'sine'
+            channel  = 'rgb'   # virtual; expanded into R/G/B at _prog_fx_start time
         elif waveform not in _WAVEFORMS:
-            return f"Unknown waveform '{waveform}' — use sine|ramp|pulse|square or FORM <n>"
+            return f"Unknown waveform '{waveform}' — use sine|ramp|pulse|square, FORM <n>, or COLOR <n>"
 
-        if ch_idx >= len(tokens) or tokens[ch_idx] not in _CHANNELS:
-            return f"Usage: FX [ADD] <waveform> red|green|blue|dim [BPM n] [SIZE n] [SPREAD n]"
-        channel = tokens[ch_idx]
+        if color_id is None:
+            # Check if channel position is 'COLOR' (e.g. FX RAMP COLOR 3)
+            if ch_idx < len(tokens) and tokens[ch_idx] == 'COLOR':
+                try:
+                    color_id = int(tokens[ch_idx + 1])
+                    ch_idx  += 2
+                except (IndexError, ValueError):
+                    return "Usage: FX [ADD] <waveform> COLOR <preset_id>"
+                waveform = waveform.lower()
+                channel  = 'rgb'
+            elif ch_idx >= len(tokens) or tokens[ch_idx] not in _CHANNELS:
+                return f"Usage: FX [ADD] <waveform> red|green|blue|dim [BPM n] [SIZE n] [SPREAD n]"
+            else:
+                channel = tokens[ch_idx]
 
         up = raw.upper()
         def _fx_val(key, default):
@@ -8940,6 +9058,8 @@ def run_command(cmd_str):
         rate_id   = _fx_pool_id('RATE')
         size_id   = _fx_pool_id('SIZEP')
         spread_id = _fx_pool_id('SPREADP')
+        dim_id    = _fx_pool_id('DIMREF')   # DimmerPreset slot as live size ceiling
+        group_id  = _fx_pool_id('GROUP')    # GroupPool slot as target override
 
         # Distribution: BLOCK n groups adjacent targets into steps of n.
         # ORDER RANDOM shuffles step order (stable per effect); default LINEAR.
@@ -8986,14 +9106,24 @@ def run_command(cmd_str):
             'rate_id':      rate_id,
             'size_id':      size_id,
             'spread_id':    spread_id,
+            'dim_id':       dim_id,
+            'color_id':     color_id,
+            'group_id':     group_id,
             'block_size':   block_size,
             'order':        order,
             'direction':    direction,
             'target_scope': target_scope,
         }
 
-        # Resolve programmer selection — always work in master fixture IDs
-        if prog.selection:
+        # Resolve target fixtures — GROUP n overrides programmer selection
+        if group_id is not None:
+            grp = group_pool.get(group_id)
+            if not grp:
+                return f"Group {group_id} not found"
+            sel_fids = [m.fixture_id for m in grp.recall(patch)]
+            if not sel_fids:
+                return f"Group {group_id} is empty"
+        elif prog.selection:
             seen_m, sel_fids = set(), []
             for f in prog.selection:
                 mid = f.fixture_id if isinstance(f, MasterFixture) else getattr(f, 'master_id', None)
@@ -9016,8 +9146,14 @@ def run_command(cmd_str):
         # Live preview — rebuild ALL programmer FX so other fixtures keep their effects
         _prog_fx_rebuild()
 
-        verb = "Added FX" if add_mode else "Applied FX"
-        return f"{verb}: {waveform} {channel} → {len(sel_fids)} fixture(s)"
+        ref_parts = []
+        if group_id  is not None: ref_parts.append(f"group:{group_id}")
+        if color_id  is not None: ref_parts.append(f"color:{color_id}")
+        if dim_id    is not None: ref_parts.append(f"dimref:{dim_id}")
+        ref_s = f" [{', '.join(ref_parts)}]" if ref_parts else ""
+        verb  = "Added FX" if add_mode else "Applied FX"
+        disp_ch = "rgb" if channel == 'rgb' else channel
+        return f"{verb}: {waveform} {disp_ch}{ref_s} → {len(sel_fids)} fixture(s)"
 
     # RECORD FX <n> [name]  — snapshot programmer FX defs into the pool
     if t0 == 'RECORD' and len(tokens) >= 3 and tokens[1] == 'FX':
@@ -9052,6 +9188,9 @@ def run_command(cmd_str):
                 rate_id      = ld.get('rate_id'),
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
+                dim_id       = ld.get('dim_id'),
+                color_id     = ld.get('color_id'),
+                group_id     = ld.get('group_id'),
                 block_size   = ld.get('block_size',      1),
                 order        = ld.get('order',    'linear'),
                 direction    = ld.get('direction','forward'),
@@ -9061,7 +9200,8 @@ def run_command(cmd_str):
         ShowFile.save_fx_pool(fx_pool)
         return f"Recorded: {preset}  (auto-saved)"
 
-    # FIRE FX <n>  — write preset defs into programmer + preview
+    # FIRE FX <n> [GROUP n]  — write preset defs into programmer + preview
+    # GROUP n overrides the preset's stored group_id or programmer selection.
     if t0 == 'FIRE' and len(tokens) >= 3 and tokens[1] == 'FX':
         try:
             fx_n = int(tokens[2])
@@ -9071,7 +9211,17 @@ def run_command(cmd_str):
         if not preset:
             return f"FX preset {fx_n} not found"
 
-        if prog.selection:
+        # FIRE FX n GROUP g — group override at fire time
+        _re_fire = _re
+        fire_grp_m = _re_fire.search(r'\bGROUP\s+(\d+)', raw.upper())
+        fire_group_id = int(fire_grp_m.group(1)) if fire_grp_m else None
+
+        if fire_group_id is not None:
+            grp = group_pool.get(fire_group_id)
+            if not grp:
+                return f"FIRE FX: Group {fire_group_id} not found"
+            sel_fids = [m.fixture_id for m in grp.recall(patch)]
+        elif prog.selection:
             seen_m, sel_fids = set(), []
             for f in prog.selection:
                 mid = f.fixture_id if isinstance(f, MasterFixture) else getattr(f, 'master_id', None)
@@ -9084,17 +9234,29 @@ def run_command(cmd_str):
         # Write preset layers into programmer — channel-additive merge.
         # Layers on channels already covered by this preset are replaced;
         # layers on other channels (e.g. existing rainbow stays when adding dim) are kept.
-        new_channels = {ld['channel'] for ld in preset.layers}
+        # For 'rgb' virtual channel, treat red/green/blue as the replaced set.
+        new_channels = set()
+        for ld in preset.layers:
+            if ld['channel'] == 'rgb':
+                new_channels.update(('red', 'green', 'blue'))
+            else:
+                new_channels.add(ld['channel'])
+
         for fid in sel_fids:
             entry = prog.data.setdefault(str(fid), {})
             kept  = [ld for ld in entry.get('fx', [])
                      if ld.get('channel') not in new_channels]
-            entry['fx'] = kept + [dict(ld) for ld in preset.layers]
+            fired_defs = [dict(ld) for ld in preset.layers]
+            # Apply fire-time group override
+            if fire_group_id is not None:
+                for d in fired_defs:
+                    d['group_id'] = fire_group_id
+            entry['fx'] = kept + fired_defs
 
-        # Live preview — rebuild ALL programmer FX so other fixtures keep their effects
         _prog_fx_rebuild()
 
-        return f"Fired: {preset}  → {len(sel_fids)} fixture(s)"
+        ref_s = f" [group:{fire_group_id}]" if fire_group_id else ""
+        return f"Fired: {preset}{ref_s}  → {len(sel_fids)} fixture(s)"
 
     # ── CLONE <src_id> TO <dst_id> ───────────────────────────
     # Copies all pool data from one fixture to another:
