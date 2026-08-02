@@ -133,6 +133,14 @@
         "_attr_pools dict extracted as a module-level var and passed to GUIEngine via attr_pools= kwarg.",
         "_tick_pools updates all 5 pools' button labels and tooltips each tick."
       ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Visual polish continued: BACK button blue theme + cue list fade times",
+      "details": [
+        "_make_back_theme() adds a distinct muted blue to the BACK ◀ button — GO is amber, BACK is blue, all other buttons remain default purple.",
+        "Cue list in the left column now shows fade time inline after the cue name (e.g. '[3]  Intro  2.0s') so timing is visible without hovering."
+      ]
     }
   ]
 }

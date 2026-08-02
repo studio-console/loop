@@ -4234,6 +4234,16 @@ def _make_go_theme():
     return t
 
 
+def _make_back_theme():
+    """Muted blue theme for the BACK ◀ button."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (20,  50, 100, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (40,  90, 160, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (60, 140, 220, 255))
+    return t
+
+
 def _load_console_font():
     """Load SF Mono if available; returns the font tag or None."""
     sf_mono = "/System/Library/Fonts/SFNSMono.ttf"
@@ -4333,7 +4343,8 @@ class GUIEngine:
         dpg.create_context()
         _apply_theme()
         _load_console_font()
-        self._go_theme = _make_go_theme()
+        self._go_theme   = _make_go_theme()
+        self._back_theme = _make_back_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
                             # non-resizable full-height viewport, clipping the bottom
@@ -4399,7 +4410,8 @@ class GUIEngine:
 
         # Apply per-item themes after widgets are built
         try:
-            dpg.bind_item_theme("go_btn", self._go_theme)
+            dpg.bind_item_theme("go_btn",   self._go_theme)
+            dpg.bind_item_theme("back_btn", self._back_theme)
         except Exception:
             pass
 
@@ -4471,7 +4483,7 @@ class GUIEngine:
                 dpg.add_group(tag="cue_list_group")
             dpg.add_separator()
             with dpg.group(horizontal=True):
-                dpg.add_button(label=" ◀ BACK ", width=106,
+                dpg.add_button(label=" ◀ BACK ", tag="back_btn", width=106,
                                callback=lambda: self._back())
                 dpg.add_button(label=" ↺ RELOAD ", width=120,
                                callback=lambda: self._reload() if self._reload else None)
@@ -6562,7 +6574,8 @@ class GUIEngine:
         for num in stack._sorted_cue_numbers():
             cue   = stack.cues[num]
             tag   = f"cue_row_{sid}_{num}"
-            label = f"  [{num:.0f}]  {cue.name}"
+            ft    = f" {cue.fade_time:.1f}s" if cue.fade_time else ""
+            label = f"  [{num:.0f}]  {cue.name}{ft}"
             with dpg.group(parent="cue_list_group", horizontal=True):
                 dpg.add_selectable(label=label, tag=tag,
                                    callback=lambda *_, u=num: self._goto(u),
