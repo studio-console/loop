@@ -5878,6 +5878,17 @@ class GUIEngine:
                 ("CLEAR FX",              "Clear all FX from programmer (keep colour/dim)"),
                 ("KILL FX",               "Stop all running FX immediately"),
             ]),
+            ("LIST / INSPECT", [
+                ("CUES / STACK / LIST",   "Show all cues in active cuestack with fade times"),
+                ("LIST CUESTACKS",        "List all recorded cuestacks and cue counts"),
+                ("LIST COLOR",            "List all color presets with RGB sample"),
+                ("LIST DIM",              "List all dim presets with level"),
+                ("LIST GROUP",            "List all groups and member counts"),
+                ("LIST FX",               "List all FX presets with waveform/channel"),
+                ("LIST RATE / SIZE / SPREAD / FORM", "List pool presets"),
+                ("FX LIST",               "Show active programmer/executor FX layers"),
+                ("PAGE LIST",             "Show executor pages"),
+            ]),
             ("RECORD", [
                 ("REC CUE 5",             "Record current programmer to cue 5"),
                 ("REC CUE 5 My Cue",      "Record with a name"),
@@ -10462,6 +10473,57 @@ def run_command(cmd_str):
         if sub == 'FORM':
             lines = ["Form Presets:"] + [f"  {f}" for f in sorted(form_pool.forms.values(), key=lambda x: x.form_id)]
             return "\n".join(lines)
+        if sub in ('COLOR', 'COLOUR', 'COLORS', 'COLOURS'):
+            if not color_pool.presets:
+                return "Color pool is empty"
+            lines = ["Color Presets:"]
+            for pid in sorted(color_pool.presets):
+                p = color_pool.presets[pid]
+                # Sample RGB from first sub-fixture entry that has RGB data
+                rgb = "—"
+                for fid, vals in p.data.items():
+                    if 'red' in vals:
+                        r, g, b = int(vals['red']), int(vals.get('green', 0)), int(vals.get('blue', 0))
+                        rgb = f"R{r} G{g} B{b}"
+                        break
+                lines.append(f"  [{pid}] {p.name}  {rgb}")
+            return "\n".join(lines)
+        if sub in ('DIM', 'DIMS'):
+            if not dim_pool.presets:
+                return "Dim pool is empty"
+            lines = ["Dim Presets:"]
+            for pid in sorted(dim_pool.presets):
+                p = dim_pool.presets[pid]
+                dim_val = next((v.get('dim') for v in p.data.values() if 'dim' in v), None)
+                dim_str = f"{dim_val:.0%}" if dim_val is not None else "?"
+                lines.append(f"  [{pid}] {p.name}  {dim_str}")
+            return "\n".join(lines)
+        if sub in ('GROUP', 'GROUPS'):
+            if not group_pool.groups:
+                return "Group pool is empty"
+            lines = ["Groups:"]
+            for gid in sorted(group_pool.groups):
+                g = group_pool.groups[gid]
+                count = len(g.members)
+                lines.append(f"  [{gid}] {g.name}  ({count} entries)")
+            return "\n".join(lines)
+        if sub in ('FX', 'FXPRESET', 'FXPRESETS'):
+            lines = [f"FX Presets:"]
+            for pid in sorted(fx_pool.presets):
+                p = fx_pool.presets[pid]
+                waveforms = ", ".join(
+                    f"{ld.get('waveform','?')}/{ld.get('channel','?')}"
+                    for ld in p.layers)
+                lines.append(f"  [{pid}] {p.name}  {waveforms or '(empty)'}")
+            return "\n".join(lines) if len(lines) > 1 else "FX pool is empty"
+        if sub in ('CUESTACKS', 'STACKS', 'CS'):
+            lines = ["CueStacks:"]
+            for sid in sorted(cuestack_pool.stacks):
+                cs = cuestack_pool.stacks[sid]
+                cue_count = len(cs.cues)
+                cur = f"  ◀ on Cue {cs.current:.0f}" if cs.current is not None else ""
+                lines.append(f"  [{sid}] {cs.name}  ({cue_count} cues){cur}")
+            return "\n".join(lines) if len(lines) > 1 else "No cuestacks recorded"
 
     # ── Clear — programmer only, never touches cuestacks ────────
     # ── RELEASE — stop executor(s) ───────────────────────────
