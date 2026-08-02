@@ -4491,7 +4491,11 @@ class GUIEngine:
         with dpg.child_window(tag="left_col", width=_W, height=self._H_MAIN,
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── Cue list ─────────────────────────
-            dpg.add_text("cuestack —", tag="left_cs_title", color=_C_ACCENT)
+            with dpg.group(horizontal=True):
+                dpg.add_text("cuestack", color=_C_ACCENT)
+                dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
+                              width=-1, height_mode=dpg.mvComboHeight_Small,
+                              callback=self._on_cs_combo_select)
             dpg.add_separator()
             # Fixed-height scroll area for the cue list so it never pushes content down
             with dpg.child_window(tag="cue_list_scroll", width=-1, height=106,
@@ -6767,6 +6771,17 @@ class GUIEngine:
                     ex.stop()
         self._last_playbacks_hash = None   # force rebuild next tick
 
+    def _on_cs_combo_select(self, _sender, value, _user_data):
+        """Switch active cuestack from the left-column combo."""
+        if not value or value == "—":
+            return
+        try:
+            n = int(value.split(":")[0])
+        except (ValueError, IndexError):
+            return
+        if self._cmd:
+            self._cmd(f"CUESTACK {n}")
+
     def _on_exec_fader(self, _sender, value, user_data):
         if self._executor_pool:
             ex = self._executor_pool.executors.get(int(user_data))
@@ -6933,11 +6948,26 @@ class GUIEngine:
         active_n = self._active_executor[0] if self._active_executor else 1
         active_cs   = self._cuestack_pool.get(active_n) if self._cuestack_pool else None
         current_name = active_cs.name if active_cs else f"Cuestack {active_n}"
+        # Build cuestack combo items from pool
+        if self._cuestack_pool:
+            cs_items = ["—"] + [
+                f"{sid}: {self._cuestack_pool.stacks[sid].name}"
+                for sid in sorted(self._cuestack_pool.stacks)
+            ]
+        else:
+            cs_items = ["—"]
+        active_item = f"{active_n}: {current_name}" if active_cs else "—"
+        try:
+            dpg.configure_item("left_cs_combo", items=cs_items)
+            if not dpg.is_item_active("left_cs_combo"):
+                dpg.set_value("left_cs_combo", active_item if active_item in cs_items else "—")
+        except Exception:
+            pass
+
         if active_n != self._displayed_executor or current_name != self._displayed_cs_name:
             self._displayed_executor = active_n
             self._displayed_cs_name  = current_name
             try:
-                dpg.set_value("left_cs_title", f"CUESTACK {active_n} — {current_name}")
                 self._rebuild_cue_list(active_cs)
             except Exception:
                 pass
