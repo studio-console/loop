@@ -5920,6 +5920,12 @@ class GUIEngine:
                     dpg.add_text("Spread",      color=_C_ACCENT)
                     dpg.add_spacer(width=25)
                     dpg.add_text("Phase(0-1)",  color=_C_ACCENT)
+                    dpg.add_spacer(width=18)
+                    dpg.add_text("Grp",         color=_C_ACCENT)
+                    dpg.add_spacer(width=30)
+                    dpg.add_text("Col",         color=_C_ACCENT)
+                    dpg.add_spacer(width=30)
+                    dpg.add_text("Dim",         color=_C_ACCENT)
                 dpg.add_separator()
                 dpg.add_group(tag="fxed_layer_rows")
 
@@ -6076,6 +6082,23 @@ class GUIEngine:
                                     step=0, format="%.3f")
                 dpg.set_value(f"fxed_r{i}_phase", ld.get('phase_offset', 0.0))
 
+                _ref_items = ["—"] + [str(n) for n in range(1, self._POOL_SLOTS + 1)]
+                _gid = ld.get('group_id')
+                _cid = ld.get('color_id')
+                _did = ld.get('dim_id')
+                dpg.add_combo(tag=f"fxed_r{i}_grp", label="", width=46,
+                              items=_ref_items,
+                              default_value="—" if _gid is None else str(_gid))
+                dpg.set_value(f"fxed_r{i}_grp", "—" if _gid is None else str(_gid))
+                dpg.add_combo(tag=f"fxed_r{i}_col", label="", width=46,
+                              items=_ref_items,
+                              default_value="—" if _cid is None else str(_cid))
+                dpg.set_value(f"fxed_r{i}_col", "—" if _cid is None else str(_cid))
+                dpg.add_combo(tag=f"fxed_r{i}_dim", label="", width=46,
+                              items=_ref_items,
+                              default_value="—" if _did is None else str(_did))
+                dpg.set_value(f"fxed_r{i}_dim", "—" if _did is None else str(_did))
+
                 dpg.add_button(label="X", width=24, height=20,
                                callback=self._fxed_remove_layer,
                                user_data=i)
@@ -6101,6 +6124,8 @@ class GUIEngine:
 
     def _fxed_sync_rows(self):
         """Read current widget values back into _fx_ed_layers."""
+        def _ref(v):
+            return None if v == "—" else int(v)
         for i in range(len(self._fx_ed_layers)):
             try:
                 self._fx_ed_layers[i]['waveform']     = dpg.get_value(f"fxed_r{i}_wave")
@@ -6109,6 +6134,9 @@ class GUIEngine:
                 self._fx_ed_layers[i]['size']          = dpg.get_value(f"fxed_r{i}_size")
                 self._fx_ed_layers[i]['spread']        = dpg.get_value(f"fxed_r{i}_spread")
                 self._fx_ed_layers[i]['phase_offset']  = dpg.get_value(f"fxed_r{i}_phase")
+                self._fx_ed_layers[i]['group_id']      = _ref(dpg.get_value(f"fxed_r{i}_grp"))
+                self._fx_ed_layers[i]['color_id']      = _ref(dpg.get_value(f"fxed_r{i}_col"))
+                self._fx_ed_layers[i]['dim_id']        = _ref(dpg.get_value(f"fxed_r{i}_dim"))
             except Exception:
                 pass
 
@@ -6127,6 +6155,9 @@ class GUIEngine:
                 size         = ld.get('size',         200.0),
                 spread       = ld.get('spread',         1.0),
                 phase_offset = ld.get('phase_offset',   0.0),
+                group_id     = ld.get('group_id'),
+                color_id     = ld.get('color_id'),
+                dim_id       = ld.get('dim_id'),
             )
         self._fx_pool.store(self._fx_ed_slot, preset)
         ShowFile.save_fx_pool(self._fx_pool)
