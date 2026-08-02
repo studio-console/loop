@@ -4338,6 +4338,7 @@ class GUIEngine:
 
         self._flash_held  = {}         # {exec_id: bool} — tracks held state of FLASH buttons
         self._col_btn_themes = {}      # {slot_n: ((r,g,b), theme_id)} — per-color-preset button themes
+        self._dim_btn_themes = {}      # {slot_n: (level, theme_id)} — per-dim-preset button themes
 
         self._learn_pending      = None    # (ch, number) captured by learn
         self._learn_target       = None    # display name chosen in dropdown
@@ -5065,6 +5066,8 @@ class GUIEngine:
                             tag=f"dim_btn_{n}", label=f"D{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_dim_click, user_data=n)
+                        with dpg.tooltip(f"dim_btn_{n}"):
+                            dpg.add_text(f"Dim {n}", tag=f"dim_tip_{n}")
 
     def _focus_cmd(self):
         pass  # key routing via global handlers; no focus transfer needed
@@ -5347,6 +5350,43 @@ class GUIEngine:
                 dpg.set_item_label(f"dim_btn_{n}", lbl)
             except Exception:
                 pass
+            try:
+                tip = (f"Dim {n}: {d.name}  {d.level*100:.0f}%") if d else f"Dim {n} — empty"
+                dpg.set_value(f"dim_tip_{n}", tip)
+            except Exception:
+                pass
+            # Tint the dim button with a brightness-scaled grey
+            if d:
+                lv = max(0.05, float(d.level))
+                cached = self._dim_btn_themes.get(n)
+                if cached is None or abs(cached[0] - lv) > 0.01:
+                    if cached:
+                        try:
+                            dpg.delete_item(cached[1])
+                        except Exception:
+                            pass
+                    try:
+                        br   = int(lv * 180)
+                        brH  = min(255, int(lv * 255))
+                        with dpg.theme() as _dth:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(dpg.mvThemeCol_Button,
+                                                    (br//3, br//3, br//2, 255))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,
+                                                    (brH//2, brH//2, brH, 255))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,
+                                                    (brH, brH, 255, 255))
+                        dpg.bind_item_theme(f"dim_btn_{n}", _dth)
+                        self._dim_btn_themes[n] = (lv, _dth)
+                    except Exception:
+                        pass
+            elif n in self._dim_btn_themes:
+                try:
+                    dpg.bind_item_theme(f"dim_btn_{n}", 0)
+                    dpg.delete_item(self._dim_btn_themes[n][1])
+                except Exception:
+                    pass
+                del self._dim_btn_themes[n]
 
         # Cuestacks (slots 1-48)
         active = self._active_executor[0] if self._active_executor else None
