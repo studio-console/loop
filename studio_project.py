@@ -10892,6 +10892,38 @@ def run_command(cmd_str):
         _fx_params.pop('pending_form_id', None)
         return f"FX cleared from {cleared} fixture(s) — colour/dim preserved"
 
+    # CLEAR COLOR/DIM/GROUP/FX <n> — clear a specific pool slot
+    if t0 == 'CLEAR' and len(tokens) == 3:
+        sub = tokens[1]
+        try:
+            slot = int(tokens[2])
+        except ValueError:
+            return f"CLEAR {sub}: bad slot number '{tokens[2]}'"
+        if sub in ('COLOR', 'COLOUR'):
+            if slot in color_pool.presets:
+                del color_pool.presets[slot]
+                save_show()
+                return f"Color Preset {slot} cleared (show saved)"
+            return f"Color Preset {slot} is already empty"
+        if sub == 'DIM':
+            if slot in dim_pool.presets:
+                del dim_pool.presets[slot]
+                save_show()
+                return f"Dim Preset {slot} cleared (show saved)"
+            return f"Dim Preset {slot} is already empty"
+        if sub in ('GROUP', 'GRP'):
+            if slot in group_pool.groups:
+                del group_pool.groups[slot]
+                save_show()
+                return f"Group {slot} cleared (show saved)"
+            return f"Group {slot} is already empty"
+        if sub == 'FX':
+            if slot in fx_pool.presets:
+                del fx_pool.presets[slot]
+                save_show()
+                return f"FX Preset {slot} cleared (show saved)"
+            return f"FX Preset {slot} is already empty"
+
     if t0 == 'CLEAR' and len(tokens) == 1:
         result = prog.do_clear()
         if result.startswith("Programmer cleared"):
