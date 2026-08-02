@@ -4554,7 +4554,7 @@ class GUIEngine:
                               callback=self._on_cs_combo_select)
             dpg.add_separator()
             # Fixed-height scroll area for the cue list so it never pushes content down
-            with dpg.child_window(tag="cue_list_scroll", width=-1, height=106,
+            with dpg.child_window(tag="cue_list_scroll", width=-1, height=78,
                                   border=False, no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_group(tag="cue_list_group")
             dpg.add_separator()
@@ -4574,7 +4574,7 @@ class GUIEngine:
                 dpg.add_button(label="stop all", width=78,
                                callback=self._on_stop_all_executors)
             dpg.add_separator()
-            with dpg.child_window(tag="playbacks_list", width=-1, height=120,
+            with dpg.child_window(tag="playbacks_list", width=-1, height=90,
                                   border=False, no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
 
@@ -4913,22 +4913,24 @@ class GUIEngine:
     # ── Layout budget: 1920 × 1080, no scrollbars anywhere ──────
     _W          = 1920
     _H          = 1080
-    # Section heights (child_window heights)
-    # Monitors moved to popup → ~160px freed; redistribute to taller buttons + 3-col row.
-    _H_MAIN     = 466   # main 3-col area
-    _H_P1       = 156   # pool row 1 (groups / colors / dims)
-    _H_P2       = 156   # pool row 2 (cuestacks / cues / fx)
-    _H_FORMS    =  58   # forms single row
-    _H_MON      = 270   # monitor popup panel height
+    # Section heights — sized to fit 1040px viewport with no scroll (no-AI case).
+    # Budget: 1040px viewport - 12px WindowPadding - 10×4px ItemSpacing gaps = 988px for content.
+    # Header~36 + 3-col~420 + sep~2 + P1~150 + P2~150 + Forms~56 + Attr×2~164 = 978px ✓
+    _H_MAIN     = 420   # main 3-col area
+    _H_P1       = 150   # pool row 1: 4×24btn + 3×4gap + 24header = 132px content, 150 total
+    _H_P2       = 150   # pool row 2
+    _H_FORMS    =  56   # forms single row
+    _H_MON      = 270   # monitor popup panel height (not in main layout)
     # Column widths
     _W_LEFT     = 380
     _W_RIGHT    = 720
     # Pool grid
     _POOL_SLOTS = 24    # 4 rows × 6 cols per panel
     _POOL_COLS  = 6
-    _PANEL_W    = 634   # panels touch: 3 × 634 = 1902, fits 1920 w/ outer padding
-    _BTN_W      = 104   # wider buttons using freed gap space
-    _BTN_H      =  26   # taller: 4 × 26 + 3 × 4 gaps + 26 header = 142px ≤ _H_P1
+    _PANEL_W    = 634   # panels touch: 3 × 634 = 1902 fits 1920 w/ outer padding
+    # BTN_W: (634 - 2×8pad - 2×1border - 5×6gap) / 6 = (616-30)/6 = 97.7 → 97
+    _BTN_W      =  97   # exactly fits 6 columns in a 634-wide panel
+    _BTN_H      =  24   # 4 rows × 24 + 3 × 4gap + header = 132px content
     _POOL_H     = _H_P1
 
     @staticmethod
@@ -6622,28 +6624,26 @@ class GUIEngine:
         self._log(f"⚠ {line}")
 
     def _build_monitors_popup(self):
-        """Floating programmer/output monitor popup — toggle with 'mon' header button."""
-        _h = self._H_MON
+        """Floating programmer/output monitor popup — no inner boxes, just tables."""
         with dpg.window(tag="monitors_window", label="monitors",
-                        width=1600, height=_h + 46, show=False,
+                        width=1600, height=360, show=False,
                         pos=(160, 360), no_collapse=False):
             with dpg.group(horizontal=True):
                 # ── Programmer ──────────────────────────────────────
-                with dpg.child_window(tag="prog_panel", width=780, height=_h,
-                                      border=True, no_scrollbar=True, no_scroll_with_mouse=True):
+                with dpg.group(tag="prog_panel"):
                     dpg.add_text("programmer", tag="prog_mon_title", color=_C_DIM)
                     dpg.add_separator()
                     with dpg.table(tag="prog_table", header_row=True,
                                    borders_innerV=True, borders_outerV=True,
                                    borders_outerH=True, row_background=True,
-                                   scrollY=False):
+                                   width=768, scrollY=False):
                         dpg.add_table_column(label="Fixture", width_fixed=True, init_width_or_weight=110)
                         dpg.add_table_column(label="R",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="G",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="B",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="Dim", width_fixed=True, init_width_or_weight=56)
                         dpg.add_table_column(label="fx",  width_stretch=True)
-                        dpg.add_table_column(label="Bar", width_fixed=True, init_width_or_weight=120)
+                        dpg.add_table_column(label="Bar", width_fixed=True, init_width_or_weight=130)
 
                         for master in self._patch.all_fixtures():
                             fid = str(master.fixture_id)
@@ -6657,9 +6657,10 @@ class GUIEngine:
                                 dpg.add_progress_bar(default_value=0.0,
                                                      tag=f"prog_bar_{fid}", width=-1)
 
+                dpg.add_spacer(width=24)
+
                 # ── Output Monitor ──────────────────────────────────
-                with dpg.child_window(tag="out_panel", width=-1, height=_h,
-                                      border=True, no_scrollbar=True, no_scroll_with_mouse=True):
+                with dpg.group(tag="out_panel"):
                     dpg.add_text("output monitor", color=_C_ACCENT)
                     dpg.add_separator()
                     with dpg.table(tag="out_table", header_row=True,
