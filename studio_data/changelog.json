@@ -113,6 +113,15 @@
         "_log_error() added as the error-path log call; auto-detected in _on_cmd_execute by scanning the first line of each result string.",
         "FX pool save (save_fx_pool) now writes dim_id, color_id, group_id for each layer. load_fx_pool passes them through add_layer on load. FXPreset.fire() passes color_id to fx_engine.add(). All three tree references now survive a save/load cycle."
       ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Visual polish: SF Mono font + GO button amber theme",
+      "details": [
+        "_load_console_font() loads /System/Library/Fonts/SFNSMono.ttf at 13px if available. Falls back silently to DearPyGui default if not found.",
+        "_make_go_theme() creates a distinct amber/orange button theme for the GO ▶ button — visually separated from other purple buttons so it reads as the primary action.",
+        "Both applied at build() time: font via dpg.bind_font(), GO theme via dpg.bind_item_theme('go_btn')."
+      ]
     }
   ]
 }

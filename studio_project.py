@@ -4219,6 +4219,32 @@ def _apply_theme():
     dpg.bind_theme(t)
 
 
+def _make_go_theme():
+    """Amber/orange theme for the GO ▶ button — visually distinct from default purple."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (100, 58, 12, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 110, 22, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (255, 170,  40, 255))
+    return t
+
+
+def _load_console_font():
+    """Load SF Mono if available; returns the font tag or None."""
+    sf_mono = "/System/Library/Fonts/SFNSMono.ttf"
+    if not os.path.exists(sf_mono):
+        return None
+    try:
+        with dpg.font_registry():
+            with dpg.font(sf_mono, 13) as fid:
+                dpg.add_font_range_hint(dpg.mvFontRangeHint_Default)
+        dpg.bind_font(fid)
+        return fid
+    except Exception as e:
+        print(f"  Font: {e} — using default")
+        return None
+
+
 class GUIEngine:
     """
     DearPyGui retro console.
@@ -4299,6 +4325,8 @@ class GUIEngine:
 
         dpg.create_context()
         _apply_theme()
+        _load_console_font()
+        self._go_theme = _make_go_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
                             # non-resizable full-height viewport, clipping the bottom
@@ -4361,6 +4389,12 @@ class GUIEngine:
                                       callback=self._on_global_enter)
             dpg.add_key_press_handler(dpg.mvKey_NumPadEnter,
                                       callback=self._on_global_enter)
+
+        # Apply per-item themes after widgets are built
+        try:
+            dpg.bind_item_theme("go_btn", self._go_theme)
+        except Exception:
+            pass
 
         dpg.create_viewport(title="Studio Console", width=W, height=H,
                             resizable=True, x_pos=0, y_pos=32)
@@ -4434,7 +4468,7 @@ class GUIEngine:
                                callback=lambda: self._back())
                 dpg.add_button(label=" ↺ RELOAD ", width=120,
                                callback=lambda: self._reload() if self._reload else None)
-                dpg.add_button(label="  GO ▶  ", width=106,
+                dpg.add_button(label="  GO ▶  ", tag="go_btn", width=106,
                                callback=lambda: self._go())
 
             dpg.add_spacer(height=4)
