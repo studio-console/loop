@@ -4186,18 +4186,18 @@ try:
 except ImportError:
     _DPG_OK = False
 
-# Colour palette — pastel future dark
-_C_BG        = (10,   8,  22, 255)   # deep space
-_C_PANEL     = (20,  16,  42, 255)   # dark indigo panel
-_C_BORDER    = (68,  50, 108, 255)   # mid purple border
-_C_TEXT      = (220, 215, 255, 255)  # bright lavender white
-_C_DIM       = (98,  80, 148, 255)   # muted purple
-_C_ACCENT    = (139,  92, 246, 255)  # violet #8b5cf6
-_C_HOT       = (200, 140, 255, 255)  # bright violet-pink for status
-_C_BTN       = (40,  28,  72, 255)   # dark violet
-_C_BTN_H     = (70,  52, 122, 255)   # hover
-_C_BTN_A     = (112, 78, 192, 255)   # active vivid
-_C_CUE_ACT   = (44,  34,  86, 255)   # selected cue row
+# Colour palette — near-black / violet accent
+_C_BG        = (3,   2,   8, 255)   # near pure black with faint violet
+_C_PANEL     = (8,   6,  18, 255)   # very dark indigo panel
+_C_BORDER    = (38,  26,  78, 255)  # subtle violet divider
+_C_TEXT      = (228, 222, 255, 255) # clean white with violet cast
+_C_DIM       = (72,  56, 115, 255)  # dimmed — readable but recessed
+_C_ACCENT    = (139,  92, 246, 255) # violet #8b5cf6
+_C_HOT       = (188, 118, 255, 255) # bright violet-pink for live status
+_C_BTN       = (15,  10,  36, 255)  # near-black resting button
+_C_BTN_H     = (52,  34, 106, 255)  # hover — visible
+_C_BTN_A     = (98,  64, 182, 255)  # active — punchy violet
+_C_CUE_ACT   = (32,  22,  70, 255)  # selected cue row
 _C_SLIDER_G  = _C_ACCENT
 
 # Rainbow pool panel header colours
@@ -4226,35 +4226,38 @@ def _apply_theme():
             dpg.add_theme_color(dpg.mvThemeCol_Button,         _C_BTN)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,  _C_BTN_H)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,   _C_BTN_A)
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (30, 22, 58, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (48, 36, 88, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (72, 52, 128, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,     ( 0,  0,  0,   0))
-            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (38, 28, 72,  40))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (8,  6,  20, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (22, 16,  52, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (52, 34, 110, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,     ( 0,  0,   0,   0))
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (18, 12,  42,  55))
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,     _C_SLIDER_G)
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, _C_ACCENT)
             dpg.add_theme_color(dpg.mvThemeCol_Header,         _C_CUE_ACT)
             dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered,  _C_BTN_H)
             dpg.add_theme_color(dpg.mvThemeCol_HeaderActive,   _C_BTN_A)
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive,  (32, 24, 68, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive,  (18, 12,  50, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TitleBg,        _C_PANEL)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg,    _C_BG)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab,  _C_BORDER)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, _C_BTN_H)
-            dpg.add_theme_color(dpg.mvThemeCol_PopupBg,        (18, 14, 38, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_PopupBg,        (6,  4,  16, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TableBorderLight, _C_BORDER)
-            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg,  (32, 24, 64, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg,  (14, 10,  38, 255))
             dpg.add_theme_color(dpg.mvThemeCol_CheckMark,      _C_ACCENT)
-            dpg.add_theme_color(dpg.mvThemeCol_Separator,      _C_BORDER)
-            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  6)
-            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   4)
-            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   6)
-            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    4)
+            dpg.add_theme_color(dpg.mvThemeCol_Separator,      (28, 18,  62, 255))
+            # Input cursor and selection highlight
+            dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, (80, 50, 160, 140))
+            dpg.add_theme_color(dpg.mvThemeCol_NavHighlight,   _C_ACCENT)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  4)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   3)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   4)
+            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    3)
             dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 1)
-            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,     8, 6)
-            dpg.add_theme_style(dpg.mvStyleVar_FramePadding,    6, 4)
-            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding,   8, 8)
-            dpg.add_theme_style(dpg.mvStyleVar_CellPadding,     5, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,     6, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding,    6, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding,   8, 6)
+            dpg.add_theme_style(dpg.mvStyleVar_CellPadding,     4, 3)
     dpg.bind_theme(t)
 
 
@@ -4481,7 +4484,7 @@ class GUIEngine:
 
     def _build_header(self):
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.15", color=_C_ACCENT)
+            dpg.add_text("studio console  v0.16", color=_C_ACCENT)
             dpg.add_text("   |   ", color=_C_BORDER)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
             dpg.add_text("   |   ", color=_C_BORDER)
