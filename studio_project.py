@@ -7196,8 +7196,9 @@ class ShowFile:
     BEAM      = os.path.join(DATA_DIR, "beam_pool.json")
     GDTF_DIR  = os.path.join(DATA_DIR, "gdtf")
     STATE     = os.path.join(DATA_DIR, "state.json")
-    EXEC_PAGES = os.path.join(DATA_DIR, "executor_pages.json")
-    CHANGELOG  = os.path.join(DATA_DIR, "changelog.json")
+    EXEC_PAGES   = os.path.join(DATA_DIR, "executor_pages.json")
+    EXECUTORS    = os.path.join(DATA_DIR, "executors.json")
+    CHANGELOG    = os.path.join(DATA_DIR, "changelog.json")
 
     # ── Save ────────────────────────────────────────────────
 
@@ -7283,6 +7284,43 @@ class ShowFile:
                 "slots": list(pdata.get("slots", [])),
             }
         print(f"  Loaded exec pages — {len(executor_pool.pages)}")
+        return True
+
+    @staticmethod
+    def save_executors(executor_pool):
+        """Persist executor slot assignments (cuestack, level, priority, trigger_mode)."""
+        doc = {"version": ShowFile.VERSION, "executors": {}}
+        for eid, ex in executor_pool.executors.items():
+            cs_id = ex.cuestack.stack_id if ex.cuestack else None
+            doc["executors"][str(eid)] = {
+                "cuestack_id":  cs_id,
+                "level":        ex.level,
+                "priority":     ex.priority,
+                "trigger_mode": ex.trigger_mode,
+            }
+        _write_file(ShowFile.EXECUTORS, doc)
+        print(f"  Saved executors  → {len(doc['executors'])} slot(s)")
+
+    @staticmethod
+    def load_executors(executor_pool, cuestack_pool):
+        """Re-wire executor→cuestack assignments and settings from disk."""
+        doc = _read_file(ShowFile.EXECUTORS)
+        if not doc:
+            return False
+        count = 0
+        for eid_str, edata in doc.get("executors", {}).items():
+            eid  = int(eid_str)
+            ex   = executor_pool.get(eid)
+            cs_id = edata.get("cuestack_id")
+            if cs_id is not None:
+                cs = cuestack_pool.get(int(cs_id))
+                if cs:
+                    executor_pool.assign(eid, cs)
+                    count += 1
+            ex.level        = float(edata.get("level",  1.0))
+            ex.priority     = int(edata.get("priority", 0))
+            ex.trigger_mode = edata.get("trigger_mode", "toggle")
+        print(f"  Loaded executors — {count} assignment(s)")
         return True
 
     @staticmethod
@@ -8018,6 +8056,7 @@ ShowFile.load_zoom_pool(zoom_pool)
 ShowFile.load_focus_pool(focus_pool)
 ShowFile.load_beam_pool(beam_pool)
 ShowFile.load_executor_pages(executor_pool)
+ShowFile.load_executors(executor_pool, cuestack_pool)
 ShowFile.load_state(output_state, executor_pool, cuestack_pool, active_executor,
                     prog_time=_prog_time, fader_dim=_fader_dim)
 
@@ -8520,6 +8559,7 @@ def save_show():
     ShowFile.save_focus_pool(focus_pool)
     ShowFile.save_beam_pool(beam_pool)
     ShowFile.save_executor_pages(executor_pool)
+    ShowFile.save_executors(executor_pool)
     ShowFile.save_state(output_state, executor_pool, active_executor,
                         prog_time=_prog_time, fader_dim=_fader_dim[0])
 
@@ -10553,14 +10593,7 @@ fx_engine.stop()
 # - MIDI fader control, OSC bridge, AI command layer (ANTHROPIC_API_KEY gated)
 #
 # ── KNOWN ISSUES / TODO ───────────────────────────────────────────────────────
-# - No existing test for the new FX-as-programmer flow yet (just written).
-#   Test path: FX SINE RED → RECORD CUE 5 → GO CS 1 CUE 5 → verify FX fires.
-# - The output monitor panel references to FX state may not yet reflect
-#   programmer FX (it shows live FXLayer objects via active_fx; these are
-#   now the preview list, which is correct, but check GUI tick logic).
-# - executor_pool does NOT persist — executors must be re-assigned with
-#   ASSIGN CS <n> TO EXEC <n> after each restart.
-# - FX LIST command shows programmer FX + pool but not per-executor active FX
-#   (easy to add: iterate executor._fx_ids vs fx_engine._layers).
+# - executor_pool now persists cuestack assignments to executors.json; loaded
+#   at startup so GO works immediately after restart without re-assigning.
 #
 # =============================================================================
