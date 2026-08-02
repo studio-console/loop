@@ -4415,7 +4415,6 @@ class GUIEngine:
                 self._build_right_column()
                 self._build_stage_panel()
             self._build_pools_row()
-            self._build_monitors_row()
             if self._ai:
                 self._build_ai_bar()
         self._build_midi_popup()
@@ -4424,6 +4423,7 @@ class GUIEngine:
         self._build_fx_editor_popup()
         self._build_changelog_popup()
         self._build_pages_popup()
+        self._build_monitors_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -4510,6 +4510,9 @@ class GUIEngine:
             dpg.add_spacer(width=4)
             dpg.add_button(label="pages", width=55,
                            callback=self._on_pages_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="mon", width=50,
+                           callback=self._on_monitors_toggle)
             dpg.add_spacer(width=4)
             dpg.add_button(label="save show", width=90,
                            callback=self._on_save)
@@ -4781,6 +4784,15 @@ class GUIEngine:
         except Exception:
             pass
 
+    def _on_monitors_toggle(self):
+        try:
+            if dpg.is_item_shown("monitors_window"):
+                dpg.hide_item("monitors_window")
+            else:
+                dpg.show_item("monitors_window")
+        except Exception:
+            pass
+
     def _build_right_column(self):
         # Digit buttons fill 3 cols; keyword buttons fill 3 cols; all proportioned to right col width.
         # Total numpad width: 3×_NW + gap + _KW + 2×(_NW+gap) = fills ~440px of _W_RIGHT
@@ -4902,20 +4914,21 @@ class GUIEngine:
     _W          = 1920
     _H          = 1080
     # Section heights (child_window heights)
-    _H_MAIN     = 500   # main 3-col area
-    _H_P1       = 142   # pool row 1 (groups / colors / dims)
-    _H_P2       = 142   # pool row 2 (cuestacks / cues / fx)
-    _H_FORMS    =  60   # forms single row
-    _H_MON      = 142   # programmer + output monitors
+    # Monitors moved to popup → ~160px freed; redistribute to taller buttons + 3-col row.
+    _H_MAIN     = 466   # main 3-col area
+    _H_P1       = 156   # pool row 1 (groups / colors / dims)
+    _H_P2       = 156   # pool row 2 (cuestacks / cues / fx)
+    _H_FORMS    =  58   # forms single row
+    _H_MON      = 270   # monitor popup panel height
     # Column widths
     _W_LEFT     = 380
     _W_RIGHT    = 720
     # Pool grid
     _POOL_SLOTS = 24    # 4 rows × 6 cols per panel
     _POOL_COLS  = 6
-    _PANEL_W    = 628   # 3 × 628 + 2 × 8-gap = 1900, fits 1920
-    _BTN_W      = 100   # (628 - 16 padding - 20 col-gaps) / 6 ≈ 98 → 100
-    _BTN_H      = 22    # compact: 4 rows × 22 + 3 × 4 gaps + 26 header = 140px ≤ _H_P1
+    _PANEL_W    = 634   # panels touch: 3 × 634 = 1902, fits 1920 w/ outer padding
+    _BTN_W      = 104   # wider buttons using freed gap space
+    _BTN_H      =  26   # taller: 4 × 26 + 3 × 4 gaps + 26 header = 142px ≤ _H_P1
     _POOL_H     = _H_P1
 
     @staticmethod
@@ -5096,39 +5109,28 @@ class GUIEngine:
                     pass
 
     def _build_pools_row(self):
-        # Layout: 3 identical-width panels per row, all explicit heights — no wrapper scroll.
+        # Panels touch each other — no spacers, borders serve as dividers.
         dpg.add_separator()
         # Row 1: Groups | Colors | Dims
         with dpg.group(horizontal=True):
             self._build_group_panel()
-            dpg.add_spacer(width=8)
             self._build_color_panel()
-            dpg.add_spacer(width=8)
             self._build_dim_panel()
-        dpg.add_spacer(height=4)
         # Row 2: Cuestacks | Cues | FX Pool
         with dpg.group(horizontal=True):
             self._build_cuestack_panel()
-            dpg.add_spacer(width=8)
             self._build_cue_panel()
-            dpg.add_spacer(width=8)
             self._build_fx_pool_panel()
-        dpg.add_spacer(height=4)
         # Row 3: Forms
         self._build_forms_panel()
-        dpg.add_spacer(height=4)
         # Row 4: Attribute pools — position | gobo | zoom
         with dpg.group(horizontal=True):
             self._build_attr_pool_panel("position", _C_P_POSITION, "pos")
-            dpg.add_spacer(width=8)
             self._build_attr_pool_panel("gobo",     _C_P_GOBO,     "gobo")
-            dpg.add_spacer(width=8)
             self._build_attr_pool_panel("zoom",     _C_P_ZOOM,     "zoom")
-        dpg.add_spacer(height=4)
         # Row 5: Attribute pools — focus | beam
         with dpg.group(horizontal=True):
             self._build_attr_pool_panel("focus", _C_P_FOCUS, "focus")
-            dpg.add_spacer(width=8)
             self._build_attr_pool_panel("beam",  _C_P_BEAM,  "beam")
 
     def _build_group_panel(self):
@@ -5340,7 +5342,7 @@ class GUIEngine:
         # Spans full width — 2 rows of 12 show all 24 slots without any scrolling.
         # Full row width = 3 × _PANEL_W + 2 × 8-spacer = 1876 px.
         _FORMS_COLS = 12
-        _FORMS_BTN_W = (3 * self._PANEL_W + 16 - 10 - (_FORMS_COLS - 1) * 4) // _FORMS_COLS
+        _FORMS_BTN_W = (3 * self._PANEL_W - 10 - (_FORMS_COLS - 1) * 4) // _FORMS_COLS
         _FORMS_H = 32 + 2 * (self._BTN_H + 4)   # header + 2 button rows
         with dpg.child_window(tag="pool_forms", width=-1,
                               height=_FORMS_H, border=True,
@@ -6619,66 +6621,68 @@ class GUIEngine:
     def _log_error(self, line):
         self._log(f"⚠ {line}")
 
-    def _build_monitors_row(self):
-        """Programmer values and output monitor side by side below the pools."""
-        dpg.add_separator()
+    def _build_monitors_popup(self):
+        """Floating programmer/output monitor popup — toggle with 'mon' header button."""
         _h = self._H_MON
-        with dpg.group(horizontal=True):
-            # ── Programmer ──────────────────────────────────────
-            with dpg.child_window(tag="prog_panel", width=self._W_RIGHT, height=_h,
-                                  border=True, no_scrollbar=True, no_scroll_with_mouse=True):
-                dpg.add_text("programmer", tag="prog_mon_title", color=_C_DIM)
-                dpg.add_separator()
-                with dpg.table(tag="prog_table", header_row=True,
-                               borders_innerV=True, borders_outerV=True,
-                               borders_outerH=True, row_background=True,
-                               scrollY=False):
-                    dpg.add_table_column(label="Fixture", width_fixed=True, init_width_or_weight=90)
-                    dpg.add_table_column(label="R",   width_fixed=True, init_width_or_weight=36)
-                    dpg.add_table_column(label="G",   width_fixed=True, init_width_or_weight=36)
-                    dpg.add_table_column(label="B",   width_fixed=True, init_width_or_weight=36)
-                    dpg.add_table_column(label="Dim", width_fixed=True, init_width_or_weight=48)
-                    dpg.add_table_column(label="fx",  width_stretch=True)
-                    dpg.add_table_column(label="Bar", width_fixed=True, init_width_or_weight=80)
+        with dpg.window(tag="monitors_window", label="monitors",
+                        width=1600, height=_h + 46, show=False,
+                        pos=(160, 360), no_collapse=False):
+            with dpg.group(horizontal=True):
+                # ── Programmer ──────────────────────────────────────
+                with dpg.child_window(tag="prog_panel", width=780, height=_h,
+                                      border=True, no_scrollbar=True, no_scroll_with_mouse=True):
+                    dpg.add_text("programmer", tag="prog_mon_title", color=_C_DIM)
+                    dpg.add_separator()
+                    with dpg.table(tag="prog_table", header_row=True,
+                                   borders_innerV=True, borders_outerV=True,
+                                   borders_outerH=True, row_background=True,
+                                   scrollY=False):
+                        dpg.add_table_column(label="Fixture", width_fixed=True, init_width_or_weight=110)
+                        dpg.add_table_column(label="R",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="G",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="B",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="Dim", width_fixed=True, init_width_or_weight=56)
+                        dpg.add_table_column(label="fx",  width_stretch=True)
+                        dpg.add_table_column(label="Bar", width_fixed=True, init_width_or_weight=120)
 
-                    for master in self._patch.all_fixtures():
-                        fid = str(master.fixture_id)
-                        with dpg.table_row(tag=f"prog_row_{fid}"):
-                            dpg.add_text(master.name, tag=f"prog_name_{fid}", color=_C_DIM)
-                            dpg.add_text("—", tag=f"prog_r_{fid}",   color=_C_DIM)
-                            dpg.add_text("—", tag=f"prog_g_{fid}",   color=_C_DIM)
-                            dpg.add_text("—", tag=f"prog_b_{fid}",   color=_C_DIM)
-                            dpg.add_text("—", tag=f"prog_dim_{fid}", color=_C_DIM)
-                            dpg.add_text("—", tag=f"prog_fx_{fid}",  color=_C_DIM)
-                            dpg.add_progress_bar(default_value=0.0,
-                                                 tag=f"prog_bar_{fid}", width=-1)
+                        for master in self._patch.all_fixtures():
+                            fid = str(master.fixture_id)
+                            with dpg.table_row(tag=f"prog_row_{fid}"):
+                                dpg.add_text(master.name, tag=f"prog_name_{fid}", color=_C_DIM)
+                                dpg.add_text("—", tag=f"prog_r_{fid}",   color=_C_DIM)
+                                dpg.add_text("—", tag=f"prog_g_{fid}",   color=_C_DIM)
+                                dpg.add_text("—", tag=f"prog_b_{fid}",   color=_C_DIM)
+                                dpg.add_text("—", tag=f"prog_dim_{fid}", color=_C_DIM)
+                                dpg.add_text("—", tag=f"prog_fx_{fid}",  color=_C_DIM)
+                                dpg.add_progress_bar(default_value=0.0,
+                                                     tag=f"prog_bar_{fid}", width=-1)
 
-            # ── Output Monitor ──────────────────────────────────
-            with dpg.child_window(tag="out_panel", width=-1, height=_h,
-                                  border=True, no_scrollbar=True, no_scroll_with_mouse=True):
-                dpg.add_text("output monitor", color=_C_ACCENT)
-                dpg.add_separator()
-                with dpg.table(tag="out_table", header_row=True,
-                               borders_innerV=True, borders_outerV=True,
-                               borders_outerH=True, row_background=True,
-                               scrollY=False):
-                    dpg.add_table_column(label="Fixture", width_fixed=True, init_width_or_weight=90)
-                    dpg.add_table_column(label="R",   width_fixed=True, init_width_or_weight=36)
-                    dpg.add_table_column(label="G",   width_fixed=True, init_width_or_weight=36)
-                    dpg.add_table_column(label="B",   width_fixed=True, init_width_or_weight=36)
-                    dpg.add_table_column(label="Dim", width_fixed=True, init_width_or_weight=48)
-                    dpg.add_table_column(label="Bar", width_stretch=True)
+                # ── Output Monitor ──────────────────────────────────
+                with dpg.child_window(tag="out_panel", width=-1, height=_h,
+                                      border=True, no_scrollbar=True, no_scroll_with_mouse=True):
+                    dpg.add_text("output monitor", color=_C_ACCENT)
+                    dpg.add_separator()
+                    with dpg.table(tag="out_table", header_row=True,
+                                   borders_innerV=True, borders_outerV=True,
+                                   borders_outerH=True, row_background=True,
+                                   scrollY=False):
+                        dpg.add_table_column(label="Fixture", width_fixed=True, init_width_or_weight=110)
+                        dpg.add_table_column(label="R",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="G",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="B",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="Dim", width_fixed=True, init_width_or_weight=56)
+                        dpg.add_table_column(label="Bar", width_stretch=True)
 
-                    for master in self._patch.all_fixtures():
-                        fid = str(master.fixture_id)
-                        with dpg.table_row(tag=f"out_row_{fid}"):
-                            dpg.add_text(master.name, tag=f"out_name_{fid}")
-                            dpg.add_text("0",  tag=f"out_r_{fid}",   color=(200, 80,  80,  255))
-                            dpg.add_text("0",  tag=f"out_g_{fid}",   color=(80,  200, 80,  255))
-                            dpg.add_text("0",  tag=f"out_b_{fid}",   color=(80,  130, 220, 255))
-                            dpg.add_text("--", tag=f"out_dim_{fid}", color=_C_DIM)
-                            dpg.add_progress_bar(default_value=0.0,
-                                                 tag=f"out_bar_{fid}", width=-1)
+                        for master in self._patch.all_fixtures():
+                            fid = str(master.fixture_id)
+                            with dpg.table_row(tag=f"out_row_{fid}"):
+                                dpg.add_text(master.name, tag=f"out_name_{fid}")
+                                dpg.add_text("0",  tag=f"out_r_{fid}",   color=(200, 80,  80,  255))
+                                dpg.add_text("0",  tag=f"out_g_{fid}",   color=(80,  200, 80,  255))
+                                dpg.add_text("0",  tag=f"out_b_{fid}",   color=(80,  130, 220, 255))
+                                dpg.add_text("--", tag=f"out_dim_{fid}", color=_C_DIM)
+                                dpg.add_progress_bar(default_value=0.0,
+                                                     tag=f"out_bar_{fid}", width=-1)
 
     def _build_ai_bar(self):
         dpg.add_separator()
