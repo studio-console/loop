@@ -5318,7 +5318,10 @@ class GUIEngine:
                 lbl = f"{n}:{cue.name[:5]}" + (" ◀" if n == current_cue else "")
                 ft_s  = f"  fade {cue.fade_time}s" if cue.fade_time  else ""
                 dt_s  = f"  delay {cue.delay_time}s" if cue.delay_time else ""
-                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}" if (ft_s or dt_s) else f"Cue {n}: {cue.name}"
+                nfx   = len(cue.data.get('__fx__', [])) if hasattr(cue, 'data') and isinstance(cue.data, dict) else 0
+                nfix  = sum(1 for k in getattr(cue, 'data', {}) if not k.startswith('__') and '.' not in k) if hasattr(cue, 'data') else 0
+                fix_s = f"\n{nfix} fixture(s)" if nfix else ""
+                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fix_s}"
             else:
                 lbl = f"{n}"
                 tip = f"Cue {n} — empty"
