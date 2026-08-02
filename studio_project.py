@@ -3805,23 +3805,27 @@ Only return the JSON array. No explanation, no markdown.
 """
 
     def __init__(self, patch, prog, output_state, fx_engine, fade_engine,
-                 cuestacks=None, model="claude-haiku-4-5-20251001"):
+                 cuestacks=None, executor_pool=None, cmd_fn=None, log_fn=None,
+                 model="claude-haiku-4-5-20251001"):
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             print("  AI Engine: ANTHROPIC_API_KEY not set — AI disabled.")
             print("  Run:  export ANTHROPIC_API_KEY='sk-ant-...'")
             self._enabled = False
             return
-        self._client    = anthropic.Anthropic(api_key=api_key)
-        self._model     = model
-        self._patch     = patch
-        self._prog      = prog
-        self._output    = output_state
-        self._fx        = fx_engine
-        self._fade      = fade_engine
-        self._stacks    = cuestacks or {}
-        self._enabled   = True
-        self._last_fade = 2.0
+        self._client         = anthropic.Anthropic(api_key=api_key)
+        self._model          = model
+        self._patch          = patch
+        self._prog           = prog
+        self._output         = output_state
+        self._fx             = fx_engine
+        self._fade           = fade_engine
+        self._stacks         = cuestacks or {}
+        self._executor_pool  = executor_pool
+        self._cmd            = cmd_fn    # run_command — full console command parser
+        self._log            = log_fn    # GUI log callback
+        self._enabled        = True
+        self._last_fade      = 2.0
         print(f"  AI Engine: ready ({model})")
 
     def _state(self):
@@ -3889,14 +3893,25 @@ Only return the JSON array. No explanation, no markdown.
                 if raw.startswith("json"):
                     raw = raw[4:]
             actions = json.loads(raw)
-            print(f"\n  AI → {len(actions)} action(s):")
-            for a in actions:
-                print(f"    {a}")
+            if self._log:
+                self._log(f"AI → {len(actions)} action(s) for: {prompt[:60]}")
+                for a in actions:
+                    act = a.get("action", "?")
+                    detail = ", ".join(f"{k}={v}" for k, v in a.items() if k != "action")
+                    self._log(f"  {act}  {detail}")
+            else:
+                print(f"\n  AI → {len(actions)} action(s):")
+                for a in actions:
+                    print(f"    {a}")
             if execute:
                 self.execute(actions)
             return actions
         except Exception as e:
-            print(f"\n  AI error: {e}")
+            msg = f"AI error: {e}"
+            if self._log:
+                self._log(msg)
+            else:
+                print(f"\n  {msg}")
             return []
 
     def execute(self, actions):
@@ -3905,7 +3920,10 @@ Only return the JSON array. No explanation, no markdown.
             try:
                 act = a.get("action", "")
                 if act == "prog":
-                    self._prog.execute(a["cmd"])
+                    if self._cmd:
+                        self._cmd(a["cmd"])
+                    else:
+                        self._prog.execute(a["cmd"])
                 elif act == "goto_cue":
                     ex = self._executor_pool.get(a.get("stack", 1)) if self._executor_pool else None
                     if ex:
@@ -3927,17 +3945,23 @@ Only return the JSON array. No explanation, no markdown.
                         self._output.programmer_layer.setdefault(
                             str(master.fixture_id), {})['dim'] = val
                 elif act == "fx_start":
-                    self._fx.clear()
-                    all_s = [s for m in self._patch.all_fixtures()
-                             for s in m.all_subs()]
-                    self._fx.add(
-                        1, a.get("waveform", "sine"),
-                        a.get("channel", "red"),
-                        rate_bpm=float(a.get("bpm", 60)),
-                        size=float(a.get("size", 100)),
-                        targets=all_s,
-                        spread=float(a.get("spread", 0.0))
-                    )
+                    # Route through run_command so it goes into the programmer
+                    # (channel-additive, doesn't wipe other running FX)
+                    wf  = a.get("waveform", "sine").upper()
+                    ch  = a.get("channel",  "red").upper()
+                    bpm = float(a.get("bpm",    60))
+                    sz  = float(a.get("size",  100))
+                    sp  = float(a.get("spread", 0.0))
+                    cmd = f"FX {wf} {ch} BPM {bpm:.1f} SIZE {sz:.0f} SPREAD {sp:.1f}"
+                    if self._cmd:
+                        self._cmd(cmd)
+                    else:
+                        all_s = [s for m in self._patch.all_fixtures()
+                                 for s in m.all_subs()]
+                        self._fx.add(
+                            1, a.get("waveform", "sine"), a.get("channel", "red"),
+                            rate_bpm=bpm, size=sz, targets=all_s, spread=sp
+                        )
                 elif act == "fx_clear":
                     self._fx.clear()
                 elif act == "fade_time":
@@ -5911,7 +5935,10 @@ class GUIEngine:
 
     def _build_ai_bar(self):
         dpg.add_separator()
-        dpg.add_text("ai prompt", color=_C_ACCENT)
+        with dpg.group(horizontal=True):
+            dpg.add_text("ai prompt", color=_C_ACCENT)
+            dpg.add_spacer(width=8)
+            dpg.add_text("", tag="ai_status", color=_C_DIM)
         with dpg.group(horizontal=True):
             dpg.add_input_text(tag="ai_input", hint="describe the look...",
                                width=-120, on_enter=True,
@@ -6085,17 +6112,32 @@ class GUIEngine:
         if self._ai is None:
             return
         prompt = dpg.get_value("ai_input")
-        if prompt.strip():
-            dpg.set_value("ai_input", "")
-            threading.Thread(target=self._ai.ask, args=(prompt,),
-                             daemon=True).start()
+        if not prompt.strip():
+            return
+        dpg.set_value("ai_input", "")
+        self._log(f"AI ← {prompt}")
+        try:
+            dpg.configure_item("ai_status", default_value="thinking…", color=_C_DIM)
+        except Exception:
+            pass
+
+        def _run():
+            self._ai.ask(prompt)
+            try:
+                dpg.configure_item("ai_status", default_value="", color=_C_DIM)
+            except Exception:
+                pass
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def _remove_cc_map(self, ch, cc):
         self._midi.cc_maps.pop((ch, cc), None)
+        ShowFile.save_midi(self._midi)
         self._refresh_midi_table()
 
     def _remove_note_map(self, ch, note):
         self._midi.note_maps.pop((ch, note), None)
+        ShowFile.save_midi(self._midi)
         self._refresh_midi_table()
 
     # ── MIDI table (re)build ─────────────────────────────────
@@ -7904,12 +7946,14 @@ midi.print_maps()
 
 # ── AI Engine ─────────────────────────────────────────────
 ai = AIEngine(
-    patch        = patch,
-    prog         = prog,
-    output_state = output_state,
-    fx_engine    = fx_engine,
-    fade_engine  = fade_engine,
-    cuestacks    = {1: cs1},
+    patch         = patch,
+    prog          = prog,
+    output_state  = output_state,
+    fx_engine     = fx_engine,
+    fade_engine   = fade_engine,
+    cuestacks     = {1: cs1},
+    executor_pool = executor_pool,
+    # cmd_fn and log_fn wired after run_command / GUIEngine are defined below
 )
 
 # ── MIDI target registry ───────────────────────────────────
@@ -9697,6 +9741,11 @@ gui = GUIEngine(
     save_patch_fn    = lambda: ShowFile.save_patch(patch),
     fx_params        = _fx_params,
 )
+# Wire run_command and GUI log into AI engine (both defined after ai was created)
+if getattr(ai, '_enabled', False):
+    ai._cmd = run_command
+    ai._log = gui._log
+
 if STUDIO_HEADLESS:
     # Scripted smoke test — no GUI, no real hardware (paired with
     # STUDIO_DRY_RUN). Exercises the FX-as-programmer path this file's own
