@@ -195,6 +195,17 @@
         "CUE <n> SHOW prints a summary of what's stored in a specific cue: fade/delay times, per-fixture dim and FX defs, and a compact per-color count of sub-fixture pixel values.",
         "GOTO and ASSIGN CS <n> TO EXEC <n> documented in command reference. Keyboard shortcut reference updated with F5/F4/Cmd+S and tap tempo. RENAME/COPY section renamed RENAME/COPY/DELETE."
       ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Executor Pages GUI panel + command manual documentation gaps",
+      "details": [
+        "Audited the roadmap against the current file before touching anything: GUI polish (scroll fallback), manual popup, changelog popup, MIDI-held FLASH, Block 12 AI layer, MIDI mapping GUI, and attribute pool panels were all already landed by prior sessions. Went looking for the next real gap instead of re-doing finished work.",
+        "Found one: ExecutorPool.pages (PAGE <n> NAME/ADD/REMOVE/LIST) existed only as a data model + command-line verb, with zero GUI surface — the one pool-like feature that hadn't gotten the popup treatment the MIDI mapping and patch editors already have.",
+        "Added a 'pages' header button opening a new Executor Pages popup: a live table of page number / name / assigned executors, plus rename-page and add/remove-executor-from-page controls. Pure GUI front-end over the existing PAGE command handlers — no changes to ExecutorPool, no playback behavior touched (pages remain organizational-only, as already documented in the code).",
+        "Also found the command manual (the '?' popup) was missing docs for CLEAR COLOR/DIM/GROUP/FX <n> (pool-slot deletion, added in an earlier session) — added those four entries plus a 'PAGES button' row in KEYBOARD and EXECUTORS & PAGES sections.",
+        "No data model or schema changes — nothing new to persist, so no backward-compatibility concerns. Verified with python3 -m py_compile and STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 (8/8 smoke test). Note: gui.build() itself (the actual DPG window/table construction) still can't be exercised in this environment — no display access — so the new popup's widget code is unverified beyond close review against the existing MIDI/patch/changelog popups it mirrors line-for-line in structure."
+      ]
     }
   ]
 }

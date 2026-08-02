@@ -4423,6 +4423,7 @@ class GUIEngine:
         self._build_keys_popup()
         self._build_fx_editor_popup()
         self._build_changelog_popup()
+        self._build_pages_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -4506,6 +4507,9 @@ class GUIEngine:
             dpg.add_spacer(width=4)
             dpg.add_button(label="log", width=50,
                            callback=self._on_changelog_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="pages", width=55,
+                           callback=self._on_pages_toggle)
             dpg.add_spacer(width=4)
             dpg.add_button(label="save show", width=90,
                            callback=self._on_save)
@@ -4764,6 +4768,16 @@ class GUIEngine:
                 dpg.hide_item("midi_window")
             else:
                 dpg.show_item("midi_window")
+        except Exception:
+            pass
+
+    def _on_pages_toggle(self):
+        try:
+            if dpg.is_item_shown("pages_window"):
+                dpg.hide_item("pages_window")
+            else:
+                self._refresh_pages_table()
+                dpg.show_item("pages_window")
         except Exception:
             pass
 
@@ -5927,6 +5941,10 @@ class GUIEngine:
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack copy"),
                 ("DELETE CUE 3",          "Delete cue 3 from active cuestack (saves show)"),
                 ("DELETE CUE 3 CS 2",     "Delete cue 3 from cuestack 2"),
+                ("CLEAR COLOR 4",         "Delete colour preset 4 from the pool (saves show)"),
+                ("CLEAR DIM 2",           "Delete dim preset 2 from the pool (saves show)"),
+                ("CLEAR GROUP 1",         "Delete group 1 from the pool (saves show)"),
+                ("CLEAR FX 3",            "Delete FX preset 3 from the pool (saves show)"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
                 ("CUE 5 FADE 2 DELAY 1",  "Set fade + delay"),
@@ -5961,6 +5979,7 @@ class GUIEngine:
                 ("PAGE 1 ADD EXEC 3",     "Add executor 3 to page 1"),
                 ("PAGE 1 REMOVE EXEC 3",  "Remove executor 3 from page 1"),
                 ("PAGE LIST",             "List all pages and their executors"),
+                ("PAGES button",          "Same page commands via a GUI table — no typing needed"),
             ]),
             ("programmer", [
                 ("CLEAR",                 "Clear selection (tap 1) then programmer (tap 2)"),
@@ -5992,6 +6011,7 @@ class GUIEngine:
                 ("tap button (FX panel)", "Set BPM from tap intervals (auto-resets after 3s)"),
                 ("MIDI button",           "Open MIDI mapping editor"),
                 ("PATCH button",          "Open patch editor"),
+                ("PAGES button",          "Open executor pages viewer/editor"),
             ]),
         ]
 
@@ -6056,6 +6076,113 @@ class GUIEngine:
                 for d in details:
                     dpg.add_text(f"    • {d}", color=_C_DIM, wrap=700)
                 dpg.add_spacer(height=8)
+
+    # ── Executor Pages popup ─────────────────────────────────────
+    # Pages group executor slots for navigation/display only — the
+    # ExecutorPool.pages dict and the PAGE <n> [NAME|ADD|REMOVE] commands
+    # already existed, but only via the command line. This is the GUI
+    # front-end for that same data, same pattern as the MIDI mapping popup.
+
+    def _build_pages_popup(self):
+        """Floating executor pages viewer/editor — hidden by default, opened via header button."""
+        with dpg.window(tag="pages_window", label="Executor Pages",
+                        width=560, height=400, show=False,
+                        pos=(220, 130), no_collapse=False):
+            dpg.add_text("executor pages", color=_C_ACCENT)
+            dpg.add_text("Organizational only — grouping executors for navigation. Doesn't affect playback.",
+                         color=_C_DIM, wrap=520)
+            dpg.add_separator()
+
+            with dpg.table(tag="pages_table", header_row=True,
+                           borders_innerH=True, borders_outerH=True,
+                           borders_innerV=True, borders_outerV=True,
+                           row_background=True, scrollY=True, height=200):
+                dpg.add_table_column(label="Page",      width_fixed=True, init_width_or_weight=44)
+                dpg.add_table_column(label="Name",      width_fixed=True, init_width_or_weight=140)
+                dpg.add_table_column(label="Executors", width_stretch=True)
+
+            self._refresh_pages_table()
+
+            dpg.add_separator()
+            dpg.add_text("Rename page:", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                dpg.add_input_int(tag="page_num", label="", width=46,
+                                  default_value=1, min_value=1, max_value=99,
+                                  step=0, step_fast=0)
+                dpg.add_text("page", color=_C_DIM)
+                dpg.add_spacer(width=6)
+                dpg.add_input_text(tag="page_name_input", label="", width=160,
+                                   default_value="")
+                dpg.add_button(label="rename", width=70,
+                               callback=self._on_page_rename)
+
+            dpg.add_spacer(height=4)
+            dpg.add_text("Add / remove executor:", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                dpg.add_input_int(tag="page_exec_num", label="", width=46,
+                                  default_value=1, min_value=1, max_value=99,
+                                  step=0, step_fast=0)
+                dpg.add_text("exec", color=_C_DIM)
+                dpg.add_spacer(width=6)
+                dpg.add_button(label="add to page", width=110,
+                               callback=self._on_page_add_exec)
+                dpg.add_spacer(width=6)
+                dpg.add_button(label="remove from page", width=140,
+                               callback=self._on_page_remove_exec)
+
+    def _refresh_pages_table(self):
+        """Rebuild the pages table rows from current ExecutorPool.pages state."""
+        try:
+            dpg.delete_item("pages_table", children_only=True, slot=1)
+        except Exception:
+            return
+        if not self._executor_pool:
+            return
+        for n in self._executor_pool.all_pages():
+            page  = self._executor_pool.pages[n]
+            slots = ", ".join(str(s) for s in page['slots']) if page['slots'] else "—"
+            with dpg.table_row(parent="pages_table"):
+                dpg.add_text(str(n))
+                dpg.add_text(page['name'])
+                dpg.add_text(slots)
+
+    def _on_page_rename(self):
+        if not self._cmd:
+            return
+        n    = dpg.get_value("page_num")
+        name = dpg.get_value("page_name_input").strip()
+        if not name:
+            return
+        cmd = f"PAGE {n} NAME {name}"
+        result = self._cmd(cmd)
+        self._log(f"> {cmd}")
+        if result:
+            self._log(result)
+        self._refresh_pages_table()
+
+    def _on_page_add_exec(self):
+        if not self._cmd:
+            return
+        n  = dpg.get_value("page_num")
+        ex = dpg.get_value("page_exec_num")
+        cmd = f"PAGE {n} ADD EXEC {ex}"
+        result = self._cmd(cmd)
+        self._log(f"> {cmd}")
+        if result:
+            self._log(result)
+        self._refresh_pages_table()
+
+    def _on_page_remove_exec(self):
+        if not self._cmd:
+            return
+        n  = dpg.get_value("page_num")
+        ex = dpg.get_value("page_exec_num")
+        cmd = f"PAGE {n} REMOVE EXEC {ex}"
+        result = self._cmd(cmd)
+        self._log(f"> {cmd}")
+        if result:
+            self._log(result)
+        self._refresh_pages_table()
 
     # ── FX Editor popup ────────────────────────────────────────
 
