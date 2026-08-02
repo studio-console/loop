@@ -4341,6 +4341,7 @@ class GUIEngine:
         self._dim_btn_themes  = {}     # {slot_n: (level, theme_id)} — per-dim-preset button themes
         self._out_bar_themes  = {}     # {fid: ((r,g,b), theme_id)} — output monitor bar tints
         self._prog_bar_themes = {}     # {fid: ((r,g,b), theme_id)} — programmer bar tints
+        self._tap_times       = []     # monotonic timestamps of recent BPM taps
 
         self._learn_pending      = None    # (ch, number) captured by learn
         self._learn_target       = None    # display name chosen in dropdown
@@ -4554,7 +4555,12 @@ class GUIEngine:
 
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
-            dpg.add_text("fx", color=_C_ACCENT)
+            with dpg.group(horizontal=True):
+                dpg.add_text("fx", color=_C_ACCENT)
+                dpg.add_spacer(width=4)
+                dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=18,
+                               callback=self._on_tap_tempo)
+                dpg.add_text("", tag="fx_tap_label", color=_C_DIM)
             dpg.add_separator()
             _sw = _W - 120
             dpg.add_slider_float(label="Rate BPM", tag="fx_rate",
@@ -6517,6 +6523,34 @@ class GUIEngine:
         self._fx_sliders_to_prog('spread', value)
         if self._fx_params is not None:
             self._fx_params['spread'] = value
+
+    def _on_tap_tempo(self, *_):
+        """Record a tap and compute BPM from the average of the last 4 intervals."""
+        now = time.monotonic()
+        self._tap_times.append(now)
+        # Drop taps older than 3 seconds — they're from a different phrase
+        self._tap_times = [t for t in self._tap_times if now - t < 3.0]
+        # Keep only last 5 taps (4 intervals)
+        if len(self._tap_times) > 5:
+            self._tap_times = self._tap_times[-5:]
+        if len(self._tap_times) >= 2:
+            intervals = [self._tap_times[i+1] - self._tap_times[i]
+                         for i in range(len(self._tap_times) - 1)]
+            avg_interval = sum(intervals) / len(intervals)
+            bpm = round(60.0 / avg_interval, 1) if avg_interval > 0 else 60.0
+            bpm = max(10.0, min(480.0, bpm))
+            try:
+                dpg.set_value("fx_rate", bpm)
+                dpg.set_value("fx_tap_label", f"{bpm:.0f} bpm")
+            except Exception:
+                pass
+            if self._cmd:
+                self._cmd(f"BPM {bpm:.1f}")
+        else:
+            try:
+                dpg.set_value("fx_tap_label", "tap…")
+            except Exception:
+                pass
 
     def _fx_sliders_to_prog(self, key, value):
         """Propagate FX slider change into programmer so it can be recorded."""
