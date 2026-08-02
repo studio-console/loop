@@ -162,6 +162,17 @@
     },
     {
       "date": "2026-08-02",
+      "summary": "Theme: violet accent, colored pool buttons, cuestack combo, keyboard shortcuts",
+      "details": [
+        "Accent color changed from warm peach to violet #8b5cf6 (139,92,246) per original design spec. GO button remains amber, BACK remains blue.",
+        "Color pool buttons now show the preset's actual color as a background tint (dark resting / mid hover / full-bright active). Empty slots revert to default.",
+        "Dim pool buttons now show a brightness-scaled blue tint and a tooltip with the preset name and level %.",
+        "Left-column cuestack title replaced by a clickable combo — select any cuestack from the dropdown to switch the active cue list instantly.",
+        "Keyboard shortcuts added: Cmd/Ctrl+S saves the show; F5 fires GO; F4 fires BACK. Ctrl/Cmd+letter combos no longer accidentally append to the command input."
+      ]
+    },
+    {
+      "date": "2026-08-02",
       "summary": "MIDI startup hardened against missing MIDI backend entirely (not just missing device)",
       "details": [
         "Found while re-verifying the headless smoke test in a fresh container: MIDIEngine.list_ports() and start() both called mido.get_input_names() unguarded. That call raises an rtmidi-internal exception (not OSError/IOError, so the existing 'no port found' handling didn't catch it) when there's no ALSA/CoreMIDI backend available at all — e.g. a container with no /dev/snd/seq — as opposed to a backend that's present but has zero devices plugged in. Previously this crashed the whole app at import time, before the GUI or dry-run pipeline ever started.",
