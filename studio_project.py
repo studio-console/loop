@@ -4171,10 +4171,10 @@ except ImportError:
 _C_BG        = (10,   8,  22, 255)   # deep space
 _C_PANEL     = (20,  16,  42, 255)   # dark indigo panel
 _C_BORDER    = (68,  50, 108, 255)   # mid purple border
-_C_TEXT      = (218, 202, 255, 255)  # soft lavender
+_C_TEXT      = (220, 215, 255, 255)  # bright lavender white
 _C_DIM       = (98,  80, 148, 255)   # muted purple
-_C_ACCENT    = (255, 198, 102, 255)  # warm peach
-_C_HOT       = (255, 108, 150, 255)  # hot pink
+_C_ACCENT    = (139,  92, 246, 255)  # violet #8b5cf6
+_C_HOT       = (200, 140, 255, 255)  # bright violet-pink for status
 _C_BTN       = (40,  28,  72, 255)   # dark violet
 _C_BTN_H     = (70,  52, 122, 255)   # hover
 _C_BTN_A     = (112, 78, 192, 255)   # active vivid
