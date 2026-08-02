@@ -4371,7 +4371,7 @@ class GUIEngine:
                 dpg.add_button(label="stop all", width=78,
                                callback=self._on_stop_all_executors)
             dpg.add_separator()
-            with dpg.child_window(tag="playbacks_list", width=-1, height=86,
+            with dpg.child_window(tag="playbacks_list", width=-1, height=120,
                                   border=False, no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
 
@@ -4640,7 +4640,7 @@ class GUIEngine:
     _W          = 1920
     _H          = 1080
     # Section heights (child_window heights)
-    _H_MAIN     = 420   # main 3-col area
+    _H_MAIN     = 500   # main 3-col area
     _H_P1       = 142   # pool row 1 (groups / colors / dims)
     _H_P2       = 142   # pool row 2 (cuestacks / cues / fx)
     _H_FORMS    =  60   # forms single row
@@ -4870,6 +4870,8 @@ class GUIEngine:
                             tag=f"grp_btn_{n}", label=f"G{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_group_click, user_data=n)
+                        with dpg.tooltip(f"grp_btn_{n}"):
+                            dpg.add_text(f"Group {n}", tag=f"grp_tip_{n}")
 
     def _build_color_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -5090,6 +5092,15 @@ class GUIEngine:
             lbl = f"{n}:{g.name[:7]}" if g else f"G{n}"
             try:
                 dpg.set_item_label(f"grp_btn_{n}", lbl)
+            except Exception:
+                pass
+            try:
+                if g and self._patch:
+                    members = g.recall(self._patch)
+                    tip = f"Group {n}: {g.name}\n{len(members)} fixture(s)"
+                else:
+                    tip = f"Group {n} — empty"
+                dpg.set_value(f"grp_tip_{n}", tip)
             except Exception:
                 pass
             # Colors
@@ -5521,6 +5532,7 @@ class GUIEngine:
             ]),
             ("EXECUTORS & PAGES", [
                 ("EXEC 1 GO / BACK / STOP", "Direct executor control"),
+                ("EXEC 1 LEVEL 75",       "Set executor master fader to 75% (GUI slider also works)"),
                 ("EXEC 1 MODE FLASH",     "Set trigger mode: live only while held"),
                 ("EXEC 1 MODE TOGGLE",    "Set trigger mode: GO/BACK advance (default)"),
                 ("EXEC 1 FLASH ON",       "Fire instantly (0s), works regardless of mode"),
@@ -6406,6 +6418,16 @@ class GUIEngine:
                 dpg.add_button(label="stop", width=46, height=18,
                                callback=self._on_stop_executor,
                                user_data=ex.exec_id)
+            # Fader level row
+            dpg.add_slider_float(
+                tag=f"exec_fader_{ex.exec_id}",
+                default_value=ex.level,
+                min_value=0.0, max_value=1.0,
+                width=-1, height=14,
+                format="%.2f",
+                callback=self._on_exec_fader,
+                user_data=ex.exec_id,
+                parent="playbacks_list")
 
     def _on_exec_time_toggle(self, sender, app_data, user_data):  # noqa: ARG002
         """Toggle executor time override on/off from playbacks panel."""
@@ -6437,6 +6459,12 @@ class GUIEngine:
                 if ex.is_active:
                     ex.stop()
         self._last_playbacks_hash = None   # force rebuild next tick
+
+    def _on_exec_fader(self, _sender, value, user_data):
+        if self._executor_pool:
+            ex = self._executor_pool.executors.get(int(user_data))
+            if ex:
+                ex.level = float(value)
 
     def _cue_timing_target(self):
         """Return (CueStack, Cue) for the currently active cue, or (None, None)."""
@@ -6550,6 +6578,18 @@ class GUIEngine:
                 self._rebuild_playbacks()
             except Exception:
                 pass
+
+        # Sync executor fader sliders to current level (when not being dragged)
+        if self._executor_pool:
+            for eid, ex in self._executor_pool.executors.items():
+                if not ex.is_active:
+                    continue
+                tag = f"exec_fader_{eid}"
+                try:
+                    if not dpg.is_item_active(tag):
+                        dpg.set_value(tag, ex.level)
+                except Exception:
+                    pass
 
         # FLASH button hold detection — poll is_item_active per active executor
         if self._executor_pool and self._cmd:
@@ -8449,6 +8489,17 @@ def run_command(cmd_str):
                 return "Usage: EXEC <n> MODE TOGGLE | FLASH"
             ex.trigger_mode = tokens[3].lower()
             return f"Exec {ex_n} trigger_mode → {ex.trigger_mode}"
+        elif verb == 'LEVEL':
+            # EXEC <n> LEVEL <0-100>  — set master fader (0 = blackout, 100 = full)
+            if len(tokens) < 4:
+                return f"Exec {ex_n} level: {ex.level * 100:.0f}%  (usage: EXEC {ex_n} LEVEL 0–100)"
+            try:
+                pct = float(tokens[3])
+            except ValueError:
+                return "EXEC LEVEL: usage  EXEC <n> LEVEL <0-100>"
+            ex.level = max(0.0, min(1.0, pct / 100.0))
+            save_show()
+            return f"Exec {ex_n} level → {ex.level * 100:.0f}%"
         else:
             return f"EXEC {ex_n}: unknown verb '{verb}'"
 

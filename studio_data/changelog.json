@@ -85,6 +85,15 @@
         "Each active executor row in the playbacks panel now has a 'flash' button. Hold it to fire EXEC n FLASH ON; release fires EXEC n FLASH OFF — detected via dpg.is_item_active() polling each tick, so it behaves as press-and-hold without requiring a separate release callback.",
         "New 'cue timing' section in left column: two drag_float sliders (Fade s / Dly s) for the currently active cue. Dragging updates the cue in real time via CUE n FADE x and CUE n DELAY y commands. Sliders sync to the active cue on each tick but freeze while the user is dragging."
       ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Executor fader level control + group pool fixture count tooltip",
+      "details": [
+        "Each active executor row in the playbacks panel now has a full-width level slider (0–1 range) below the buttons. Dragging sets ex.level live; value persists to show file. EXEC n LEVEL 0–100 command also sets it from command line.",
+        "_H_MAIN expanded from 420 to 500 px so the left column has room for timing editor + fader rows without clipping.",
+        "Group pool buttons now show a tooltip with group name and fixture count on hover. Count is live (reads from patch each tick via Group.recall)."
+      ]
     }
   ]
 }
