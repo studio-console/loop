@@ -101,8 +101,17 @@
       "details": [
         "AI _state() now includes programmer contents, active executor states (cue, level, priority), and last 12 typed commands as context.",
         "push_cmd_history() is called after every command-line entry, feeding recent console activity into future AI prompts.",
-        "New AI actions: group_select (select group by number), fx_stop (stop FX on one channel or all), exec_level (set executor fader), cue_fire (alias for goto_cue).",
+        "New AI actions: group_select (select group by number), fx_stop (per-channel), exec_level (set executor fader), cue_fire (alias for goto_cue).",
         "Token usage (input + output tokens) is displayed in the AI bar after each call. Token callback is installed once from the GUI on first send."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "GUI error display + FX pool tree reference persistence",
+      "details": [
+        "Command log now prefixes error responses with '⚠ ' — detected by matching Usage:/Error:/bad /not found/etc. prefixes from run_command results.",
+        "_log_error() added as the error-path log call; auto-detected in _on_cmd_execute by scanning the first line of each result string.",
+        "FX pool save (save_fx_pool) now writes dim_id, color_id, group_id for each layer. load_fx_pool passes them through add_layer on load. FXPreset.fire() passes color_id to fx_engine.add(). All three tree references now survive a save/load cycle."
       ]
     }
   ]

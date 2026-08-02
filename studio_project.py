@@ -1898,6 +1898,7 @@ class FXPreset:
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
                 dim_id       = ld.get('dim_id'),
+                color_id     = ld.get('color_id'),
                 block_size   = ld.get('block_size', 1),
                 order        = ld.get('order', 'linear'),
                 direction    = ld.get('direction', 'forward'),
@@ -6063,8 +6064,12 @@ class GUIEngine:
         if self._cmd:
             result = self._cmd(raw)
             if result:
+                is_err = any(str(result).startswith(p) for p in self._ERR_PREFIXES)
                 for line in str(result).splitlines():
-                    self._log(f"  {line}")
+                    if is_err:
+                        self._log_error(f"  {line}")
+                    else:
+                        self._log(f"  {line}")
 
         # Feed command into AI history for future context
         if self._ai:
@@ -6084,6 +6089,10 @@ class GUIEngine:
                 self._log(f"  {result}")
         dpg.focus_item("cmd_input")
 
+    _ERR_PREFIXES = ("Usage:", "Error:", "bad ", "not found", "unknown verb",
+                     "Unknown", "invalid", "no cuestack", "no active", "not set",
+                     "AI error")
+
     def _log(self, line):
         self._cmd_log.append(line)
         if len(self._cmd_log) > 200:
@@ -6093,6 +6102,9 @@ class GUIEngine:
             dpg.set_y_scroll("cmd_log_win", 99999)
         except Exception:
             pass
+
+    def _log_error(self, line):
+        self._log(f"⚠ {line}")
 
     def _build_monitors_row(self):
         """Programmer values and output monitor side by side below the pools."""
@@ -7354,6 +7366,9 @@ class ShowFile:
                     'rate_id':      ld.get('rate_id'),
                     'size_id':      ld.get('size_id'),
                     'spread_id':    ld.get('spread_id'),
+                    'dim_id':       ld.get('dim_id'),
+                    'color_id':     ld.get('color_id'),
+                    'group_id':     ld.get('group_id'),
                     'block_size':   ld.get('block_size', 1),
                     'order':        ld.get('order', 'linear'),
                     'direction':    ld.get('direction', 'forward'),
@@ -7385,6 +7400,9 @@ class ShowFile:
                     rate_id      = ld.get("rate_id"),
                     size_id      = ld.get("size_id"),
                     spread_id    = ld.get("spread_id"),
+                    dim_id       = ld.get("dim_id"),
+                    color_id     = ld.get("color_id"),
+                    group_id     = ld.get("group_id"),
                     block_size   = ld.get("block_size",     1),
                     order        = ld.get("order",   "linear"),
                     direction    = ld.get("direction","forward"),
