@@ -4337,8 +4337,10 @@ class GUIEngine:
         self._cmd_hist_i  = -1        # history cursor
 
         self._flash_held  = {}         # {exec_id: bool} — tracks held state of FLASH buttons
-        self._col_btn_themes = {}      # {slot_n: ((r,g,b), theme_id)} — per-color-preset button themes
-        self._dim_btn_themes = {}      # {slot_n: (level, theme_id)} — per-dim-preset button themes
+        self._col_btn_themes  = {}     # {slot_n: ((r,g,b), theme_id)} — per-color-preset button themes
+        self._dim_btn_themes  = {}     # {slot_n: (level, theme_id)} — per-dim-preset button themes
+        self._out_bar_themes  = {}     # {fid: ((r,g,b), theme_id)} — output monitor bar tints
+        self._prog_bar_themes = {}     # {fid: ((r,g,b), theme_id)} — programmer bar tints
 
         self._learn_pending      = None    # (ch, number) captured by learn
         self._learn_target       = None    # display name chosen in dropdown
@@ -7199,6 +7201,28 @@ class GUIEngine:
                 fx_tag   = f"  ~FX" if has_fx else ""
                 dpg.configure_item(f"prog_bar_{fid}",
                                    overlay=f"R{r} G{g} B{b}{fx_tag}" if has_data else "")
+                # Tint programmer bar to match RGB color
+                _pcached = self._prog_bar_themes.get(fid)
+                if has_data and (r > 0 or g > 0 or b > 0):
+                    if _pcached is None or _pcached[0] != (r, g, b):
+                        if _pcached:
+                            try: dpg.delete_item(_pcached[1])
+                            except: pass
+                        try:
+                            with dpg.theme() as _pth:
+                                with dpg.theme_component(dpg.mvProgressBar):
+                                    dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram,
+                                                        (r, g, b, 255))
+                            dpg.bind_item_theme(f"prog_bar_{fid}", _pth)
+                            self._prog_bar_themes[fid] = ((r, g, b), _pth)
+                        except: pass
+                else:
+                    if _pcached:
+                        try:
+                            dpg.bind_item_theme(f"prog_bar_{fid}", 0)
+                            dpg.delete_item(_pcached[1])
+                        except: pass
+                        del self._prog_bar_themes[fid]
             except Exception:
                 pass
 
@@ -7236,6 +7260,28 @@ class GUIEngine:
             brightness = (r + g + b) / (3 * 255) * float(dim)
             dpg.set_value(f"out_bar_{fid}", min(1.0, brightness))
             dpg.configure_item(f"out_bar_{fid}", overlay=f"R{r} G{g} B{b}")
+            # Tint output bar to match actual RGB color
+            _ocached = self._out_bar_themes.get(fid)
+            if r > 0 or g > 0 or b > 0:
+                if _ocached is None or _ocached[0] != (r, g, b):
+                    if _ocached:
+                        try: dpg.delete_item(_ocached[1])
+                        except: pass
+                    try:
+                        with dpg.theme() as _oth:
+                            with dpg.theme_component(dpg.mvProgressBar):
+                                dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram,
+                                                    (r, g, b, 255))
+                        dpg.bind_item_theme(f"out_bar_{fid}", _oth)
+                        self._out_bar_themes[fid] = ((r, g, b), _oth)
+                    except: pass
+            else:
+                if _ocached:
+                    try:
+                        dpg.bind_item_theme(f"out_bar_{fid}", 0)
+                        dpg.delete_item(_ocached[1])
+                    except: pass
+                    del self._out_bar_themes[fid]
 
         # MIDI status column (soft-takeover state)
         for (ch, cc), m in self._midi.cc_maps.items():
