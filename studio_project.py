@@ -4424,6 +4424,12 @@ class GUIEngine:
                                       callback=self._on_global_enter)
             dpg.add_key_press_handler(dpg.mvKey_NumPadEnter,
                                       callback=self._on_global_enter)
+            dpg.add_key_press_handler(dpg.mvKey_F4,
+                                      callback=lambda *_: self._back())
+            dpg.add_key_press_handler(dpg.mvKey_F5,
+                                      callback=lambda *_: self._go())
+            dpg.add_key_press_handler(dpg.mvKey_S,
+                                      callback=self._on_ctrl_s)
 
         # Apply per-item themes after widgets are built
         try:
@@ -4604,6 +4610,15 @@ class GUIEngine:
         except Exception:
             return False
 
+    def _on_ctrl_s(self, *_):
+        """Ctrl+S: save show."""
+        is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
+                   dpg.is_key_down(dpg.mvKey_RControl) or
+                   dpg.is_key_down(dpg.mvKey_LSuper) or   # Cmd on macOS
+                   dpg.is_key_down(dpg.mvKey_RSuper))
+        if is_ctrl:
+            self._on_save()
+
     def _on_global_char(self, sender, app_data, user_data):
         """Route printable keys to cmd_input when no other text widget is active."""
         if self._cmd_input_needs_focus():
@@ -4611,6 +4626,13 @@ class GUIEngine:
         lo, hi = user_data
         is_shift = (dpg.is_key_down(dpg.mvKey_LShift) or
                     dpg.is_key_down(dpg.mvKey_RShift))
+        # Suppress Ctrl+key combos (they're shortcuts, not text input)
+        is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
+                   dpg.is_key_down(dpg.mvKey_RControl) or
+                   dpg.is_key_down(dpg.mvKey_LSuper) or
+                   dpg.is_key_down(dpg.mvKey_RSuper))
+        if is_ctrl:
+            return
         dpg.set_value("cmd_input",
                       dpg.get_value("cmd_input") + (hi if is_shift else lo))
 
