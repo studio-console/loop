@@ -4485,11 +4485,11 @@ class GUIEngine:
     def _build_header(self):
         with dpg.group(horizontal=True):
             dpg.add_text("studio console  v0.16", color=_C_ACCENT)
-            dpg.add_text("   |   ", color=_C_BORDER)
+            dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
-            dpg.add_text("   |   ", color=_C_BORDER)
+            dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("fx: off", tag="hdr_fx", color=_C_DIM)
-            dpg.add_text("   |   ", color=_C_BORDER)
+            dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("dim: --", tag="hdr_dim", color=_C_TEXT)
             dpg.add_text("   ", color=_C_BORDER)
             dpg.add_button(label="patch", width=60,
