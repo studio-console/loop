@@ -4430,6 +4430,10 @@ class GUIEngine:
                                       callback=lambda *_: self._go())
             dpg.add_key_press_handler(dpg.mvKey_S,
                                       callback=self._on_ctrl_s)
+            dpg.add_key_press_handler(dpg.mvKey_Up,
+                                      callback=self._on_hist_up)
+            dpg.add_key_press_handler(dpg.mvKey_Down,
+                                      callback=self._on_hist_down)
 
         # Apply per-item themes after widgets are built
         try:
@@ -4609,6 +4613,37 @@ class GUIEngine:
             return ('Input' in t or 'Combo' in t)
         except Exception:
             return False
+
+    def _on_hist_up(self, *_):
+        """↑ arrow: scroll backward through command history."""
+        if self._cmd_input_needs_focus():
+            return
+        if not self._cmd_history:
+            return
+        self._cmd_hist_i = min(len(self._cmd_history) - 1, self._cmd_hist_i + 1)
+        try:
+            dpg.set_value("cmd_input",
+                          self._cmd_history[-(self._cmd_hist_i + 1)])
+        except Exception:
+            pass
+
+    def _on_hist_down(self, *_):
+        """↓ arrow: scroll forward through command history (toward blank)."""
+        if self._cmd_input_needs_focus():
+            return
+        self._cmd_hist_i -= 1
+        if self._cmd_hist_i < 0:
+            self._cmd_hist_i = -1
+            try:
+                dpg.set_value("cmd_input", "")
+            except Exception:
+                pass
+        else:
+            try:
+                dpg.set_value("cmd_input",
+                              self._cmd_history[-(self._cmd_hist_i + 1)])
+            except Exception:
+                pass
 
     def _on_ctrl_s(self, *_):
         """Ctrl+S: save show."""
