@@ -5175,8 +5175,11 @@ class GUIEngine:
             self._groups.recall(n, self._prog)
             self._log(f"> GROUP {n}  recalled — {self._groups.get(n).name}")
         else:
-            self._log(f"> GROUP {n} is empty")
-            self._log(f"  To record: type  1 THRU 6  then  RECORD GROUP {n} All Tubes")
+            self._log(f"> GROUP {n} is empty — select fixtures, then name the group:")
+            try:
+                dpg.set_value("cmd_input", f"RECORD GROUP {n} ")
+            except Exception:
+                pass
         self._focus_cmd()
 
     def _on_color_click(self, _sender, _app_data, user_data):
@@ -5186,8 +5189,11 @@ class GUIEngine:
             p.apply(self._prog)
             self._log(f"> COLOR {n}  applied — {p.name}")
         else:
-            self._log(f"> COLOR {n} is empty")
-            self._log(f"  To record: set colour in programmer, then  RECORD COLOR {n} Red")
+            self._log(f"> COLOR {n} is empty — set colour in programmer, then name it:")
+            try:
+                dpg.set_value("cmd_input", f"RECORD COLOR {n} ")
+            except Exception:
+                pass
         self._focus_cmd()
 
     def _on_dim_click(self, _sender, _app_data, user_data):
@@ -5197,8 +5203,11 @@ class GUIEngine:
             p.apply(self._prog)
             self._log(f"> DIM PRESET {n}  applied — {p.name}")
         else:
-            self._log(f"> DIM PRESET {n} is empty")
-            self._log(f"  To record: type  1 THRU 6 AT FULL  then  RECORD DIM {n} Full")
+            self._log(f"> DIM PRESET {n} is empty — set dim in programmer, then name it:")
+            try:
+                dpg.set_value("cmd_input", f"RECORD DIM {n} ")
+            except Exception:
+                pass
         self._focus_cmd()
 
     def _build_cuestack_panel(self):
