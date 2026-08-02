@@ -4514,6 +4514,8 @@ class GUIEngine:
             dpg.add_text("PROGRAMMER", tag="sb_prog_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
             dpg.add_text("BLIND", tag="sb_blind_lbl", color=_C_DIM)
+            dpg.add_spacer(width=10)
+            dpg.add_text("BBO", tag="sb_bbo_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
             dpg.add_text("PT", tag="sb_pt_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
@@ -5938,6 +5940,8 @@ class GUIEngine:
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
                 ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
+                ("BLACKOUT",              "Cut all DMX output instantly (BLACKOUT OFF to restore)"),
+                ("BLACKOUT OFF  / BBO",   "Same as BLACKOUT — BBO is a one-key shorthand"),
                 ("SNAPSHOT 5",            "Record current live look (cue+prog merged) as cue 5"),
                 ("SNAPSHOT 5 Frozen",     "Snapshot with a custom name"),
                 ("SAVE",                  "Save entire show to studio_data/"),
@@ -7047,6 +7051,22 @@ class GUIEngine:
             dpg.configure_item("sb_blind_lbl",
                                color=_blind_col if blind else _C_DIM)
             dpg.set_value("sb_blind_lbl", "■ BLIND" if blind else "blind")
+        except Exception:
+            pass
+
+        # BLACKOUT indicator
+        try:
+            bbo = (self._out.master_level == 0.0) if self._out else False
+            _bbo_col = (255, 30, 30, 255)
+            dpg.configure_item("sb_bbo_lbl", color=_bbo_col if bbo else _C_DIM)
+            dpg.set_value("sb_bbo_lbl", "■ BBO" if bbo else "bbo")
+            # Also sync master fader widget
+            if bbo:
+                try:
+                    if not dpg.is_item_active("stage_master_fader"):
+                        dpg.set_value("stage_master_fader", 0)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -8251,6 +8271,7 @@ color_pool   = ColorPool()
 dim_pool     = DimmerPool()
 output_state = OutputState(patch)
 output_state.link_programmer(prog)
+_blackout_saved_level = [1.0]   # saved master level before BLACKOUT; shared mutable ref
 executor_pool = ExecutorPool()
 output_state.link_executor_pool(executor_pool)
 fade_engine  = FadeEngine()
@@ -10216,6 +10237,21 @@ def run_command(cmd_str):
     if t0 == 'LIVE':
         output_state.blind = False
         return "LIVE mode — programmer active in output"
+
+    if t0 == 'BLACKOUT':
+        off = len(tokens) > 1 and tokens[1] == 'OFF'
+        if off or output_state.master_level == 0.0:
+            output_state.master_level = _blackout_saved_level[0]
+            return f"BLACKOUT OFF — master restored to {output_state.master_level:.0%}"
+        else:
+            _blackout_saved_level[0] = output_state.master_level
+            output_state.master_level = 0.0
+            return "BLACKOUT ON — all output cut (BLACKOUT OFF to restore)"
+
+    if t0 == 'BBO':
+        _blackout_saved_level[0] = output_state.master_level
+        output_state.master_level = 0.0
+        return "BLACKOUT ON"
 
     # ── Save ─────────────────────────────────────────────────
     if t0 == 'SAVE':
