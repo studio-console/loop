@@ -5938,6 +5938,8 @@ class GUIEngine:
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
                 ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
+                ("SNAPSHOT 5",            "Record current live look (cue+prog merged) as cue 5"),
+                ("SNAPSHOT 5 Frozen",     "Snapshot with a custom name"),
                 ("SAVE",                  "Save entire show to studio_data/"),
                 ("CLONE 1 TO 7",          "Copy fixture 1's presets / cue data to fixture 7"),
                 ("CLONE 1 TO 7 THRU 9",   "Clone to a range of destinations"),
@@ -10160,6 +10162,51 @@ def run_command(cmd_str):
         save_show()
         dst_label = dst_ids[0] if len(dst_ids) == 1 else f"{dst_ids[0]}–{dst_ids[-1]}"
         return f"Cloned fixture {src_id} → {dst_label}  ({len(dst_ids)} dest, show saved)"
+
+    # ── SNAPSHOT ─────────────────────────────────────────────
+    # SNAPSHOT <cue_num> [name] — record current live output (cue + programmer merged)
+    # as a new cue. Unlike RECORD CUE which only records programmer data, SNAPSHOT
+    # captures the full merged look (useful when multiple executors are running).
+    if t0 == 'SNAPSHOT' and len(tokens) >= 2:
+        try:
+            cue_num = float(tokens[1])
+        except ValueError:
+            return f"SNAPSHOT: bad cue number '{tokens[1]}'"
+        cs = _active_stack()
+        if not cs:
+            return "SNAPSHOT: no active cuestack"
+        cue_name = _name_after(raw, 2) or f"Snapshot {cue_num}"
+
+        cue_merged = output_state._merged_cue_layer()
+        prog_layer = output_state.programmer_layer
+
+        snapshot_data = {}
+        for master in patch.all_fixtures():
+            fid = str(master.fixture_id)
+            pm  = prog_layer.get(fid, {})
+            cm  = cue_merged.get(fid, {})
+            dim = pm.get('dim', cm.get('dim'))
+            if dim is not None:
+                snapshot_data.setdefault(fid, {})['dim'] = float(dim)
+            for sub in master.sub_fixtures.values():
+                sfid = str(sub.fixture_id)
+                ps   = prog_layer.get(sfid, {})
+                cs_  = cue_merged.get(sfid, {})
+                r = ps.get('red',   cs_.get('red',   0))
+                g = ps.get('green', cs_.get('green', 0))
+                b = ps.get('blue',  cs_.get('blue',  0))
+                if r or g or b:
+                    snapshot_data[sfid] = {'red': float(r), 'green': float(g), 'blue': float(b)}
+
+        if not snapshot_data:
+            return "SNAPSHOT: nothing in output — all fixtures are dark"
+
+        cue = Cue(cue_num, cue_name)
+        cue.data = snapshot_data
+        cs.cues[float(cue_num)] = cue
+        save_show()
+        fixture_count = len({k.split('.')[0] for k in snapshot_data})
+        return f"Snapshot → Cue {cue_num}: {cue_name}  ({fixture_count} fixtures, show saved)"
 
     # ── Blind mode ───────────────────────────────────────────
     if t0 == 'BLIND':
