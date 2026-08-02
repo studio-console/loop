@@ -1,0 +1,8 @@
+# Ignore everything in Documents except studio console files
+*
+
+# Track these
+!.gitignore
+!studio_project.py
+!studio_data/
+!studio_data/*.json

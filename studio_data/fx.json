@@ -1,0 +1,12 @@
+{
+  "version": "3.0",
+  "fx_scale": 2,
+  "fx_params": {
+    "rate_bpm": 33.03300094604492,
+    "size": 100.0,
+    "spread": 0.0,
+    "infade": 0.0,
+    "outfade": 0.0,
+    "pending_form_id": 8
+  }
+}

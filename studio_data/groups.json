@@ -1,0 +1,145 @@
+{
+  "version": "3.0",
+  "groups": {
+    "1": {
+      "name": "All",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 1
+        },
+        {
+          "type": "master",
+          "fixture_id": 2
+        },
+        {
+          "type": "master",
+          "fixture_id": 3
+        },
+        {
+          "type": "master",
+          "fixture_id": 4
+        },
+        {
+          "type": "master",
+          "fixture_id": 5
+        },
+        {
+          "type": "master",
+          "fixture_id": 6
+        }
+      ]
+    },
+    "2": {
+      "name": "Left",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 1
+        },
+        {
+          "type": "master",
+          "fixture_id": 2
+        },
+        {
+          "type": "master",
+          "fixture_id": 3
+        }
+      ]
+    },
+    "3": {
+      "name": "Right",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 4
+        },
+        {
+          "type": "master",
+          "fixture_id": 5
+        },
+        {
+          "type": "master",
+          "fixture_id": 6
+        }
+      ]
+    },
+    "4": {
+      "name": "Odds",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 1
+        },
+        {
+          "type": "master",
+          "fixture_id": 3
+        },
+        {
+          "type": "master",
+          "fixture_id": 5
+        }
+      ]
+    },
+    "5": {
+      "name": "Evens",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 2
+        },
+        {
+          "type": "master",
+          "fixture_id": 4
+        },
+        {
+          "type": "master",
+          "fixture_id": 6
+        }
+      ]
+    },
+    "6": {
+      "name": "Ends",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 1
+        },
+        {
+          "type": "master",
+          "fixture_id": 6
+        }
+      ]
+    },
+    "7": {
+      "name": "Middle",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 2
+        },
+        {
+          "type": "master",
+          "fixture_id": 3
+        },
+        {
+          "type": "master",
+          "fixture_id": 4
+        },
+        {
+          "type": "master",
+          "fixture_id": 5
+        }
+      ]
+    },
+    "8": {
+      "name": "Tube 1",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 1
+        }
+      ]
+    }
+  }
+}

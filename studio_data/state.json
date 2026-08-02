@@ -1,0 +1,103 @@
+{
+  "version": "3.0",
+  "master_level": 1.0,
+  "active_executor": 7,
+  "executors": {
+    "1": {
+      "stack_id": 1,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "2": {
+      "stack_id": 2,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "3": {
+      "stack_id": 3,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "4": {
+      "stack_id": 4,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "5": {
+      "stack_id": 5,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "6": {
+      "stack_id": 6,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "7": {
+      "stack_id": 7,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "8": {
+      "stack_id": 8,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "9": {
+      "stack_id": 9,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "10": {
+      "stack_id": 10,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    }
+  },
+  "prog_time": {
+    "on": false,
+    "fade": 0.0,
+    "delay": 0.0
+  },
+  "fader_dim": 0.33070866141732286
+}

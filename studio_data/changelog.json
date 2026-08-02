@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "date": "2026-08-02",
+      "summary": "FX engine: block/random/reverse/bounce distribution + pixel vs fixture scope",
+      "details": [
+        "FX commands now accept BLOCK n, ORDER RANDOM, DIRECTION FWD|REV|BOUNCE, and PIXEL|FIXTURE.",
+        "target_scope lets any channel (not just dim) chase per-whole-fixture or per-individual-pixel across multiple tubes.",
+        "Dim FX can now drive individual pixels independently, not just whole fixtures.",
+        "Merged duplicated FX-bucketing logic (cue playback + programmer preview) into one shared _bucket_fx_defs().",
+        "All new params default to the exact old behavior (block_size=1, order=linear, direction=forward) — existing saved shows are unaffected.",
+        "FXPreset/fx_pool.json and cuestacks.json updated to persist the new fields."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "MIDI startup no longer crashes when the controller isn't connected",
+      "details": [
+        "MIDIEngine.start() now catches bad port index / port-open failures and continues without MIDI instead of raising."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Added STUDIO_DRY_RUN / STUDIO_HEADLESS environment switches",
+      "details": [
+        "STUDIO_DRY_RUN=1 runs the full FX/cue/output pipeline without opening a real sACN socket — nothing is sent to the fixtures.",
+        "STUDIO_HEADLESS=1 skips the GUI window and runs a scripted smoke test instead, for unattended/automated testing.",
+        "Smoke test exercises the FX -> RECORD CUE -> GO -> verify-FX-fires path this file's own doc comments had flagged as written but untested."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Fixed: headless test runs were writing into the real show files",
+      "details": [
+        "First smoke-test run recorded a real 'Cue 5.0 Off' into the actual Cuestack 1 and cleared a pending 'FX FORM 8' the user had queued interactively — caught by diffing against the auto-generated .bak files and restored from them.",
+        "STUDIO_HEADLESS now redirects DATA_DIR to a fresh temp folder before any file is loaded, so RECORD/GO/save_show during automated runs can never touch studio_data/*.json.",
+        "STUDIO_DRY_RUN alone (GUI still open, manual use) intentionally still loads the real show — isolation only applies to unattended STUDIO_HEADLESS runs."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Executors: pages for organizing slots + flash (hold) trigger mode",
+      "details": [
+        "PAGE <n> NAME <name>, PAGE <n> ADD|REMOVE EXEC <m>, PAGE LIST — purely organizational grouping of executor slots, doesn't affect playback. Persisted to executor_pages.json.",
+        "EXEC <n> MODE TOGGLE|FLASH sets how an executor is meant to be triggered (informational for now — GUI/MIDI wiring to actually use this comes in the GUI pass).",
+        "EXEC <n> FLASH ON|OFF fires a cue instantly (0s crossfade, reusing the existing per-executor time-override mechanism) and releases it fully on OFF — usable independent of trigger_mode, e.g. from a MIDI note's on/off callbacks the same way the existing 'Flash White' pad mapping already works.",
+        "Both verified via the STUDIO_HEADLESS smoke test (now 8/8 checks) plus a real dry-run: FLASH ON produced a 0.0s override crossfade vs. the cue's normal 2.0s."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "GUI: manual popup extended, new changelog popup, MIDI flash-learn, partial sizing fix",
+      "details": [
+        "The existing '?' button popup already was a sectioned command reference (manual/glossary) — extended it with the new FX distribution commands and EXEC/PAGE commands instead of building a duplicate.",
+        "Added a separate 'log' button/popup reading this changelog.json live and showing newest-first, per the user's request for two distinct popups.",
+        "Wired executor flash into MIDI: a new 'flash an executor while a pad is held' section in the MIDI popup lets you learn a note for EXEC <n> FLASH ON/OFF as a real on/off pad mapping, reusing the existing off_callback-capable MIDI-learn path. Dynamic targets ('Exec N Flash') regenerate correctly on restart, same pattern as the existing 'GO CS N CUE M' dynamic targets.",
+        "PARTIAL FIX, flagged for user verification: viewport was hardcoded 1920x1080 non-resizable at (0,0) — on this machine's actual 1920x1080 display, macOS's menu bar alone would push the bottom of that off-screen. Made viewport resizable, trimmed default height to 1040, and (more importantly) enabled scrolling on the main window and the manual popup, both of which had no_scrollbar=True — meaning any content overflow was being silently clipped with no way to reach it. Could not visually verify the actual rendered result (no display/screenshot access in this environment) — asked the user to confirm what's still cut off, if anything."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "version": "3.0",
+  "rate_presets": {
+    "1": {
+      "name": "Slow",
+      "bpm": 30.0
+    },
+    "2": {
+      "name": "Medium",
+      "bpm": 60.0
+    },
+    "3": {
+      "name": "Fast",
+      "bpm": 120.0
+    },
+    "4": {
+      "name": "Very Fast",
+      "bpm": 240.0
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "version": "3.0",
+  "size_presets": {
+    "1": {
+      "name": "Subtle",
+      "size": 64.0
+    },
+    "2": {
+      "name": "Medium",
+      "size": 128.0
+    },
+    "3": {
+      "name": "Full",
+      "size": 255.0
+    }
+  }
+}

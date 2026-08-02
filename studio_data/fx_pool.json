@@ -1,0 +1,581 @@
+{
+  "version": "3.0",
+  "fx_scale": 2,
+  "fx_presets": {
+    "1": {
+      "name": "Red Sine",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "red",
+          "bpm": 60.0,
+          "size": 86.3,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "2": {
+      "name": "Blue Sine",
+      "layers": [
+        {
+          "waveform": "pulse",
+          "channel": "red",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "green",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.3330000042915344,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "blue",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.6669999957084656,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "3": {
+      "name": "Magenta Sine",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "red",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "sine",
+          "channel": "blue",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "4": {
+      "name": "White Pulse",
+      "layers": [
+        {
+          "waveform": "pulse",
+          "channel": "red",
+          "bpm": 90.0,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "green",
+          "bpm": 90.0,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "blue",
+          "bpm": 90.0,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "5": {
+      "name": "RGB Chase",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "red",
+          "bpm": 50.0,
+          "size": 70.6,
+          "spread": 33.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "sine",
+          "channel": "green",
+          "bpm": 50.0,
+          "size": 70.6,
+          "spread": 33.0,
+          "phase_offset": 0.3330000042915344,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "sine",
+          "channel": "blue",
+          "bpm": 50.0,
+          "size": 70.6,
+          "spread": 33.0,
+          "phase_offset": 0.6669999957084656,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "6": {
+      "name": "Green Sine",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "green",
+          "bpm": 60.0,
+          "size": 86.3,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "7": {
+      "name": "Strobe",
+      "layers": [
+        {
+          "waveform": "pulse",
+          "channel": "red",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "green",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.3330000042915344,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "blue",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.6669999957084656,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "8": {
+      "name": "Bounce Red+Blue",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "red",
+          "bpm": 50.0,
+          "size": 82.4,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "sine",
+          "channel": "blue",
+          "bpm": 50.0,
+          "size": 82.4,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "10": {
+      "name": "240",
+      "layers": [
+        {
+          "waveform": "pulse",
+          "channel": "red",
+          "bpm": 240.0,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "green",
+          "bpm": 240.0,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "blue",
+          "bpm": 240.0,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "12": {
+      "name": "FX 12",
+      "layers": [
+        {
+          "waveform": "pulse",
+          "channel": "red",
+          "bpm": 271.3590087890625,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "green",
+          "bpm": 271.3590087890625,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "pulse",
+          "channel": "blue",
+          "bpm": 271.3590087890625,
+          "size": 78.4,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "9": {
+      "name": "Rainbow",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "red",
+          "bpm": 30.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "sine",
+          "channel": "green",
+          "bpm": 30.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.3330000042915344,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        },
+        {
+          "waveform": "sine",
+          "channel": "blue",
+          "bpm": 30.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 0.6669999957084656,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "11": {
+      "name": "Rgb Chase",
+      "layers": [
+        {
+          "waveform": "ramp",
+          "channel": "green",
+          "bpm": 100.0,
+          "size": 40.0,
+          "spread": 100.0,
+          "phase_offset": 0.3330000042915344,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "13": {
+      "name": "FX 13",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "dim",
+          "bpm": 60.0,
+          "size": 78.4,
+          "spread": 100.0,
+          "phase_offset": 1000.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "14": {
+      "name": "FX 14",
+      "layers": []
+    },
+    "15": {
+      "name": "FX 15",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "dim",
+          "bpm": 60.0,
+          "size": 100.0,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    },
+    "16": {
+      "name": "FX 16",
+      "layers": [
+        {
+          "waveform": "sine",
+          "channel": "dim",
+          "bpm": 60.0,
+          "size": 15.0,
+          "spread": 0.0,
+          "phase_offset": 0.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
+    }
+  }
+}

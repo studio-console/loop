@@ -1,0 +1,111 @@
+{
+  "version": "3.0",
+  "midi_cc": [
+    {
+      "channel": 1,
+      "cc": 7,
+      "target": "Grandmaster Dim",
+      "soft_takeover": true,
+      "software_val": 0.33070866141732286,
+      "taken_over": true
+    },
+    {
+      "channel": 1,
+      "cc": 74,
+      "target": "Grandmaster Dim",
+      "soft_takeover": true,
+      "software_val": 0.0,
+      "taken_over": false
+    },
+    {
+      "channel": 1,
+      "cc": 71,
+      "target": "FX Rate",
+      "soft_takeover": false,
+      "software_val": 0.0,
+      "taken_over": true
+    },
+    {
+      "channel": 1,
+      "cc": 91,
+      "target": "FX Size",
+      "soft_takeover": false,
+      "software_val": 0.0,
+      "taken_over": true
+    },
+    {
+      "channel": 1,
+      "cc": 93,
+      "target": "FX Spread",
+      "soft_takeover": false,
+      "software_val": 0.0,
+      "taken_over": true
+    },
+    {
+      "channel": 16,
+      "cc": 118,
+      "target": "Transport Rewind",
+      "soft_takeover": false,
+      "software_val": 0.0,
+      "taken_over": true
+    },
+    {
+      "channel": 16,
+      "cc": 117,
+      "target": "Transport GO",
+      "soft_takeover": false,
+      "software_val": 0.0,
+      "taken_over": true
+    },
+    {
+      "channel": 16,
+      "cc": 116,
+      "target": "Transport BACK",
+      "soft_takeover": false,
+      "software_val": 0.0,
+      "taken_over": true
+    }
+  ],
+  "midi_note": [
+    {
+      "channel": 10,
+      "note": 36,
+      "target": "Cue 1 Red"
+    },
+    {
+      "channel": 10,
+      "note": 38,
+      "target": "Cue 2 Blue"
+    },
+    {
+      "channel": 10,
+      "note": 42,
+      "target": "Cue 3 Magenta"
+    },
+    {
+      "channel": 10,
+      "note": 46,
+      "target": "Cue 4 Off"
+    },
+    {
+      "channel": 10,
+      "note": 50,
+      "target": "BACK"
+    },
+    {
+      "channel": 10,
+      "note": 45,
+      "target": "GO"
+    },
+    {
+      "channel": 10,
+      "note": 51,
+      "target": "Flash White (hold)"
+    },
+    {
+      "channel": 10,
+      "note": 49,
+      "target": "FX Kill"
+    }
+  ]
+}
