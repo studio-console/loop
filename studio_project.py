@@ -4382,6 +4382,8 @@ class GUIEngine:
 
         # Tags for dynamic MIDI table rows — key=(ch,num,type)
         self._map_rows = {}
+        # Reassign flow: stores {'type','ch','num','label'} when user clicks ► on a row
+        self._reassign_pending = None
 
     # ── Build ────────────────────────────────────────────────
 
@@ -5671,15 +5673,28 @@ class GUIEngine:
                            borders_innerH=True, borders_outerH=True,
                            borders_innerV=True, borders_outerV=True,
                            row_background=True, scrollY=True,
-                           height=220):
+                           height=200):
                 dpg.add_table_column(label="ch",      width_fixed=True, init_width_or_weight=32)
                 dpg.add_table_column(label="cc/note", width_fixed=True, init_width_or_weight=65)
                 dpg.add_table_column(label="Type",    width_fixed=True, init_width_or_weight=45)
                 dpg.add_table_column(label="Name",    width_stretch=True)
                 dpg.add_table_column(label="Status",  width_fixed=True, init_width_or_weight=90)
-                dpg.add_table_column(label="",        width_fixed=True, init_width_or_weight=36)
+                dpg.add_table_column(label="del",     width_fixed=True, init_width_or_weight=36)
+                dpg.add_table_column(label="rsn",     width_fixed=True, init_width_or_weight=36)
 
             self._refresh_midi_table()
+
+            # Reassign panel — activated when user clicks ► on a row
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_text("reassign:", color=_C_DIM)
+                dpg.add_text("select a row →", tag="rsn_selected", color=_C_DIM)
+                target_names = list(self.target_registry.keys())
+                dpg.add_combo(items=target_names, tag="rsn_target",
+                              default_value=target_names[0] if target_names else "",
+                              width=230)
+                dpg.add_button(label="apply", width=70,
+                               callback=self._on_apply_reassign)
 
             dpg.add_separator()
             dpg.add_text("Add mapping:", color=_C_DIM)
@@ -6931,6 +6946,66 @@ class GUIEngine:
         ShowFile.save_midi(self._midi)
         self._refresh_midi_table()
 
+    def _on_midi_row_select_reassign(self, sender, app_data, user_data):
+        """Mark a mapping row for reassignment and update the reassign UI."""
+        kind, ch, num, current_name = user_data
+        self._reassign_pending = {'type': kind, 'ch': ch, 'num': num}
+        label = f"CH{ch} {'CC' if kind == 'cc' else 'Note'}{num}  ({current_name})"
+        try:
+            dpg.set_value("rsn_selected", label)
+            dpg.configure_item("rsn_selected", color=_C_ACCENT)
+            if current_name in self.target_registry:
+                dpg.set_value("rsn_target", current_name)
+        except Exception:
+            pass
+
+    def _on_apply_reassign(self):
+        """Apply the pending reassignment from rsn_target combo."""
+        p = self._reassign_pending
+        if p is None:
+            return
+        new_name = dpg.get_value("rsn_target")
+        if not new_name or new_name not in self.target_registry:
+            return
+        entry   = self.target_registry[new_name]
+        cb      = entry[0]
+        off_cb  = entry[3] if len(entry) > 3 else None
+        soft    = entry[1]
+        ch, num = p['ch'], p['num']
+        if p['type'] == 'cc':
+            self._midi.map_cc(ch, num, cb, name=new_name, soft_takeover=soft)
+        else:
+            self._midi.map_note(ch, num, cb, off_cb, name=new_name)
+        ShowFile.save_midi(self._midi)
+        self._reassign_pending = None
+        try:
+            dpg.set_value("rsn_selected", "select a row →")
+            dpg.configure_item("rsn_selected", color=_C_DIM)
+        except Exception:
+            pass
+        self._refresh_midi_table()
+
+    def _reassign_cc_map(self, ch, cc, new_target):
+        """Reassign an existing CC mapping to a different target by name."""
+        if new_target not in self.target_registry:
+            return
+        entry  = self.target_registry[new_target]
+        cb, soft = entry[0], entry[1]
+        self._midi.map_cc(ch, cc, cb, name=new_target, soft_takeover=soft)
+        ShowFile.save_midi(self._midi)
+        self._refresh_midi_table()
+
+    def _reassign_note_map(self, ch, note, new_target):
+        """Reassign an existing Note mapping to a different target by name."""
+        if new_target not in self.target_registry:
+            return
+        entry  = self.target_registry[new_target]
+        cb     = entry[0]
+        off_cb = entry[3] if len(entry) > 3 else None
+        self._midi.map_note(ch, note, cb, off_cb, name=new_target)
+        ShowFile.save_midi(self._midi)
+        self._refresh_midi_table()
+
     # ── MIDI table (re)build ─────────────────────────────────
 
     def _refresh_midi_table(self):
@@ -6956,7 +7031,10 @@ class GUIEngine:
                              color=_C_TEXT if m.taken_over else _C_DIM)
                 dpg.add_button(label="del",
                                callback=lambda s, a, u: self._remove_cc_map(*u),
-                               user_data=(ch, cc), width=38)
+                               user_data=(ch, cc), width=34)
+                dpg.add_button(label="►",
+                               callback=self._on_midi_row_select_reassign,
+                               user_data=('cc', ch, cc, m.name), width=34)
 
         for (ch, note), m in list(self._midi.note_maps.items()):
             row_tag = f"mr_note_{ch}_{note}"
@@ -6969,7 +7047,10 @@ class GUIEngine:
                 dpg.add_text("—")
                 dpg.add_button(label="del",
                                callback=lambda s, a, u: self._remove_note_map(*u),
-                               user_data=(ch, note), width=38)
+                               user_data=(ch, note), width=34)
+                dpg.add_button(label="►",
+                               callback=self._on_midi_row_select_reassign,
+                               user_data=('note', ch, note, m.name), width=34)
 
     # ── Live update loop ─────────────────────────────────────
 
