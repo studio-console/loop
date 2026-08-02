@@ -5883,7 +5883,7 @@ class GUIEngine:
                 ("RECORD RATE 3 Name 120","Record 120 BPM to rate pool slot 3"),
                 ("RECORD CUESTACK 2 Name","Create a new named cuestack on executor 2"),
             ]),
-            ("RENAME / COPY", [
+            ("RENAME / COPY / DELETE", [
                 ("RENAME CUESTACK 2 Tour","Rename cuestack 2 — all cues kept"),
                 ("RENAME CUE 3 Intro",    "Rename cue 3 in active cuestack"),
                 ("RENAME CS 2 CUE 5 End", "Rename cue 5 in cuestack 2"),
@@ -5892,6 +5892,8 @@ class GUIEngine:
                 ("COPY CUE 3 TO 5",       "Copy cue 3 → cue 5 (active cuestack)"),
                 ("COPY CUE 3 TO 5 Intro", "Copy with new name"),
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack copy"),
+                ("DELETE CUE 3",          "Delete cue 3 from active cuestack (saves show)"),
+                ("DELETE CUE 3 CS 2",     "Delete cue 3 from cuestack 2"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
                 ("CUE 5 FADE 2 DELAY 1",  "Set fade + delay"),
                 ("CUE 5 FADE 2 DFADE 5",  "Global fade + dim-only fade override"),
@@ -9221,6 +9223,33 @@ def run_command(cmd_str):
 
     if t0 == 'RELOAD' and len(tokens) == 1:
         return cue_reload() or "Reloaded"
+
+    if t0 == 'DELETE' and len(tokens) >= 2 and tokens[1] == 'CUE':
+        if len(tokens) < 3:
+            return "Usage: DELETE CUE <n>  [CS <stack_n>]"
+        try:
+            cue_num = float(tokens[2])
+        except ValueError:
+            return f"DELETE CUE: bad cue number '{tokens[2]}'"
+        if 'CS' in tokens:
+            cs_idx = tokens.index('CS')
+            try:
+                cs_n = int(tokens[cs_idx + 1])
+            except (ValueError, IndexError):
+                return "Usage: DELETE CUE <n> CS <stack_n>"
+            cs = cuestack_pool.get(cs_n)
+            if not cs:
+                return f"CueStack {cs_n} not found"
+        else:
+            active_n = active_executor[0] if active_executor else 1
+            cs = cuestack_pool.get(active_n)
+            if not cs:
+                return "No active cuestack"
+        if cue_num not in cs.cues:
+            return f"Cue {cue_num} not found in {cs.name}"
+        cs.delete_cue(cue_num)
+        save_show()
+        return f"Deleted Cue {cue_num} from {cs.name}"
 
     # ── Shared record/update-cue helper ──────────────────────
     def _record_cue_into(cs, cue_num, suffix_tokens, raw_str, merge=False):
