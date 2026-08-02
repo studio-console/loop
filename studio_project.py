@@ -4337,6 +4337,7 @@ class GUIEngine:
         self._cmd_hist_i  = -1        # history cursor
 
         self._flash_held  = {}         # {exec_id: bool} — tracks held state of FLASH buttons
+        self._col_btn_themes = {}      # {slot_n: ((r,g,b), theme_id)} — per-color-preset button themes
 
         self._learn_pending      = None    # (ch, number) captured by learn
         self._learn_target       = None    # display name chosen in dropdown
@@ -5304,6 +5305,37 @@ class GUIEngine:
                 dpg.set_item_label(f"col_btn_{n}", lbl)
             except Exception:
                 pass
+            # Tint the color button with the preset's actual color
+            if c:
+                r, g, b = int(c.red), int(c.green), int(c.blue)
+                cached = self._col_btn_themes.get(n)
+                if cached is None or cached[0] != (r, g, b):
+                    if cached:
+                        try:
+                            dpg.delete_item(cached[1])
+                        except Exception:
+                            pass
+                    try:
+                        with dpg.theme() as _cth:
+                            with dpg.theme_component(dpg.mvButton):
+                                dpg.add_theme_color(dpg.mvThemeCol_Button,
+                                                    (max(20, r//3), max(20, g//3), max(20, b//3), 255))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,
+                                                    (min(255, r*2//3+20), min(255, g*2//3+20), min(255, b*2//3+20), 255))
+                                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,
+                                                    (r, g, b, 255))
+                        dpg.bind_item_theme(f"col_btn_{n}", _cth)
+                        self._col_btn_themes[n] = ((r, g, b), _cth)
+                    except Exception:
+                        pass
+            elif n in self._col_btn_themes:
+                # Preset deleted — remove custom theme, revert to default
+                try:
+                    dpg.bind_item_theme(f"col_btn_{n}", 0)
+                    dpg.delete_item(self._col_btn_themes[n][1])
+                except Exception:
+                    pass
+                del self._col_btn_themes[n]
             # Dims
             d = self._dims.get(n) if self._dims else None
             lbl = f"{n}:{d.name[:7]}" if d else f"D{n}"
