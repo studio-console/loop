@@ -3879,18 +3879,29 @@ class AIEngine:
     ACTION_SCHEMA = """
 Return a JSON array of action objects. Each action is one of:
 
-{"action": "goto_cue", "stack": 1, "num": 2}
-{"action": "cue_go", "stack": 1}
-{"action": "cue_back", "stack": 1}
-{"action": "prog", "cmd": "1 THRU 6 AT R 255 G 0 B 0"}
-{"action": "dim", "value": 0.85}
-{"action": "fx_start", "waveform": "sine", "channel": "red",
- "bpm": 60, "size": 100, "spread": 0.0}
+{"action": "goto_cue",    "stack": 1, "num": 2}
+{"action": "cue_go",      "stack": 1}
+{"action": "cue_back",    "stack": 1}
+{"action": "cue_fire",    "stack": 1, "num": 3}
+{"action": "prog",        "cmd": "1 THRU 6 AT R 255 G 0 B 0"}
+{"action": "dim",         "value": 0.85}
+{"action": "fx_start",    "waveform": "sine", "channel": "red",
+                          "bpm": 60, "size": 100, "spread": 0.0}
+{"action": "fx_stop",     "channel": "red"}
 {"action": "fx_clear"}
-{"action": "fade_time", "seconds": 3.0}
+{"action": "group_select","group": 2}
+{"action": "fade_time",   "seconds": 3.0}
+{"action": "exec_level",  "exec": 1, "level": 0.75}
 
-Only return the JSON array. No explanation, no markdown.
+Rules:
+- "group_select" selects all fixtures in group N as the programmer selection.
+- "fx_stop" stops FX on one channel; omit "channel" to stop all.
+- "exec_level" sets executor master fader (level 0.0–1.0).
+- "cue_fire" is an alias for goto_cue (fires the named cue immediately).
+- Only return the JSON array. No explanation, no markdown.
 """
+
+    _CMD_HISTORY_MAX = 12
 
     def __init__(self, patch, prog, output_state, fx_engine, fade_engine,
                  cuestacks=None, executor_pool=None, cmd_fn=None, log_fn=None,
@@ -3914,7 +3925,15 @@ Only return the JSON array. No explanation, no markdown.
         self._log            = log_fn    # GUI log callback
         self._enabled        = True
         self._last_fade      = 2.0
+        self._cmd_history    = []        # last N commands for context
+        self._token_cb       = None      # optional callback(in_tok, out_tok) for GUI
         print(f"  AI Engine: ready ({model})")
+
+    def push_cmd_history(self, cmd_str):
+        """Call after each user command to feed recent context into AI prompts."""
+        self._cmd_history.append(cmd_str)
+        if len(self._cmd_history) > self._CMD_HISTORY_MAX:
+            self._cmd_history = self._cmd_history[-self._CMD_HISTORY_MAX:]
 
     def _state(self):
         fixtures = [
@@ -3941,7 +3960,36 @@ Only return the JSON array. No explanation, no markdown.
                                "bpm": layer.rate_bpm,
                                "size": layer.size,
                                "spread": layer.spread})
-        return {"fixtures": fixtures, "cuestacks": stacks, "fx": fx_active}
+        # Programmer contents (what's currently edited, not yet stored in a cue)
+        prog_data = {}
+        try:
+            for fid, vals in self._prog.data.items():
+                prog_data[fid] = {k: round(v, 3) for k, v in vals.items()}
+        except Exception:
+            pass
+        # Active executors
+        active_execs = []
+        if self._executor_pool:
+            for eid, ex in sorted(self._executor_pool.executors.items()):
+                if ex.is_active and ex.cuestack:
+                    cur  = ex.cuestack.current
+                    cue  = ex.cuestack.cues.get(cur) if cur is not None else None
+                    active_execs.append({
+                        "exec": eid,
+                        "cuestack": ex.cuestack.name,
+                        "current_cue": cur,
+                        "cue_name": cue.name if cue else None,
+                        "level": round(ex.level, 2),
+                        "priority": Executor.PRIORITY_LABELS.get(ex.priority, 'NRM'),
+                    })
+        return {
+            "fixtures": fixtures,
+            "cuestacks": stacks,
+            "fx": fx_active,
+            "programmer": prog_data,
+            "active_executors": active_execs,
+            "recent_commands": list(self._cmd_history),
+        }
 
     def ask(self, prompt, execute=True):
         """
@@ -3981,8 +4029,16 @@ Only return the JSON array. No explanation, no markdown.
                 if raw.startswith("json"):
                     raw = raw[4:]
             actions = json.loads(raw)
+            # Report token usage
+            try:
+                in_tok  = resp.usage.input_tokens
+                out_tok = resp.usage.output_tokens
+                if self._token_cb:
+                    self._token_cb(in_tok, out_tok)
+            except Exception:
+                in_tok = out_tok = 0
             if self._log:
-                self._log(f"AI → {len(actions)} action(s) for: {prompt[:60]}")
+                self._log(f"AI → {len(actions)} action(s)  [{in_tok}↑ {out_tok}↓ tok]")
                 for a in actions:
                     act = a.get("action", "?")
                     detail = ", ".join(f"{k}={v}" for k, v in a.items() if k != "action")
@@ -4050,6 +4106,23 @@ Only return the JSON array. No explanation, no markdown.
                             1, a.get("waveform", "sine"), a.get("channel", "red"),
                             rate_bpm=bpm, size=sz, targets=all_s, spread=sp
                         )
+                elif act in ("cue_fire", "goto_cue") and "num" in a:
+                    ex = self._executor_pool.get(a.get("stack", 1)) if self._executor_pool else None
+                    if ex:
+                        self._executor_pool.bump_priority(ex.exec_id)
+                        ex.goto(float(a["num"]), self._patch, self._fade)
+                elif act == "group_select":
+                    if self._cmd:
+                        self._cmd(f"GROUP {a['group']}")
+                elif act == "fx_stop":
+                    ch = a.get("channel")
+                    if ch and self._cmd:
+                        self._cmd(f"FX CLEAR {ch.upper()}")
+                    else:
+                        self._fx.clear()
+                elif act == "exec_level":
+                    if self._executor_pool and self._cmd:
+                        self._cmd(f"EXEC {a.get('exec', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
                 elif act == "fx_clear":
                     self._fx.clear()
                 elif act == "fade_time":
@@ -5993,6 +6066,13 @@ class GUIEngine:
                 for line in str(result).splitlines():
                     self._log(f"  {line}")
 
+        # Feed command into AI history for future context
+        if self._ai:
+            try:
+                self._ai.push_cmd_history(raw)
+            except Exception:
+                pass
+
     def _on_delete_key(self):
         # Only fire CLEAR when cmd_input is empty (so Delete still edits text normally)
         if dpg.get_value("cmd_input"):
@@ -6081,6 +6161,8 @@ class GUIEngine:
             dpg.add_text("ai prompt", color=_C_ACCENT)
             dpg.add_spacer(width=8)
             dpg.add_text("", tag="ai_status", color=_C_DIM)
+            dpg.add_spacer(width=8)
+            dpg.add_text("", tag="ai_tokens", color=_C_DIM)
         with dpg.group(horizontal=True):
             dpg.add_input_text(tag="ai_input", hint="describe the look...",
                                width=-120, on_enter=True,
@@ -6269,6 +6351,15 @@ class GUIEngine:
                 dpg.configure_item("ai_status", default_value="", color=_C_DIM)
             except Exception:
                 pass
+
+        # Install token display callback once
+        if self._ai and self._ai._token_cb is None:
+            def _tok_cb(in_t, out_t):
+                try:
+                    dpg.set_value("ai_tokens", f"↑{in_t} ↓{out_t} tok")
+                except Exception:
+                    pass
+            self._ai._token_cb = _tok_cb
 
         threading.Thread(target=_run, daemon=True).start()
 
