@@ -4177,6 +4177,11 @@ _C_P_CS      = ( 92, 250, 228, 255)  # aqua
 _C_P_CUES    = ( 92, 195, 255, 255)  # sky blue
 _C_P_FX      = (255, 180,  92, 255)  # peach orange
 _C_P_FORMS   = (150, 255, 168, 255)  # mint
+_C_P_POSITION = (180, 230, 255, 255)  # icy blue
+_C_P_GOBO    = (255, 210, 160, 255)  # warm sand
+_C_P_ZOOM    = (220, 255, 200, 255)  # pale lime
+_C_P_FOCUS   = (255, 200, 230, 255)  # blush
+_C_P_BEAM    = (200, 190, 255, 255)  # soft violet
 
 
 def _apply_theme():
@@ -4269,6 +4274,7 @@ class GUIEngine:
                  cue_pool=None, cuestack_pool=None, active_executor=None,
                  executor_pool=None, fx_pool=None, form_pool=None,
                  rate_pool=None, size_pool=None, spread_pool=None,
+                 attr_pools=None,
                  library=None, save_patch_fn=None, fx_params=None):
         self._midi       = midi
         self._fx         = fx_engine
@@ -4294,6 +4300,7 @@ class GUIEngine:
         self._rate_pool  = rate_pool
         self._size_pool  = size_pool
         self._spread_pool = spread_pool
+        self._attr_pools  = attr_pools or {}   # {name: AttributePool}
         self._library     = library
         self._fx_params   = fx_params
         self._save        = save_fn         # save_fn() → ShowFile.save()
@@ -4962,6 +4969,20 @@ class GUIEngine:
         dpg.add_spacer(height=4)
         # Row 3: Forms
         self._build_forms_panel()
+        dpg.add_spacer(height=4)
+        # Row 4: Attribute pools — position | gobo | zoom
+        with dpg.group(horizontal=True):
+            self._build_attr_pool_panel("position", _C_P_POSITION, "pos")
+            dpg.add_spacer(width=8)
+            self._build_attr_pool_panel("gobo",     _C_P_GOBO,     "gobo")
+            dpg.add_spacer(width=8)
+            self._build_attr_pool_panel("zoom",     _C_P_ZOOM,     "zoom")
+        dpg.add_spacer(height=4)
+        # Row 5: Attribute pools — focus | beam
+        with dpg.group(horizontal=True):
+            self._build_attr_pool_panel("focus", _C_P_FOCUS, "focus")
+            dpg.add_spacer(width=8)
+            self._build_attr_pool_panel("beam",  _C_P_BEAM,  "beam")
 
     def _build_group_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -5130,6 +5151,30 @@ class GUIEngine:
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_fx_click, user_data=n)
 
+    def _build_attr_pool_panel(self, attr_name, color, tag_prefix, slot_count=12):
+        """Compact 2-row attribute pool panel (12 slots = 2 rows × 6 cols)."""
+        _COLS = self._POOL_COLS
+        _ROWS = slot_count // _COLS
+        _H    = 26 + _ROWS * (self._BTN_H + 4)   # header + rows
+        with dpg.child_window(tag=f"pool_{tag_prefix}", width=self._PANEL_W,
+                              height=_H, border=True,
+                              no_scrollbar=True, no_scroll_with_mouse=True):
+            dpg.add_text(attr_name, color=color)
+            dpg.add_separator()
+            for row in range(_ROWS):
+                with dpg.group(horizontal=True):
+                    for col in range(_COLS):
+                        n = row * _COLS + col + 1
+                        dpg.add_button(
+                            tag=f"{tag_prefix}_btn_{n}",
+                            label=f"{attr_name[0].upper()}{n}",
+                            width=self._BTN_W, height=self._BTN_H,
+                            callback=self._on_attr_click,
+                            user_data=(attr_name, n))
+                        with dpg.tooltip(f"{tag_prefix}_btn_{n}"):
+                            dpg.add_text(f"{attr_name.title()} {n}",
+                                         tag=f"{tag_prefix}_tip_{n}")
+
     def _build_forms_panel(self):
         # Spans full width — 2 rows of 12 show all 24 slots without any scrolling.
         # Full row width = 3 × _PANEL_W + 2 × 8-spacer = 1876 px.
@@ -5173,6 +5218,20 @@ class GUIEngine:
         self._log("> CLEAR FX")
         if result:
             self._log(f"  {result}")
+        self._focus_cmd()
+
+    def _on_attr_click(self, _sender, _app_data, user_data):
+        attr_name, n = user_data
+        pool = self._attr_pools.get(attr_name) if self._attr_pools else None
+        if pool and pool.get(n):
+            if self._cmd:
+                result = self._cmd(f"{attr_name.upper()} {n}")
+                if result:
+                    self._log(f"  {result}")
+            self._log(f"> {attr_name.upper()} {n} — {pool.get(n).name}")
+        else:
+            self._log(f"> {attr_name.upper()} {n} is empty")
+            self._log(f"  To record: set value in programmer, then  RECORD {attr_name.upper()} {n} Name")
         self._focus_cmd()
 
     def _on_form_click(self, _sender, _app_data, user_data):
@@ -5265,6 +5324,24 @@ class GUIEngine:
                 dpg.set_item_label(f"fx_btn_{n}", lbl)
             except Exception:
                 pass
+
+        # Attribute pools (12 slots each)
+        _ATTR_SLOTS = 12
+        _ATTR_MAP = [
+            ("position", "pos"), ("gobo", "gobo"), ("zoom", "zoom"),
+            ("focus", "focus"), ("beam", "beam"),
+        ]
+        for attr_name, pfx in _ATTR_MAP:
+            pool = self._attr_pools.get(attr_name) if self._attr_pools else None
+            for n in range(1, _ATTR_SLOTS + 1):
+                p = pool.get(n) if pool else None
+                lbl = f"{n}:{p.name[:6]}" if p else f"{pfx[0].upper()}{n}"
+                try:
+                    dpg.set_item_label(f"{pfx}_btn_{n}", lbl)
+                    tip = f"{attr_name.title()} {n}: {p.name}" if p else f"{attr_name.title()} {n} — empty"
+                    dpg.set_value(f"{pfx}_tip_{n}", tip)
+                except Exception:
+                    pass
 
         # Forms (slots 1-24, matches _POOL_SLOTS)
         for n in range(1, self._POOL_SLOTS + 1):
@@ -7854,13 +7931,14 @@ focus_pool    = AttributePool("focus",    ["focus"])
 beam_pool     = AttributePool("beam",     ["iris", "shutter1", "strobe"])
 
 # Wire attribute pools into executor_pool now that they exist
-executor_pool.default_attr_pools = {
+_attr_pools = {
     "position": position_pool,
     "gobo":     gobo_pool,
     "zoom":     zoom_pool,
     "focus":    focus_pool,
     "beam":     beam_pool,
 }
+executor_pool.default_attr_pools = _attr_pools
 
 # ── Load all data files (migrate legacy file if present) ──
 ShowFile.load_fx(_fx_params)
@@ -10201,6 +10279,7 @@ gui = GUIEngine(
     rate_pool        = rate_pool,
     size_pool        = size_pool,
     spread_pool      = spread_pool,
+    attr_pools       = _attr_pools,
     library          = library,
     save_patch_fn    = lambda: ShowFile.save_patch(patch),
     fx_params        = _fx_params,

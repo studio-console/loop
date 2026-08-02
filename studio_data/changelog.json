@@ -122,6 +122,17 @@
         "_make_go_theme() creates a distinct amber/orange button theme for the GO ▶ button — visually separated from other purple buttons so it reads as the primary action.",
         "Both applied at build() time: font via dpg.bind_font(), GO theme via dpg.bind_item_theme('go_btn')."
       ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Attribute pool GUI panels: position, gobo, zoom, focus, beam",
+      "details": [
+        "Five attribute pool panels added to the pools section (rows 4-5): position | gobo | zoom (row 4), focus | beam (row 5).",
+        "Each panel shows 12 slots (2 rows × 6 cols, compact 68px height) with name labels and hover tooltips.",
+        "Clicking a filled slot fires the corresponding POSITION/GOBO/ZOOM/FOCUS/BEAM command; empty slots log a record hint.",
+        "_attr_pools dict extracted as a module-level var and passed to GUIEngine via attr_pools= kwarg.",
+        "_tick_pools updates all 5 pools' button labels and tooltips each tick."
+      ]
     }
   ]
 }
