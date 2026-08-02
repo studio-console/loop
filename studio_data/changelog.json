@@ -151,7 +151,15 @@
         "Global theme: added FrameBgActive (active input highlight) and alternating TableRowBgAlt so table rows have a subtle tint.",
         "Version bumped to v0.15."
       ]
-    }
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "FX LIST now shows active executor FX + executor assignments persist across restarts",
+      "details": [
+        "FX LIST command output now includes an 'Active executor FX' section listing each running executor's FX layers (waveform, channel, BPM, size). Previously only programmer FX and pool contents were shown.",
+        "Executor→cuestack assignments, level, priority, and trigger_mode now saved to studio_data/executors.json on every SAVE. Loaded at startup so GO works immediately after restart without re-running ASSIGN CS <n> TO EXEC <n>."
+      ]
+    },
     {
       "date": "2026-08-02",
       "summary": "MIDI startup hardened against missing MIDI backend entirely (not just missing device)",
