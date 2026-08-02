@@ -5482,12 +5482,13 @@ class GUIEngine:
                         brH  = min(255, int(lv * 255))
                         with dpg.theme() as _dth:
                             with dpg.theme_component(dpg.mvButton):
+                                # violet-tinted brightness scale: dark resting → vivid violet active
                                 dpg.add_theme_color(dpg.mvThemeCol_Button,
-                                                    (br//3, br//3, br//2, 255))
+                                                    (br//5, br//6, br//2, 255))
                                 dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,
-                                                    (brH//2, brH//2, brH, 255))
+                                                    (brH//3, brH//5, brH, 255))
                                 dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,
-                                                    (brH, brH, 255, 255))
+                                                    (min(220, int(brH*0.85)), min(180, int(brH*0.55)), 255, 255))
                         dpg.bind_item_theme(f"dim_btn_{n}", _dth)
                         self._dim_btn_themes[n] = (lv, _dth)
                     except Exception:
@@ -6831,7 +6832,7 @@ class GUIEngine:
             with dpg.table_row(tag=row_tag, parent="midi_table"):
                 dpg.add_text(str(ch))
                 dpg.add_text(str(note))
-                dpg.add_text("Note", color=(160, 160, 230, 255))
+                dpg.add_text("Note", color=_C_P_BEAM)
                 dpg.add_text(m.name, tag=f"mr_name_note_{ch}_{note}")
                 dpg.add_text("—")
                 dpg.add_button(label="del",
