@@ -5894,6 +5894,7 @@ class GUIEngine:
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack copy"),
                 ("DELETE CUE 3",          "Delete cue 3 from active cuestack (saves show)"),
                 ("DELETE CUE 3 CS 2",     "Delete cue 3 from cuestack 2"),
+                ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
                 ("CUE 5 FADE 2 DELAY 1",  "Set fade + delay"),
                 ("CUE 5 FADE 2 DFADE 5",  "Global fade + dim-only fade override"),
@@ -10396,6 +10397,50 @@ def run_command(cmd_str):
     _TIMING_KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY',
                   'CFADE', 'CINFADE', 'DFADE', 'DINFADE', 'CDELAY', 'DDELAY'}
     _has_timing = bool(_TIMING_KW & set(tokens))
+
+    # CUE <n> SHOW / INFO — inspect cue contents without firing it
+    if t0 == 'CUE' and len(tokens) >= 3 and tokens[2] in ('SHOW', 'INFO', 'PRINT'):
+        try:
+            cue_num = float(tokens[1])
+        except ValueError:
+            return f"CUE: bad cue number '{tokens[1]}'"
+        cs = _active_stack()
+        if not cs:
+            return "CUE: no active cuestack"
+        cue = cs.cues.get(cue_num)
+        if not cue:
+            return f"Cue {cue_num} not found in active cuestack"
+        lines = [f"Cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s"]
+        # Gather master-level keys (dim, fx) and sub-fixture RGB
+        masters = {}; subs = {}
+        for fid, vals in cue.data.items():
+            if '.' in str(fid):
+                subs[fid] = vals
+            else:
+                masters[fid] = vals
+        for fid, vals in sorted(masters.items()):
+            parts = []
+            if 'dim' in vals:
+                parts.append(f"dim:{vals['dim']:.0%}")
+            fx_defs = vals.get('fx', [])
+            if fx_defs:
+                for ld in fx_defs:
+                    parts.append(f"FX:{ld.get('waveform','?')} {ld.get('channel','?')} {ld.get('bpm',60):.0f}BPM")
+            if parts:
+                lines.append(f"  Fixture {fid}: {', '.join(parts)}")
+        # Sub-fixture RGB — show unique colors only
+        color_map = {}
+        for fid, vals in subs.items():
+            r = vals.get('red', 0); g = vals.get('green', 0); b = vals.get('blue', 0)
+            color_map.setdefault((r, g, b), []).append(fid)
+        for (r, g, b), fids in sorted(color_map.items()):
+            if r == 0 and g == 0 and b == 0:
+                continue
+            sample = fids[0]
+            lines.append(f"  Pixel {sample} (+{len(fids)-1} others): R{r} G{g} B{b}")
+        if len(lines) == 1:
+            lines.append("  (empty — no data recorded)")
+        return "\n".join(lines)
 
     if _has_timing and t0 == 'CUE' and len(tokens) >= 3:
         try:
