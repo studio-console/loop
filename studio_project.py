@@ -3379,6 +3379,7 @@ class OutputState:
         self.audio_layer      = {}
         self.executor_pool    = None   # set via link_executor_pool()
         self.master_level     = 1.0   # grand master fader (0.0–1.0)
+        self.blind            = False  # when True, programmer layer is suppressed from DMX output
         self._lock            = threading.Lock()
 
     def link_programmer(self, programmer):
@@ -3405,9 +3406,10 @@ class OutputState:
         with self._lock:
             cue_merged = self._merged_cue_layer()
 
+            _blind_prog = self.blind
             for master in self.patch.all_fixtures():
                 master_fid   = str(master.fixture_id)
-                prog_master  = self.programmer_layer.get(master_fid, {})
+                prog_master  = {} if _blind_prog else self.programmer_layer.get(master_fid, {})
                 cue_master   = cue_merged.get(master_fid, {})
                 audio_master = self.audio_layer.get(master_fid, {})
 
@@ -3442,7 +3444,7 @@ class OutputState:
 
                 for sub in master.all_subs():
                     fid        = str(sub.fixture_id)
-                    prog_vals  = self.programmer_layer.get(fid, {})
+                    prog_vals  = {} if _blind_prog else self.programmer_layer.get(fid, {})
                     audio_vals = self.audio_layer.get(fid, {})
                     cue_vals   = cue_merged.get(fid, {})
                     fx_vals    = {} if _fx_kill else self.fx_layer.get(fid, {})
@@ -4510,6 +4512,8 @@ class GUIEngine:
         with dpg.group(horizontal=True):
             dpg.add_text("●", tag="sb_prog_dot",   color=_C_DIM)
             dpg.add_text("PROGRAMMER", tag="sb_prog_lbl", color=_C_DIM)
+            dpg.add_spacer(width=20)
+            dpg.add_text("BLIND", tag="sb_blind_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
             dpg.add_text("PT", tag="sb_pt_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
@@ -5932,6 +5936,8 @@ class GUIEngine:
             ("programmer", [
                 ("CLEAR",                 "Clear selection (tap 1) then programmer (tap 2)"),
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
+                ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
+                ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
                 ("SAVE",                  "Save entire show to studio_data/"),
                 ("CLONE 1 TO 7",          "Copy fixture 1's presets / cue data to fixture 7"),
                 ("CLONE 1 TO 7 THRU 9",   "Clone to a range of destinations"),
@@ -7029,6 +7035,16 @@ class GUIEngine:
                 dpg.configure_item("sb_prog_dot", color=_C_DIM)
                 dpg.configure_item("sb_prog_lbl", color=_C_DIM)
                 dpg.set_value("sb_prog_lbl", "programmer  clear")
+        except Exception:
+            pass
+
+        # BLIND indicator
+        try:
+            blind = self._out.blind if self._out else False
+            _blind_col  = (255, 60, 60, 255)   # red when active — important warning
+            dpg.configure_item("sb_blind_lbl",
+                               color=_blind_col if blind else _C_DIM)
+            dpg.set_value("sb_blind_lbl", "■ BLIND" if blind else "blind")
         except Exception:
             pass
 
@@ -10144,6 +10160,15 @@ def run_command(cmd_str):
         save_show()
         dst_label = dst_ids[0] if len(dst_ids) == 1 else f"{dst_ids[0]}–{dst_ids[-1]}"
         return f"Cloned fixture {src_id} → {dst_label}  ({len(dst_ids)} dest, show saved)"
+
+    # ── Blind mode ───────────────────────────────────────────
+    if t0 == 'BLIND':
+        output_state.blind = True
+        return "BLIND mode ON — programmer suppressed from DMX output"
+
+    if t0 == 'LIVE':
+        output_state.blind = False
+        return "LIVE mode — programmer active in output"
 
     # ── Save ─────────────────────────────────────────────────
     if t0 == 'SAVE':
