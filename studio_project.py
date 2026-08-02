@@ -4200,19 +4200,19 @@ _C_BTN_A     = (98,  64, 182, 255)  # active — punchy violet
 _C_CUE_ACT   = (32,  22,  70, 255)  # selected cue row
 _C_SLIDER_G  = _C_ACCENT
 
-# Rainbow pool panel header colours
-_C_P_GROUPS  = (188, 150, 255, 255)  # lavender
-_C_P_COLORS  = (255, 150, 198, 255)  # rose
-_C_P_DIMS    = (255, 230,  92, 255)  # butter yellow
-_C_P_CS      = ( 92, 250, 228, 255)  # aqua
-_C_P_CUES    = ( 92, 195, 255, 255)  # sky blue
-_C_P_FX      = (255, 180,  92, 255)  # peach orange
-_C_P_FORMS   = (150, 255, 168, 255)  # mint
-_C_P_POSITION = (180, 230, 255, 255)  # icy blue
-_C_P_GOBO    = (255, 210, 160, 255)  # warm sand
-_C_P_ZOOM    = (220, 255, 200, 255)  # pale lime
-_C_P_FOCUS   = (255, 200, 230, 255)  # blush
-_C_P_BEAM    = (200, 190, 255, 255)  # soft violet
+# Pool panel header colours — violet family, varied lightness/hue for readability
+_C_P_GROUPS  = (160, 120, 255, 255)  # mid violet
+_C_P_COLORS  = (210,  98, 220, 255)  # pink-violet
+_C_P_DIMS    = (180, 160, 255, 255)  # pale lavender
+_C_P_CS      = (110, 190, 255, 255)  # cool blue-violet
+_C_P_CUES    = ( 92, 162, 240, 255)  # muted sky
+_C_P_FX      = (200, 130, 255, 255)  # bright violet
+_C_P_FORMS   = (140, 200, 255, 255)  # icy periwinkle
+_C_P_POSITION = (130, 155, 255, 255)  # blue-violet
+_C_P_GOBO    = (175, 130, 255, 255)  # medium violet
+_C_P_ZOOM    = (155, 175, 255, 255)  # blue-lavender
+_C_P_FOCUS   = (210, 140, 255, 255)  # light violet-pink
+_C_P_BEAM    = (145, 120, 230, 255)  # dim violet
 
 
 def _apply_theme():
@@ -4951,19 +4951,19 @@ class GUIEngine:
                     dpg.draw_rectangle(
                         pmin=(0, 0), pmax=(1, 1),
                         tag=f"stage_rect_{i}",
-                        fill=(20, 16, 42, 255),
-                        color=(68, 50, 108, 255),
+                        fill=(8, 6, 18, 255),
+                        color=(38, 26, 78, 255),
                         thickness=1,
                     )
                     dpg.draw_text(
                         pos=(0, 0), tag=f"stage_lbl_{i}",
-                        text="", color=(218, 202, 255, 255), size=14,
+                        text="", color=_C_TEXT, size=14,
                     )
                     for j in range(len(master.sub_fixtures)):
                         dpg.draw_rectangle(
                             pmin=(0, 0), pmax=(1, 1),
                             tag=f"stage_sub_{i}_{j}",
-                            fill=(20, 16, 42, 255),
+                            fill=(8, 6, 18, 255),
                             color=(0, 0, 0, 0), thickness=0,
                         )
 
@@ -5028,7 +5028,7 @@ class GUIEngine:
                     r = max(0, min(255, int(r * dim * gm)))
                     g = max(0, min(255, int(g * dim * gm)))
                     b = max(0, min(255, int(b * dim * gm)))
-            fill = (r, g, b, 255) if (r or g or b) else (28, 22, 52, 255)
+            fill = (r, g, b, 255) if (r or g or b) else (8, 6, 18, 255)
             try:
                 dpg.configure_item(f"stage_rect_{i}", pmin=(x0, gap), pmax=(x1, gap + mh), fill=fill)
                 dpg.configure_item(f"stage_lbl_{i}",  pos=(x0 + 4, gap + 14), text=master.name[:10])
@@ -5073,7 +5073,7 @@ class GUIEngine:
                 sr  = max(0, min(255, int(sr  * sdim * gm)))
                 sg  = max(0, min(255, int(sg  * sdim * gm)))
                 sb2 = max(0, min(255, int(sb2 * sdim * gm)))
-                sfill = (sr, sg, sb2, 255) if (sr or sg or sb2) else (20, 16, 42, 255)
+                sfill = (sr, sg, sb2, 255) if (sr or sg or sb2) else (8, 6, 18, 255)
                 try:
                     dpg.configure_item(f"stage_sub_{i}_{j}",
                                        pmin=(sx0, sy0), pmax=(sx0 + dot, sy0 + dot),
