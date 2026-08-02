@@ -77,6 +77,14 @@
         "Keyboard shortcut popup updated: FX COLOR, GROUP, DIMREF, FIRE FX GROUP, FX LIST, CLONE, OSC commands all documented.",
         "Cue pool buttons now show a tooltip with cue name, fade time, and delay time on hover."
       ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Active playbacks: FLASH hold button + cue timing editor",
+      "details": [
+        "Each active executor row in the playbacks panel now has a 'flash' button. Hold it to fire EXEC n FLASH ON; release fires EXEC n FLASH OFF — detected via dpg.is_item_active() polling each tick, so it behaves as press-and-hold without requiring a separate release callback.",
+        "New 'cue timing' section in left column: two drag_float sliders (Fade s / Dly s) for the currently active cue. Dragging updates the cue in real time via CUE n FADE x and CUE n DELAY y commands. Sliders sync to the active cue on each tick but freeze while the user is dragging."
+      ]
     }
   ]
 }

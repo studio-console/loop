@@ -4204,6 +4204,8 @@ class GUIEngine:
         self._cmd_history = []         # entered commands for ↑↓ recall
         self._cmd_hist_i  = -1        # history cursor
 
+        self._flash_held  = {}         # {exec_id: bool} — tracks held state of FLASH buttons
+
         self._learn_pending      = None    # (ch, number) captured by learn
         self._learn_target       = None    # display name chosen in dropdown
         self._learn_type         = 'cc'    # 'cc' or 'note'
@@ -4373,7 +4375,24 @@ class GUIEngine:
                                   border=False, no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
 
-            dpg.add_spacer(height=4)
+            dpg.add_spacer(height=2)
+            # ── Cue timing editor ────────────────
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_text("cue timing", color=_C_DIM)
+                dpg.add_spacer(width=4)
+                dpg.add_text("—", tag="cue_timing_label", color=_C_DIM)
+            _tw = _W - 96
+            dpg.add_drag_float(tag="cue_fade_input", label="Fade s",
+                               default_value=0.0, min_value=0.0, max_value=30.0,
+                               speed=0.05, format="%.2f", width=_tw,
+                               callback=self._on_cue_fade_edit)
+            dpg.add_drag_float(tag="cue_delay_input", label="Dly  s",
+                               default_value=0.0, min_value=0.0, max_value=30.0,
+                               speed=0.05, format="%.2f", width=_tw,
+                               callback=self._on_cue_delay_edit)
+
+            dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
             dpg.add_text("fx", color=_C_ACCENT)
             dpg.add_separator()
@@ -6382,6 +6401,8 @@ class GUIEngine:
                 dpg.add_button(label=pri_label, width=40, height=18,
                                callback=self._on_priority_cycle,
                                user_data=ex.exec_id)
+                dpg.add_button(label="flash", tag=f"flash_btn_{ex.exec_id}",
+                               width=40, height=18)
                 dpg.add_button(label="stop", width=46, height=18,
                                callback=self._on_stop_executor,
                                user_data=ex.exec_id)
@@ -6416,6 +6437,25 @@ class GUIEngine:
                 if ex.is_active:
                     ex.stop()
         self._last_playbacks_hash = None   # force rebuild next tick
+
+    def _cue_timing_target(self):
+        """Return (CueStack, Cue) for the currently active cue, or (None, None)."""
+        active_n = self._active_executor[0] if self._active_executor else 1
+        cs = self._cuestack_pool.get(active_n) if self._cuestack_pool else None
+        if not cs or cs.current is None:
+            return None, None
+        cue = cs.cues.get(cs.current)
+        return cs, cue
+
+    def _on_cue_fade_edit(self, _sender, value, _user_data):
+        _, cue = self._cue_timing_target()
+        if cue and self._cmd:
+            self._cmd(f"CUE {cue.cue_number} FADE {value:.2f}")
+
+    def _on_cue_delay_edit(self, _sender, value, _user_data):
+        _, cue = self._cue_timing_target()
+        if cue and self._cmd:
+            self._cmd(f"CUE {cue.cue_number} DELAY {value:.2f}")
 
     _tick_first = True   # sync one-shot values on first tick
 
@@ -6511,6 +6551,37 @@ class GUIEngine:
             except Exception:
                 pass
 
+        # FLASH button hold detection — poll is_item_active per active executor
+        if self._executor_pool and self._cmd:
+            active_eids = {
+                eid for eid, ex in self._executor_pool.executors.items()
+                if ex.is_active and ex.cuestack
+            }
+            for eid in list(self._flash_held):
+                if eid not in active_eids:
+                    if self._flash_held.pop(eid, False):
+                        try:
+                            self._cmd(f"EXEC {eid} FLASH OFF")
+                        except Exception:
+                            pass
+            for eid in active_eids:
+                try:
+                    held = dpg.is_item_active(f"flash_btn_{eid}")
+                except Exception:
+                    held = False
+                was_held = self._flash_held.get(eid, False)
+                if held and not was_held:
+                    try:
+                        self._cmd(f"EXEC {eid} FLASH ON")
+                    except Exception:
+                        pass
+                elif not held and was_held:
+                    try:
+                        self._cmd(f"EXEC {eid} FLASH OFF")
+                    except Exception:
+                        pass
+                self._flash_held[eid] = held
+
         # Active stack — refresh left column when executor changes
         active_n = self._active_executor[0] if self._active_executor else 1
         active_cs   = self._cuestack_pool.get(active_n) if self._cuestack_pool else None
@@ -6533,6 +6604,20 @@ class GUIEngine:
                 dpg.set_value("hdr_cue", f"▶  Cue {cur:.0f}: {name}")
             else:
                 dpg.set_value("hdr_cue", "▶  (none)")
+        except Exception:
+            pass
+
+        # Cue timing editor — sync drag floats to active cue's fade/delay
+        try:
+            _, cue_t = self._cue_timing_target()
+            if cue_t:
+                dpg.set_value("cue_timing_label", f"Cue {cue_t.cue_number} — {cue_t.name[:14]}")
+                if not dpg.is_item_active("cue_fade_input"):
+                    dpg.set_value("cue_fade_input", cue_t.fade_time)
+                if not dpg.is_item_active("cue_delay_input"):
+                    dpg.set_value("cue_delay_input", cue_t.delay_time)
+            else:
+                dpg.set_value("cue_timing_label", "—")
         except Exception:
             pass
 
