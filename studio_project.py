@@ -4950,6 +4950,8 @@ class GUIEngine:
                             tag=f"cue_btn_{n}", label=f"{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_cue_click, user_data=n)
+                        with dpg.tooltip(f"cue_btn_{n}"):
+                            dpg.add_text(f"Cue {n}", tag=f"cue_tip_{n}")
 
     def _on_cuestack_click(self, _sender, _app_data, user_data):
         n = user_data
@@ -5105,10 +5107,15 @@ class GUIEngine:
             cue = active_cs.cues.get(float(n)) if active_cs else None
             if cue:
                 lbl = f"{n}:{cue.name[:5]}" + (" ◀" if n == current_cue else "")
+                ft_s  = f"  fade {cue.fade_time}s" if cue.fade_time  else ""
+                dt_s  = f"  delay {cue.delay_time}s" if cue.delay_time else ""
+                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}" if (ft_s or dt_s) else f"Cue {n}: {cue.name}"
             else:
                 lbl = f"{n}"
+                tip = f"Cue {n} — empty"
             try:
                 dpg.set_item_label(f"cue_btn_{n}", lbl)
+                dpg.configure_item(f"cue_tip_{n}", default_value=tip)
             except Exception:
                 pass
 
@@ -5442,8 +5449,15 @@ class GUIEngine:
                 ("SIZE 100",              "Set global FX size (0–100)"),
                 ("SPREAD 50",             "Set global FX spread (0–100)"),
                 ("FX FORM 5",             "Set waveform to Form Pool slot 5"),
+                ("FX COLOR 3",            "Drive R/G/B from Color Preset 3 (sine default)"),
+                ("FX RAMP COLOR 3",       "Ramp waveform toward Color Preset 3's hue"),
+                ("FX SINE RED GROUP 2",   "Sine red on Group 2 fixtures only"),
+                ("FX SINE RED DIMREF 1",  "Size ceiling: live from Dim Preset 1's level"),
                 ("FIRE FX 3",             "Load FX preset 3 into programmer"),
-                ("CLEAR FX",              "Clear FX from programmer (keep colour/dim)"),
+                ("FIRE FX 3 GROUP 2",     "Fire preset 3, override target to group 2"),
+                ("FX LIST",               "Show all programmer FX defs + pool contents"),
+                ("FX CLEAR RED",          "Clear red-channel FX from programmer"),
+                ("CLEAR FX",              "Clear all FX from programmer (keep colour/dim)"),
                 ("KILL FX",               "Stop all running FX immediately"),
             ]),
             ("RECORD", [
@@ -5501,6 +5515,15 @@ class GUIEngine:
                 ("CLEAR",                 "Clear selection (tap 1) then programmer (tap 2)"),
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
                 ("SAVE",                  "Save entire show to studio_data/"),
+                ("CLONE 1 TO 7",          "Copy fixture 1's presets / cue data to fixture 7"),
+                ("CLONE 1 TO 7 THRU 9",   "Clone to a range of destinations"),
+            ]),
+            ("OSC", [
+                ("OSC TARGET name host port", "Add an OSC output target"),
+                ("OSC REMOVE name",        "Remove a named OSC target"),
+                ("OSC LIST",               "Show all targets + last received message"),
+                ("OSC SEND /gma3/cmd GOTO_CUE_1", "Manually send an OSC message"),
+                ("OSC MONITOR",            "Print incoming OSC for 10 s (port 8001)"),
             ]),
             ("KEYBOARD", [
                 ("↑  /  ↓",               "Scroll command history"),

@@ -9,7 +9,7 @@
         "target_scope lets any channel (not just dim) chase per-whole-fixture or per-individual-pixel across multiple tubes.",
         "Dim FX can now drive individual pixels independently, not just whole fixtures.",
         "Merged duplicated FX-bucketing logic (cue playback + programmer preview) into one shared _bucket_fx_defs().",
-        "All new params default to the exact old behavior (block_size=1, order=linear, direction=forward) — existing saved shows are unaffected.",
+        "All new params default to the exact old behavior (block_size=1, order=linear, direction=forward) \u2014 existing saved shows are unaffected.",
         "FXPreset/fx_pool.json and cuestacks.json updated to persist the new fields."
       ]
     },
@@ -24,7 +24,7 @@
       "date": "2026-08-02",
       "summary": "Added STUDIO_DRY_RUN / STUDIO_HEADLESS environment switches",
       "details": [
-        "STUDIO_DRY_RUN=1 runs the full FX/cue/output pipeline without opening a real sACN socket — nothing is sent to the fixtures.",
+        "STUDIO_DRY_RUN=1 runs the full FX/cue/output pipeline without opening a real sACN socket \u2014 nothing is sent to the fixtures.",
         "STUDIO_HEADLESS=1 skips the GUI window and runs a scripted smoke test instead, for unattended/automated testing.",
         "Smoke test exercises the FX -> RECORD CUE -> GO -> verify-FX-fires path this file's own doc comments had flagged as written but untested."
       ]
@@ -33,18 +33,18 @@
       "date": "2026-08-02",
       "summary": "Fixed: headless test runs were writing into the real show files",
       "details": [
-        "First smoke-test run recorded a real 'Cue 5.0 Off' into the actual Cuestack 1 and cleared a pending 'FX FORM 8' the user had queued interactively — caught by diffing against the auto-generated .bak files and restored from them.",
+        "First smoke-test run recorded a real 'Cue 5.0 Off' into the actual Cuestack 1 and cleared a pending 'FX FORM 8' the user had queued interactively \u2014 caught by diffing against the auto-generated .bak files and restored from them.",
         "STUDIO_HEADLESS now redirects DATA_DIR to a fresh temp folder before any file is loaded, so RECORD/GO/save_show during automated runs can never touch studio_data/*.json.",
-        "STUDIO_DRY_RUN alone (GUI still open, manual use) intentionally still loads the real show — isolation only applies to unattended STUDIO_HEADLESS runs."
+        "STUDIO_DRY_RUN alone (GUI still open, manual use) intentionally still loads the real show \u2014 isolation only applies to unattended STUDIO_HEADLESS runs."
       ]
     },
     {
       "date": "2026-08-02",
       "summary": "Executors: pages for organizing slots + flash (hold) trigger mode",
       "details": [
-        "PAGE <n> NAME <name>, PAGE <n> ADD|REMOVE EXEC <m>, PAGE LIST — purely organizational grouping of executor slots, doesn't affect playback. Persisted to executor_pages.json.",
-        "EXEC <n> MODE TOGGLE|FLASH sets how an executor is meant to be triggered (informational for now — GUI/MIDI wiring to actually use this comes in the GUI pass).",
-        "EXEC <n> FLASH ON|OFF fires a cue instantly (0s crossfade, reusing the existing per-executor time-override mechanism) and releases it fully on OFF — usable independent of trigger_mode, e.g. from a MIDI note's on/off callbacks the same way the existing 'Flash White' pad mapping already works.",
+        "PAGE <n> NAME <name>, PAGE <n> ADD|REMOVE EXEC <m>, PAGE LIST \u2014 purely organizational grouping of executor slots, doesn't affect playback. Persisted to executor_pages.json.",
+        "EXEC <n> MODE TOGGLE|FLASH sets how an executor is meant to be triggered (informational for now \u2014 GUI/MIDI wiring to actually use this comes in the GUI pass).",
+        "EXEC <n> FLASH ON|OFF fires a cue instantly (0s crossfade, reusing the existing per-executor time-override mechanism) and releases it fully on OFF \u2014 usable independent of trigger_mode, e.g. from a MIDI note's on/off callbacks the same way the existing 'Flash White' pad mapping already works.",
         "Both verified via the STUDIO_HEADLESS smoke test (now 8/8 checks) plus a real dry-run: FLASH ON produced a 0.0s override crossfade vs. the cue's normal 2.0s."
       ]
     },
@@ -52,10 +52,30 @@
       "date": "2026-08-02",
       "summary": "GUI: manual popup extended, new changelog popup, MIDI flash-learn, partial sizing fix",
       "details": [
-        "The existing '?' button popup already was a sectioned command reference (manual/glossary) — extended it with the new FX distribution commands and EXEC/PAGE commands instead of building a duplicate.",
+        "The existing '?' button popup already was a sectioned command reference (manual/glossary) \u2014 extended it with the new FX distribution commands and EXEC/PAGE commands instead of building a duplicate.",
         "Added a separate 'log' button/popup reading this changelog.json live and showing newest-first, per the user's request for two distinct popups.",
         "Wired executor flash into MIDI: a new 'flash an executor while a pad is held' section in the MIDI popup lets you learn a note for EXEC <n> FLASH ON/OFF as a real on/off pad mapping, reusing the existing off_callback-capable MIDI-learn path. Dynamic targets ('Exec N Flash') regenerate correctly on restart, same pattern as the existing 'GO CS N CUE M' dynamic targets.",
-        "PARTIAL FIX, flagged for user verification: viewport was hardcoded 1920x1080 non-resizable at (0,0) — on this machine's actual 1920x1080 display, macOS's menu bar alone would push the bottom of that off-screen. Made viewport resizable, trimmed default height to 1040, and (more importantly) enabled scrolling on the main window and the manual popup, both of which had no_scrollbar=True — meaning any content overflow was being silently clipped with no way to reach it. Could not visually verify the actual rendered result (no display/screenshot access in this environment) — asked the user to confirm what's still cut off, if anything."
+        "PARTIAL FIX, flagged for user verification: viewport was hardcoded 1920x1080 non-resizable at (0,0) \u2014 on this machine's actual 1920x1080 display, macOS's menu bar alone would push the bottom of that off-screen. Made viewport resizable, trimmed default height to 1040, and (more importantly) enabled scrolling on the main window and the manual popup, both of which had no_scrollbar=True \u2014 meaning any content overflow was being silently clipped with no way to reach it. Could not visually verify the actual rendered result (no display/screenshot access in this environment) \u2014 asked the user to confirm what's still cut off, if anything."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "FX tree references: COLOR, GROUP, DIMREF",
+      "details": [
+        "FX COLOR n drives all three RGB channels from ColorPreset n. Waveform controls pulse intensity toward that color.",
+        "FX SINE RED GROUP n targets only fixtures in GroupPool slot n instead of the programmer selection. Works on FIRE FX too: FIRE FX 3 GROUP 2.",
+        "FX SINE RED DIMREF n sets a live amplitude ceiling from DimmerPreset n. Change the preset level and the FX responds immediately with no re-fire.",
+        "RECORD FX saves color_id, dim_id, and group_id into the pool preset so references survive save/load.",
+        "_expand_color_fx and _expand_group_fx helpers resolve references before _bucket_fx_defs, keeping all existing behavior unchanged.",
+        "dim_pool wired into FXEngine and ExecutorPool so the DIMREF ceiling is available everywhere."
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "Command reference + cue button tooltips",
+      "details": [
+        "Keyboard shortcut popup updated: FX COLOR, GROUP, DIMREF, FIRE FX GROUP, FX LIST, CLONE, OSC commands all documented.",
+        "Cue pool buttons now show a tooltip with cue name, fade time, and delay time on hover."
       ]
     }
   ]
