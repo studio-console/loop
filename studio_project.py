@@ -9416,6 +9416,19 @@ def run_command(cmd_str):
                                      f"BPM={ld.get('bpm',60)} size={ld.get('size',200)}{dist_s}")
             else:
                 lines.append("Programmer FX: (none)")
+            # Active executor FX
+            exec_fx_lines = []
+            for eid, ex in sorted(executor_pool.executors.items()):
+                if ex.is_active and ex._fx_ids and ex.fx_engine:
+                    for fxid in ex._fx_ids:
+                        layer = ex.fx_engine._layers.get(fxid)
+                        if layer:
+                            exec_fx_lines.append(
+                                f"  Exec {eid}: {layer.waveform} {layer.channel} "
+                                f"BPM={layer.rate_bpm:.0f} size={layer.size:.0f}")
+            if exec_fx_lines:
+                lines.append("Active executor FX:")
+                lines.extend(exec_fx_lines)
             # FX pool
             if fx_pool.presets:
                 lines.append("Pool:")
