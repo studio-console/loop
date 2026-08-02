@@ -5252,8 +5252,11 @@ class GUIEngine:
             cs = self._cuestack_pool.get(n)
             self._log(f"> CUESTACK {n}  selected — {cs.name}")
         else:
-            self._log(f"> CUESTACK {n} is empty")
-            self._log(f"  To create: RECORD CUESTACK {n} My Show")
+            self._log(f"> CUESTACK {n} is empty — name it to create:")
+            try:
+                dpg.set_value("cmd_input", f"RECORD CUESTACK {n} ")
+            except Exception:
+                pass
         self._focus_cmd()
 
     def _on_cue_click(self, _sender, _app_data, user_data):
