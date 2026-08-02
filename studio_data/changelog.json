@@ -141,6 +141,16 @@
         "_make_back_theme() adds a distinct muted blue to the BACK ◀ button — GO is amber, BACK is blue, all other buttons remain default purple.",
         "Cue list in the left column now shows fade time inline after the cue name (e.g. '[3]  Intro  2.0s') so timing is visible without hovering."
       ]
+    },
+    {
+      "date": "2026-08-02",
+      "summary": "MIDI startup hardened against missing MIDI backend entirely (not just missing device)",
+      "details": [
+        "Found while re-verifying the headless smoke test in a fresh container: MIDIEngine.list_ports() and start() both called mido.get_input_names() unguarded. That call raises an rtmidi-internal exception (not OSError/IOError, so the existing 'no port found' handling didn't catch it) when there's no ALSA/CoreMIDI backend available at all — e.g. a container with no /dev/snd/seq — as opposed to a backend that's present but has zero devices plugged in. Previously this crashed the whole app at import time, before the GUI or dry-run pipeline ever started.",
+        "Both call sites now catch broadly and print a 'MIDI backend unavailable' message, continuing without MIDI — same fallback behavior as the existing 'no device plugged in' and 'bad port index' cases.",
+        "STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 smoke test: 8/8 passing after the fix.",
+        "Note for the user, not a decision that needs one: this session also attempted the same 'Attribute pool GUI panels' roadmap item and found another session had already landed it (commits 887b10f/de4f3e9) with a different design — 5 always-visible panel rows in the main pools section rather than a popup. Discarded the duplicate rather than merge two designs. Flagging a real but unverified risk in that landed design: rows 4-5 add roughly two more 78px panel rows (~160px) to the main window's stacked content, on top of a layout that a prior session already flagged as tight for 1920x1080 (see the 'partial sizing fix' entry above, also unverified for the same reason — no display/screenshot access in this environment). The main window already has scrolling enabled as a fallback so this shouldn't crash or clip unreachably, but it likely means a visible scrollbar now where the roadmap goal was none. Worth a visual check next time the console runs on a real screen."
+      ]
     }
   ]
 }

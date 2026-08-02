@@ -3559,7 +3559,15 @@ class MIDIEngine:
     @staticmethod
     def list_ports():
         print("\n===== MIDI INPUT PORTS =====")
-        ports = mido.get_input_names()
+        try:
+            ports = mido.get_input_names()
+        except Exception as e:
+            # No ALSA/CoreMIDI/etc. backend at all (e.g. a container with no
+            # /dev/snd/seq) raises here, not just when no device is plugged in —
+            # rtmidi's own exception types aren't OSError/IOError subclasses.
+            print(f"  (MIDI backend unavailable: {e})")
+            print("============================\n")
+            return []
         if not ports:
             print("  (none found)")
         for i, name in enumerate(ports):
@@ -3574,7 +3582,11 @@ class MIDIEngine:
         port=int   selects by index from list_ports().
         port=str   selects by name.
         """
-        names = mido.get_input_names()
+        try:
+            names = mido.get_input_names()
+        except Exception as e:
+            print(f"MIDI backend unavailable ({e}) — running without MIDI.")
+            return
         if not names:
             print("No MIDI input ports found — is the Axiom plugged in?")
             return
