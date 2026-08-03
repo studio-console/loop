@@ -4404,6 +4404,7 @@ class GUIEngine:
                     "pos":    list(cfg.get("pos",    [100, 100])),
                     "width":  int(cfg.get("width",   700)),
                     "height": int(cfg.get("height",  400)),
+                    "show":   bool(dpg.is_item_shown(tag)),
                 }
             except Exception:
                 pass
@@ -4414,6 +4415,13 @@ class GUIEngine:
         except Exception:
             pass
 
+    # Popups that need a data refresh before they can be shown
+    _POPUP_REFRESH = {
+        "changelog_window": "_refresh_changelog_popup",
+        "patch_window":     "_refresh_patch_table",
+        "pages_window":     "_refresh_pages_table",
+    }
+
     def _load_popup_layout(self):
         try:
             with open(self._POPUP_LAYOUT_FILE) as f:
@@ -4422,6 +4430,11 @@ class GUIEngine:
                 try:
                     dpg.configure_item(tag, pos=cfg["pos"],
                                        width=cfg["width"], height=cfg["height"])
+                    if cfg.get("show"):
+                        refresh = self._POPUP_REFRESH.get(tag)
+                        if refresh:
+                            getattr(self, refresh)()
+                        dpg.show_item(tag)
                 except Exception:
                     pass
         except Exception:
