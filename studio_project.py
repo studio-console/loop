@@ -1753,6 +1753,7 @@ class Executor:
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
                 dim_id       = ld.get('dim_id'),
+                speed_id     = ld.get('speed_id'),
                 infade       = infade,
                 outfade      = ld.get('outfade',       0.0),
                 block_size   = ld.get('block_size',      1),
@@ -1933,7 +1934,7 @@ class FXPreset:
 
     def add_layer(self, waveform, channel, rate_bpm=60.0, size=100.0, spread=0.0,
                   form_id=None, rate_id=None, size_id=None, spread_id=None, bpm=None,
-                  dim_id=None, color_id=None, group_id=None,
+                  dim_id=None, color_id=None, group_id=None, speed_id=None,
                   phase_offset=0.0, block_size=1, order='linear', direction='forward',
                   target_scope=None):
         self.layers.append({
@@ -1950,6 +1951,7 @@ class FXPreset:
             'dim_id':        dim_id,
             'color_id':      color_id,
             'group_id':      group_id,
+            'speed_id':      speed_id,
             'block_size':    block_size,
             'order':         order,
             'direction':     direction,
@@ -1975,6 +1977,7 @@ class FXPreset:
                 spread_id    = ld.get('spread_id'),
                 dim_id       = ld.get('dim_id'),
                 color_id     = ld.get('color_id'),
+                speed_id     = ld.get('speed_id'),
                 block_size   = ld.get('block_size', 1),
                 order        = ld.get('order', 'linear'),
                 direction    = ld.get('direction', 'forward'),
@@ -2700,6 +2703,45 @@ class SpreadPool:
     def all_slots(self):    return sorted(self.presets.keys())
 
 
+class SpeedMaster:
+    """One live BPM master slot — FXLayers referencing this slot track its BPM live."""
+    def __init__(self, slot_id, bpm=120.0, name=""):
+        self.slot_id = int(slot_id)
+        self.bpm     = float(bpm)
+        self.name    = name or f"SPD{slot_id}"
+    def __repr__(self):
+        return f"[SpeedMaster {self.slot_id}] {self.name}  ({self.bpm:.1f} BPM)"
+
+class SpeedMasterPool:
+    """16 live BPM master slots (expandable).
+
+    Each FXLayer can reference a slot by speed_id; changing a master's BPM
+    updates all linked layers on the next tick — no preset reload needed.
+    """
+    _DEFAULT_SLOTS = 16
+
+    def __init__(self):
+        self.masters = {}
+        for i in range(1, self._DEFAULT_SLOTS + 1):
+            self.masters[i] = SpeedMaster(i)
+
+    def get(self, n):
+        return self.masters.get(int(n))
+
+    def set_bpm(self, n, bpm):
+        n = int(n)
+        if n not in self.masters:
+            self.masters[n] = SpeedMaster(n)
+        self.masters[n].bpm = float(bpm)
+
+    def get_bpm(self, n):
+        m = self.masters.get(int(n))
+        return m.bpm if m else None
+
+    def all_slots(self):
+        return sorted(self.masters.keys())
+
+
 # ------------------------------------------------------------
 # FXLayer — one running effect
 # ------------------------------------------------------------
@@ -2716,9 +2758,9 @@ class FXLayer:
     def __init__(self, fx_id, waveform, channel, rate_bpm, size,
                  targets, spread=0.0,
                  form_pool=None, rate_pool=None, size_pool=None, spread_pool=None,
-                 dim_pool=None,
+                 dim_pool=None, speed_master_pool=None,
                  form_id=None, rate_id=None, size_id=None, spread_id=None,
-                 dim_id=None,
+                 dim_id=None, speed_id=None,
                  phase_offset=0.0, infade=0.0, outfade=0.0,
                  block_size=1, order='linear', direction='forward'):
         self.fx_id        = fx_id
@@ -2746,11 +2788,12 @@ class FXLayer:
         self._out_start  = None             # set by begin_outfade()
 
         # Pool references
-        self._form_pool   = form_pool
-        self._rate_pool   = rate_pool
-        self._size_pool   = size_pool
-        self._spread_pool = spread_pool
-        self._dim_pool    = dim_pool
+        self._form_pool         = form_pool
+        self._rate_pool         = rate_pool
+        self._size_pool         = size_pool
+        self._spread_pool       = spread_pool
+        self._dim_pool          = dim_pool
+        self._speed_master_pool = speed_master_pool
 
         # Pool IDs — live-tracked via properties
         self.form_id     = form_id
@@ -2758,6 +2801,7 @@ class FXLayer:
         self._size_id    = size_id
         self._spread_id  = spread_id
         self._dim_id     = dim_id   # DimmerPreset.level used as amplitude ceiling
+        self._speed_id   = speed_id  # SpeedMaster slot; overrides rate_bpm when set
 
         # Inline fallback values
         self._bpm_inline    = float(rate_bpm)
@@ -2771,6 +2815,10 @@ class FXLayer:
 
     @property
     def rate_bpm(self):
+        # Priority: speed master > rate preset > inline BPM
+        if self._speed_id is not None and self._speed_master_pool:
+            m = self._speed_master_pool.get(self._speed_id)
+            if m: return m.bpm
         if self._rate_pool and self._rate_id is not None:
             p = self._rate_pool.get(self._rate_id)
             if p: return p.bpm
@@ -2780,6 +2828,8 @@ class FXLayer:
     def rate_bpm(self, val):
         self._bpm_inline = float(val)
         self._rate_id = None
+        # speed_id is intentionally NOT cleared — rate_bpm.setter is used by the
+        # global rate slider which should not detach a layer from its speed master
 
     def set_rate_smooth(self, new_bpm, now=None):
         """Change BPM while preserving current phase position (no jump/glitch)."""
@@ -2933,13 +2983,15 @@ class FXEngine:
                 are used automatically.
     """
     def __init__(self, output_state, form_pool=None, rate_pool=None,
-                 size_pool=None, spread_pool=None, dim_pool=None):
-        self.output_state = output_state
-        self.form_pool    = form_pool
-        self.rate_pool    = rate_pool
-        self.size_pool    = size_pool
-        self.spread_pool  = spread_pool
-        self.dim_pool     = dim_pool
+                 size_pool=None, spread_pool=None, dim_pool=None,
+                 speed_master_pool=None):
+        self.output_state      = output_state
+        self.form_pool         = form_pool
+        self.rate_pool         = rate_pool
+        self.size_pool         = size_pool
+        self.spread_pool       = spread_pool
+        self.dim_pool          = dim_pool
+        self.speed_master_pool = speed_master_pool
         self._layers      = {}
         self._lock        = threading.Lock()
         self._running     = True
@@ -2949,6 +3001,7 @@ class FXEngine:
     def add(self, fx_id, waveform, channel, rate_bpm, size,
             targets, spread=1.0, form_id=None,
             rate_id=None, size_id=None, spread_id=None, dim_id=None,
+            speed_id=None,
             phase_offset=0.0, infade=0.0, outfade=0.0,
             block_size=1, order='linear', direction='forward'):
         """
@@ -2964,16 +3017,18 @@ class FXEngine:
         """
         layer = FXLayer(
             fx_id, waveform, channel, rate_bpm, size, targets, spread,
-            form_pool    = self.form_pool,
-            rate_pool    = self.rate_pool,
-            size_pool    = self.size_pool,
-            spread_pool  = self.spread_pool,
-            dim_pool     = self.dim_pool,
+            form_pool         = self.form_pool,
+            rate_pool         = self.rate_pool,
+            size_pool         = self.size_pool,
+            spread_pool       = self.spread_pool,
+            dim_pool          = self.dim_pool,
+            speed_master_pool = self.speed_master_pool,
             form_id      = form_id,
             rate_id      = rate_id,
             size_id      = size_id,
             spread_id    = spread_id,
             dim_id       = dim_id,
+            speed_id     = speed_id,
             phase_offset = phase_offset,
             infade       = infade,
             outfade      = outfade,
@@ -3090,6 +3145,7 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
                    ld.get('form_id'), ld.get('rate_id'),
                    ld.get('size_id'), ld.get('spread_id'), ld.get('dim_id'),
                    ld.get('group_id'), ld.get('color_id'),
+                   ld.get('speed_id'),
                    scope,
                    ld.get('block_size', 1),
                    ld.get('order',      'linear'),
@@ -4582,6 +4638,7 @@ class GUIEngine:
                  cue_pool=None, cuestack_pool=None, active_executor=None,
                  executor_pool=None, fx_pool=None, form_pool=None,
                  rate_pool=None, size_pool=None, spread_pool=None,
+                 speed_master_pool=None,
                  attr_pools=None, osc=None,
                  library=None, save_patch_fn=None, fx_params=None):
         self._midi       = midi
@@ -4606,9 +4663,10 @@ class GUIEngine:
         self._executor_pool   = executor_pool
         self._fx_pool    = fx_pool
         self._form_pool  = form_pool
-        self._rate_pool  = rate_pool
-        self._size_pool  = size_pool
+        self._rate_pool   = rate_pool
+        self._size_pool   = size_pool
         self._spread_pool = spread_pool
+        self._speed_pool  = speed_master_pool
         self._attr_pools  = attr_pools or {}   # {name: AttributePool}
         self._library     = library
         self._fx_params   = fx_params
@@ -4647,7 +4705,7 @@ class GUIEngine:
         "patch_window", "osc_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window",
-        "color_picker_window",
+        "color_picker_window", "speed_master_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -4747,6 +4805,7 @@ class GUIEngine:
         self._build_ai_history_popup()
         self._build_ai_prompts_popup()
         self._build_color_picker_popup()
+        self._build_speed_master_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -4849,6 +4908,9 @@ class GUIEngine:
             dpg.add_spacer(width=4)
             dpg.add_button(label="color", width=52,
                            callback=self._on_color_picker_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="spd", width=46,
+                           callback=self._on_speed_master_toggle)
             dpg.add_spacer(width=4)
             if self._ai and self._ai._enabled:
                 dpg.add_spacer(width=4)
@@ -6498,6 +6560,15 @@ class GUIEngine:
                 self._fxed_refresh_slot_labels()
         except Exception:
             pass
+        # Live-sync speed master faders when the panel is open
+        try:
+            if dpg.is_item_shown("speed_master_window") and self._speed_pool:
+                for sid in self._speed_pool.all_slots():
+                    m = self._speed_pool.get(sid)
+                    if m:
+                        dpg.set_value(f"spd_fader_{sid}", m.bpm)
+        except Exception:
+            pass
 
     def _tick_fx_prog_summary(self):
         """Update the programmer FX summary text in the FX pool panel."""
@@ -7480,6 +7551,7 @@ class GUIEngine:
                     dpg.add_table_column(label="Grp",      width_fixed=True, init_width_or_weight=50)
                     dpg.add_table_column(label="Col",      width_fixed=True, init_width_or_weight=50)
                     dpg.add_table_column(label="Dim",      width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="SPD",      width_fixed=True, init_width_or_weight=50)
                     dpg.add_table_column(label="",         width_fixed=True, init_width_or_weight=30)
 
             dpg.add_separator()
@@ -7598,11 +7670,13 @@ class GUIEngine:
                 pass
         self._fxed_row_ids = []
 
+        _spd_items = ["—"] + [str(n) for n in range(1, SpeedMasterPool._DEFAULT_SLOTS + 1)]
         for i, ld in enumerate(self._fx_ed_layers):
             _ref_items = ["—"] + [str(n) for n in range(1, self._POOL_SLOTS + 1)]
             _gid = ld.get('group_id')
             _cid = ld.get('color_id')
             _did = ld.get('dim_id')
+            _sid = ld.get('speed_id')
 
             # DPG quirk: set_value() is called right after each widget so that
             # _fxed_sync_rows() reads the correct value even if the user never
@@ -7655,6 +7729,11 @@ class GUIEngine:
                               default_value="—" if _did is None else str(_did))
                 dpg.set_value(f"fxed_r{i}_dim", "—" if _did is None else str(_did))
 
+                dpg.add_combo(tag=f"fxed_r{i}_spd", label="", width=46,
+                              items=_spd_items,
+                              default_value="—" if _sid is None else str(_sid))
+                dpg.set_value(f"fxed_r{i}_spd", "—" if _sid is None else str(_sid))
+
                 dpg.add_button(label="X", width=24, height=20,
                                callback=self._fxed_remove_layer,
                                user_data=i)
@@ -7694,6 +7773,7 @@ class GUIEngine:
                 self._fx_ed_layers[i]['group_id']      = _ref(dpg.get_value(f"fxed_r{i}_grp"))
                 self._fx_ed_layers[i]['color_id']      = _ref(dpg.get_value(f"fxed_r{i}_col"))
                 self._fx_ed_layers[i]['dim_id']        = _ref(dpg.get_value(f"fxed_r{i}_dim"))
+                self._fx_ed_layers[i]['speed_id']      = _ref(dpg.get_value(f"fxed_r{i}_spd"))
             except Exception:
                 pass
 
@@ -7715,6 +7795,7 @@ class GUIEngine:
                 group_id     = ld.get('group_id'),
                 color_id     = ld.get('color_id'),
                 dim_id       = ld.get('dim_id'),
+                speed_id     = ld.get('speed_id'),
             )
         self._fx_pool.store(self._fx_ed_slot, preset)
         ShowFile.save_fx_pool(self._fx_pool)
@@ -8096,6 +8177,72 @@ class GUIEngine:
             dpg.set_value("cpick_status", f"R {r}  G {g}  B {b}")
         except Exception:
             pass
+
+    # ── Speed Master panel ───────────────────────────────────
+
+    def _build_speed_master_popup(self):
+        """Floating 16-slot speed master panel — drag a fader to set BPM live."""
+        with dpg.window(tag="speed_master_window", label="speed masters",
+                        width=560, height=340, show=False,
+                        pos=(600, 300), no_collapse=False,
+                        on_close=self._save_popup_layout):
+            dpg.add_text("Speed Masters  (20–480 BPM)", color=_C_ACCENT)
+            dpg.add_separator()
+            # 4 columns × 4 rows of 16 slots
+            for row in range(4):
+                with dpg.group(horizontal=True):
+                    for col in range(4):
+                        sid = row * 4 + col + 1
+                        m   = self._speed_pool.get(sid) if self._speed_pool else None
+                        bpm = m.bpm if m else 120.0
+                        lbl = m.name if m else f"SPD{sid}"
+                        with dpg.group(horizontal=False):
+                            dpg.add_text(f"{sid:2d}: {lbl[:6]}", tag=f"spd_lbl_{sid}",
+                                         color=_C_DIM)
+                            dpg.add_slider_float(
+                                tag=f"spd_fader_{sid}", label="",
+                                width=120, height=18,
+                                default_value=bpm,
+                                min_value=20.0, max_value=480.0,
+                                format="%.0f",
+                                callback=self._on_spd_fader,
+                                user_data=sid,
+                            )
+                dpg.add_spacer(height=4)
+            dpg.add_separator()
+            dpg.add_text("rename: SPEED <n> NAME <name>  |  set via command: SPEED <n> <bpm>",
+                         color=_C_DIM)
+
+    def _on_spd_fader(self, sender, value, user_data):
+        sid = user_data
+        if self._speed_pool:
+            self._speed_pool.set_bpm(sid, value)
+
+    def _on_speed_master_toggle(self, *_):
+        try:
+            self._refresh_speed_master_panel()
+            vis = dpg.is_item_shown("speed_master_window")
+            if vis:
+                dpg.hide_item("speed_master_window")
+            else:
+                dpg.show_item("speed_master_window")
+            self._save_popup_layout()
+        except Exception:
+            pass
+
+    def _refresh_speed_master_panel(self):
+        """Sync fader positions and labels from pool (called on open)."""
+        if not self._speed_pool:
+            return
+        for sid in self._speed_pool.all_slots():
+            m = self._speed_pool.get(sid)
+            if not m:
+                continue
+            try:
+                dpg.set_value(f"spd_fader_{sid}", m.bpm)
+                dpg.set_item_label(f"spd_lbl_{sid}", f"{sid:2d}: {m.name[:6]}")
+            except Exception:
+                pass
 
     def _build_monitors_popup(self):
         """Floating programmer/output monitor popup — no inner boxes, just tables."""
@@ -9641,6 +9788,7 @@ class ShowFile:
     RATES     = os.path.join(DATA_DIR, "rate_pool.json")
     SIZES     = os.path.join(DATA_DIR, "size_pool.json")
     SPREADS   = os.path.join(DATA_DIR, "spread_pool.json")
+    SPEEDS    = os.path.join(DATA_DIR, "speedmaster_pool.json")
     PATCH     = os.path.join(DATA_DIR, "patch.json")
     # Attribute pools — one file per attribute family
     POSITION  = os.path.join(DATA_DIR, "position_pool.json")
@@ -10197,6 +10345,26 @@ class ShowFile:
         if n: print(f"  Loaded spread_pool — {n}")
         return True
 
+    @staticmethod
+    def save_speed_masters(pool):
+        doc = {"version": ShowFile.VERSION, "speed_masters": {}}
+        for sid, m in pool.masters.items():
+            doc["speed_masters"][str(sid)] = {"name": m.name, "bpm": m.bpm}
+        _write_file(ShowFile.SPEEDS, doc)
+        print(f"  Saved speed masters → {len(pool.masters)}")
+
+    @staticmethod
+    def load_speed_masters(pool):
+        doc = _read_file(ShowFile.SPEEDS)
+        if not doc: return False
+        for sid_str, md in doc.get("speed_masters", {}).items():
+            sid = int(sid_str)
+            pool.masters[sid] = SpeedMaster(sid, md.get("bpm", 120.0),
+                                            md.get("name", f"SPD{sid}"))
+        n = len(doc.get("speed_masters", {}))
+        if n: print(f"  Loaded speed masters — {n}")
+        return True
+
     # ── Generic attribute pools ──────────────────────────────
 
     @staticmethod
@@ -10451,12 +10619,14 @@ executor_pool = ExecutorPool()
 output_state.link_executor_pool(executor_pool)
 fade_engine  = FadeEngine()
 form_pool    = FormPool()   # built-ins pre-seeded; custom forms loaded below
-rate_pool    = RatePool()
-size_pool    = SizePool()
-spread_pool  = SpreadPool()
+rate_pool         = RatePool()
+size_pool         = SizePool()
+spread_pool       = SpreadPool()
+speed_master_pool = SpeedMasterPool()
 fx_engine    = FXEngine(output_state, form_pool=form_pool,
                         rate_pool=rate_pool, size_pool=size_pool,
-                        spread_pool=spread_pool, dim_pool=dim_pool)
+                        spread_pool=spread_pool, dim_pool=dim_pool,
+                        speed_master_pool=speed_master_pool)
 # Wire fx_engine + form_pool into executor_pool so new executors inherit them
 executor_pool.default_fx_engine  = fx_engine
 executor_pool.default_form_pool  = form_pool
@@ -10571,6 +10741,7 @@ ShowFile.load_forms(form_pool)
 ShowFile.load_rate_pool(rate_pool)
 ShowFile.load_size_pool(size_pool)
 ShowFile.load_spread_pool(spread_pool)
+ShowFile.load_speed_masters(speed_master_pool)
 ShowFile.load_groups(group_pool)
 ShowFile.load_colors(color_pool)
 ShowFile.load_dims(dim_pool)
@@ -10912,6 +11083,14 @@ def set_fx_spread(val):
     suffix = f"  ({len(active_fx)} FX live)" if active_fx else "  (pending)"
     print(f"\r  FX spread → {spread:.1f}{suffix}   ", end='', flush=True)
 
+def _make_set_speed_master(slot_id):
+    """Return a MIDI callback that sets speed_master_pool[slot_id].bpm from a 0-1 CC value."""
+    def _set_speed(val):
+        bpm = 20 + val * 460   # 20 – 480 BPM  (same range as global FX rate)
+        speed_master_pool.set_bpm(slot_id, bpm)
+        print(f"\r  Speed master {slot_id} → {bpm:.0f} BPM   ", end='', flush=True)
+    return _set_speed
+
 # ----------------------------------------------------------
 # Cue navigation — GO/BACK auto-trigger _on_cue_fire
 # ----------------------------------------------------------
@@ -11092,6 +11271,8 @@ GUIEngine.target_registry = {
     "Tap Tempo":          (tap_tempo,        False, True),
     # 4-tuple: (on_cb, soft_takeover, is_note, off_cb)
     "Flash White (hold)": (flash_on,       False, True, flash_off),
+    **{f"Speed Master {i}": (_make_set_speed_master(i), False, False)
+       for i in range(1, SpeedMasterPool._DEFAULT_SLOTS + 1)},
 }
 
 # ── Save helpers — one call per category ──────────────────
@@ -11108,6 +11289,7 @@ def save_show():
     ShowFile.save_rate_pool(rate_pool)
     ShowFile.save_size_pool(size_pool)
     ShowFile.save_spread_pool(spread_pool)
+    ShowFile.save_speed_masters(speed_master_pool)
     ShowFile.save_position_pool(position_pool)
     ShowFile.save_gobo_pool(gobo_pool)
     ShowFile.save_zoom_pool(zoom_pool)
@@ -11183,6 +11365,10 @@ def load_show_from(name):
     ShowFile.load_size_pool(size_pool)
     spread_pool.presets.clear()
     ShowFile.load_spread_pool(spread_pool)
+    speed_master_pool.masters.clear()
+    for i in range(1, SpeedMasterPool._DEFAULT_SLOTS + 1):
+        speed_master_pool.masters[i] = SpeedMaster(i)
+    ShowFile.load_speed_masters(speed_master_pool)
     for _pool in (position_pool, gobo_pool, zoom_pool, focus_pool, beam_pool, control_pool):
         _pool.presets.clear()
     ShowFile.load_position_pool(position_pool)
@@ -12236,6 +12422,7 @@ def run_command(cmd_str):
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
                 dim_id       = ld.get('dim_id'),
+                speed_id     = ld.get('speed_id'),
                 block_size   = ld.get('block_size',      1),
                 order        = ld.get('order',    'linear'),
                 direction    = ld.get('direction','forward'),
@@ -13383,6 +13570,33 @@ def run_command(cmd_str):
         ShowFile.save_spread_pool(spread_pool)
         return f"Recorded: {p}  (saved)"
 
+    # SPEED <n> <bpm>         — set speed master n to bpm live
+    # SPEED <n> NAME <name>   — rename speed master slot n
+    if t0 == 'SPEED' and len(tokens) >= 3:
+        try:
+            sid = int(tokens[1])
+        except ValueError:
+            return f"SPEED: bad slot '{tokens[1]}'  (SPEED <1-{SpeedMasterPool._DEFAULT_SLOTS}> <bpm>)"
+        if tokens[2] == 'NAME':
+            name = " ".join(tokens[3:]).title() if len(tokens) > 3 else f"SPD{sid}"
+            m = speed_master_pool.get(sid)
+            if not m:
+                speed_master_pool.masters[sid] = SpeedMaster(sid, 120.0, name)
+            else:
+                m.name = name
+            ShowFile.save_speed_masters(speed_master_pool)
+            return f"Speed master {sid} renamed → {name}"
+        try:
+            bpm = float(tokens[2])
+        except ValueError:
+            return f"SPEED: expected bpm value, got '{tokens[2]}'"
+        if bpm <= 0:
+            return "SPEED: bpm must be > 0"
+        speed_master_pool.set_bpm(sid, bpm)
+        ShowFile.save_speed_masters(speed_master_pool)
+        m = speed_master_pool.get(sid)
+        return f"Speed master {sid} ({m.name}) → {bpm:.1f} BPM"
+
     # LIST RATE / SIZEP / SPREADP / FORM
     if t0 == 'LIST' and len(tokens) >= 2:
         sub = tokens[1]
@@ -13394,6 +13608,12 @@ def run_command(cmd_str):
             return "\n".join(lines)
         if sub in ('SPREADP', 'SPREAD'):
             lines = ["Spread Presets:"] + [f"  {p}" for p in sorted(spread_pool.presets.values(), key=lambda x: x.preset_id)]
+            return "\n".join(lines)
+        if sub in ('SPEED', 'SPD', 'SPEEDS'):
+            lines = ["Speed Masters:"]
+            for sid in speed_master_pool.all_slots():
+                m = speed_master_pool.get(sid)
+                lines.append(f"  [{sid:2d}] {m.name:<12}  {m.bpm:.1f} BPM")
             return "\n".join(lines)
         if sub == 'FORM':
             lines = ["Form Presets:"] + [f"  {f}" for f in sorted(form_pool.forms.values(), key=lambda x: x.form_id)]
@@ -14192,6 +14412,7 @@ gui = GUIEngine(
     rate_pool        = rate_pool,
     size_pool        = size_pool,
     spread_pool      = spread_pool,
+    speed_master_pool = speed_master_pool,
     attr_pools       = _attr_pools,
     osc              = osc,
     library          = library,
