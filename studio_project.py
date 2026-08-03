@@ -8108,7 +8108,9 @@ class GUIEngine:
             if self._save:
                 self._save()
 
-    _tick_first = True   # sync one-shot values on first tick
+    _tick_first    = True    # sync one-shot values on first tick
+    _auto_save_t   = 0.0    # monotonic time of last auto-save
+    _AUTO_SAVE_INT = 300.0  # seconds between auto-saves (5 min)
 
     def _tick(self):
         # One-shot sync on first tick — apply loaded values to GUI widgets
@@ -8636,6 +8638,25 @@ class GUIEngine:
             self._osc_fb_counter = 0
             if self._osc and self._out and self._patch:
                 self._osc.broadcast_state(self._out, self._executor_pool, self._patch)
+
+        # Auto-save every _AUTO_SAVE_INT seconds (default 5 min)
+        _now_as = time.monotonic()
+        if (GUIEngine._auto_save_t > 0.0 and
+                _now_as - GUIEngine._auto_save_t >= GUIEngine._AUTO_SAVE_INT):
+            if self._save:
+                try:
+                    self._save()
+                    GUIEngine._auto_save_t = _now_as
+                    try:
+                        dpg.set_value("hdr_save_status", "auto-saved")
+                        dpg.configure_item("hdr_save_status", color=_C_DIM)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+        elif GUIEngine._auto_save_t == 0.0:
+            # First tick — arm the timer
+            GUIEngine._auto_save_t = _now_as
 
     # ── Run ─────────────────────────────────────────────────
 
