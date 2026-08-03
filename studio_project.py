@@ -3907,6 +3907,65 @@ class OSCEngine:
             print(f"  [{name}] → {c._address}:{c._port}")
         print("=======================\n")
 
+    def remove_target(self, name):
+        self._clients.pop(name, None)
+
+    def add_feedback_target(self, host, port):
+        """Convenience alias for the console-state feedback target."""
+        self.add_target("_feedback", host, port)
+
+    def broadcast_state(self, output_state, executor_pool, patch):
+        """
+        Send a concise state snapshot over OSC to all feedback targets.
+        Called from the GUI tick loop at ~1 Hz.
+
+        Addresses:
+          /studio/master            float  0.0-1.0
+          /studio/exec/N/level      float  0.0-1.0
+          /studio/exec/N/cue        string current cue name or ""
+          /studio/exec/N/active     int    1/0
+          /studio/fixture/F/dim     float  0.0-1.0
+          /studio/fixture/F/r       int    0-255
+          /studio/fixture/F/g       int    0-255
+          /studio/fixture/F/b       int    0-255
+        """
+        fb = self._clients.get("_feedback")
+        if fb is None:
+            return
+        try:
+            master = getattr(output_state, 'master_level', 1.0)
+            fb.send_message("/studio/master", float(master))
+            if executor_pool:
+                for eid, ex in sorted(executor_pool.executors.items()):
+                    level  = float(getattr(ex, 'level', 0.0))
+                    active = 1 if getattr(ex, 'is_active', False) else 0
+                    fb.send_message(f"/studio/exec/{eid}/level",  level)
+                    fb.send_message(f"/studio/exec/{eid}/active", active)
+                    cs  = getattr(ex, 'cuestack', None)
+                    cur = cs.current if cs else None
+                    cue = cs.cues.get(cur) if (cs and cur is not None) else None
+                    fb.send_message(f"/studio/exec/{eid}/cue",
+                                    cue.name if cue else "")
+            cue_merged = output_state._merged_cue_layer() if output_state else {}
+            for master_fix in patch.all_fixtures():
+                fid = str(master_fix.fixture_id)
+                dim = output_state.programmer_layer.get(fid, {}).get(
+                    'dim', cue_merged.get(fid, {}).get('dim', 1.0))
+                fb.send_message(f"/studio/fixture/{fid}/dim", float(dim))
+                first_sub = next(iter(master_fix.sub_fixtures.values()), None)
+                if first_sub:
+                    sfid = str(first_sub.fixture_id)
+                    prog_s = output_state.programmer_layer.get(sfid, {})
+                    cue_s  = cue_merged.get(sfid, {})
+                    r = int(prog_s.get('red',   cue_s.get('red',   0)))
+                    g = int(prog_s.get('green', cue_s.get('green', 0)))
+                    b = int(prog_s.get('blue',  cue_s.get('blue',  0)))
+                    fb.send_message(f"/studio/fixture/{fid}/r", r)
+                    fb.send_message(f"/studio/fixture/{fid}/g", g)
+                    fb.send_message(f"/studio/fixture/{fid}/b", b)
+        except Exception as e:
+            print(f"  OSC broadcast error: {e}")
+
 
 # ============================================================
 # STUDIO CONSOLE - Block 12: AI Engine
@@ -4364,7 +4423,7 @@ class GUIEngine:
                  cue_pool=None, cuestack_pool=None, active_executor=None,
                  executor_pool=None, fx_pool=None, form_pool=None,
                  rate_pool=None, size_pool=None, spread_pool=None,
-                 attr_pools=None,
+                 attr_pools=None, osc=None,
                  library=None, save_patch_fn=None, fx_params=None):
         self._midi       = midi
         self._fx         = fx_engine
@@ -4378,6 +4437,7 @@ class GUIEngine:
         self._goto       = goto_fn         # goto_fn(cue_num)
         self._reload     = reload_fn       # reload_fn() — re-fire current cue
         self._ai         = ai
+        self._osc        = osc
         self._groups     = group_pool
         self._colors     = color_pool
         self._dims       = dim_pool
@@ -6227,9 +6287,11 @@ class GUIEngine:
             ("OSC", [
                 ("OSC TARGET name host port", "Add an OSC output target"),
                 ("OSC REMOVE name",        "Remove a named OSC target"),
-                ("OSC LIST",               "Show all targets + last received message"),
+                ("OSC LIST",               "Show all targets"),
                 ("OSC SEND /gma3/cmd GOTO_CUE_1", "Manually send an OSC message"),
                 ("OSC MONITOR",            "Print incoming OSC for 10 s (port 8001)"),
+                ("OSC FEEDBACK host port", "Broadcast console state at 1 Hz (/studio/...)"),
+                ("OSC FEEDBACK",           "Disable state feedback"),
             ]),
             ("KEYBOARD", [
                 ("↑  /  ↓",               "Scroll command history (up/down arrows)"),
@@ -8009,6 +8071,13 @@ class GUIEngine:
                 dpg.configure_item(tag, color=col)
             except Exception:
                 pass
+
+        # OSC state feedback — broadcast at ~1 Hz (every ~20 ticks at 20Hz)
+        self._osc_fb_counter = getattr(self, '_osc_fb_counter', 0) + 1
+        if self._osc_fb_counter >= 20:
+            self._osc_fb_counter = 0
+            if self._osc and self._out and self._patch:
+                self._osc.broadcast_state(self._out, self._executor_pool, self._patch)
 
     # ── Run ─────────────────────────────────────────────────
 
@@ -11062,6 +11131,41 @@ def run_command(cmd_str):
         path = raw.split(None, 2)[2]
         return import_presets(path)
 
+    if t0 == 'OSC':
+        t1 = tokens[1] if len(tokens) > 1 else ''
+        if t1 == 'TARGET' and len(tokens) >= 5:
+            osc.add_target(tokens[2], tokens[3], int(tokens[4]))
+            return f"OSC target '{tokens[2]}' → {tokens[3]}:{tokens[4]}"
+        if t1 == 'REMOVE' and len(tokens) >= 3:
+            osc.remove_target(tokens[2])
+            return f"OSC target '{tokens[2]}' removed"
+        if t1 == 'LIST':
+            lines = []
+            for nm, c in osc._clients.items():
+                lines.append(f"  [{nm}] → {c._address}:{c._port}")
+            return "OSC targets:\n" + ("\n".join(lines) if lines else "  (none)")
+        if t1 == 'SEND' and len(tokens) >= 3:
+            addr = tokens[2]
+            args_raw = tokens[3:]
+            def _cast(v):
+                try: return int(v)
+                except ValueError:
+                    try: return float(v)
+                    except ValueError: return v
+            osc.send(addr, *[_cast(x) for x in args_raw])
+            return f"OSC sent {addr}"
+        if t1 == 'MONITOR':
+            return "OSC MONITOR: see terminal output"
+        if t1 == 'FEEDBACK' and len(tokens) >= 4:
+            host = tokens[2]
+            port = int(tokens[3])
+            osc.add_feedback_target(host, port)
+            return f"OSC feedback → {host}:{port}  (state broadcasts at ~1 Hz)"
+        if t1 == 'FEEDBACK' and len(tokens) == 2:
+            osc.remove_target("_feedback")
+            return "OSC feedback disabled"
+        return "OSC usage: TARGET name host port | REMOVE name | LIST | FEEDBACK host port | SEND /addr [args]"
+
     # ── Stack info ───────────────────────────────────────────
     if t0 in ('CUES', 'STACK', 'LIST'):
         cs = _active_stack()
@@ -11763,6 +11867,7 @@ gui = GUIEngine(
     size_pool        = size_pool,
     spread_pool      = spread_pool,
     attr_pools       = _attr_pools,
+    osc              = osc,
     library          = library,
     save_patch_fn    = lambda: ShowFile.save_patch(patch),
     fx_params        = _fx_params,
