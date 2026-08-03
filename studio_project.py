@@ -4521,15 +4521,37 @@ def _make_dim_btn_theme():
     return t
 
 
+_CONSOLE_FONT_CANDIDATES = [
+    "/System/Library/Fonts/SFNSMono.ttf",                                   # macOS
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",                  # Debian/Ubuntu
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",      # Debian/Ubuntu (RPM-derived)
+    "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",               # Fedora/RHEL
+    "C:/Windows/Fonts/consola.ttf",                                        # Windows
+]
+
+
 def _load_console_font():
-    """Load SF Mono if available; returns the font tag or None."""
-    sf_mono = "/System/Library/Fonts/SFNSMono.ttf"
-    if not os.path.exists(sf_mono):
+    """
+    Load a monospace console font if one is found on this OS; returns the
+    font tag or None (DearPyGui's built-in bitmap font is the fallback).
+
+    Previously this only tried SF Mono (macOS), so every other OS silently
+    fell back to DPG's built-in bitmap font — which has no glyphs for
+    em/en dash, curly quotes, ellipsis, bullet, or the ▲▼◀▶■□●○ symbols
+    used for status indicators, rendering every one of them as a literal
+    '?'. Confirmed visually via an Xvfb+screenshot smoke test: on Linux,
+    with a real font loaded (DejaVu Sans Mono/Liberation Mono), those
+    glyphs render correctly with no extra range/hint calls needed — DPG
+    2.3.1 sizes a loaded font's glyph ranges automatically (add_font_range
+    and add_font_range_hint are both deprecated no-ops in this version).
+    """
+    font_path = next((p for p in _CONSOLE_FONT_CANDIDATES if os.path.exists(p)), None)
+    if font_path is None:
         return None
     try:
         with dpg.font_registry():
-            with dpg.font(sf_mono, 13) as fid:
-                dpg.add_font_range_hint(dpg.mvFontRangeHint_Default)
+            with dpg.font(font_path, 13) as fid:
+                pass
         dpg.bind_font(fid)
         return fid
     except Exception as e:
@@ -7827,7 +7849,7 @@ class GUIEngine:
         defaults = [{"name": n, "prompt": p} for n, p in self._AI_CHIPS]
         self._ai_prompts = ShowFile.load_ai_prompts(defaults)
         with dpg.window(tag="ai_prompts_window", label="ai prompts",
-                        width=640, height=480, show=False, pos=(260, 160)):
+                        width=640, height=520, show=False, pos=(260, 160)):
             with dpg.group(horizontal=True):
                 dpg.add_text("ai prompt pool", color=_C_ACCENT)
                 dpg.add_spacer(width=8)
