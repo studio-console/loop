@@ -11528,6 +11528,15 @@ def run_command(cmd_str):
         if sub in ('SPREADP', 'SPREAD'):
             if not spread_pool.get(n): return f"Spread {n} is empty"
             spread_pool.delete(n); save_show(); return f"Deleted Spread preset {n}"
+        _del_attr_map = {
+            'POSITION': position_pool, 'GOBO': gobo_pool, 'ZOOM': zoom_pool,
+            'FOCUS': focus_pool, 'BEAM': beam_pool, 'CONTROL': control_pool,
+        }
+        if sub in _del_attr_map:
+            pool = _del_attr_map[sub]
+            if not pool.get(n): return f"{sub.title()} Preset {n} is empty"
+            pool.delete(n); save_show()
+            return f"Deleted {sub.title()} Preset {n}"
 
     # ── Shared record/update-cue helper ──────────────────────
     def _record_cue_into(cs, cue_num, suffix_tokens, raw_str, merge=False):
