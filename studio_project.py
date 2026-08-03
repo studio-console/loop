@@ -5563,6 +5563,8 @@ class GUIEngine:
                             tag=f"col_btn_{n}", label=f"C{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_color_click, user_data=n)
+                        with dpg.tooltip(f"col_btn_{n}"):
+                            dpg.add_text(f"Color {n}", tag=f"col_tip_{n}")
                         with dpg.popup(f"col_btn_{n}", mousebutton=1):
                             dpg.add_text(f"Color {n}", color=_C_P_COLORS)
                             dpg.add_separator()
@@ -5691,6 +5693,8 @@ class GUIEngine:
                             tag=f"cs_btn_{n}", label=f"CS{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_cuestack_click, user_data=n)
+                        with dpg.tooltip(f"cs_btn_{n}"):
+                            dpg.add_text(f"Cuestack {n}", tag=f"cs_tip_{n}")
                         with dpg.popup(f"cs_btn_{n}", mousebutton=1):
                             dpg.add_text(f"Cuestack {n}", color=_C_P_CS)
                             dpg.add_separator()
@@ -5795,6 +5799,8 @@ class GUIEngine:
                             tag=f"fx_btn_{n}", label=f"FX{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_fx_click, user_data=n)
+                        with dpg.tooltip(f"fx_btn_{n}"):
+                            dpg.add_text(f"FX {n}", tag=f"fx_tip_{n}")
                         with dpg.popup(f"fx_btn_{n}", mousebutton=1):
                             dpg.add_text(f"FX Preset {n}", color=_C_P_FX)
                             dpg.add_separator()
@@ -5967,6 +5973,14 @@ class GUIEngine:
                 dpg.set_item_label(f"col_btn_{n}", lbl)
             except Exception:
                 pass
+            try:
+                if c:
+                    col_tip = f"Color {n}: {c.name}\nR {int(c.red)}  G {int(c.green)}  B {int(c.blue)}"
+                else:
+                    col_tip = f"Color {n} — empty"
+                dpg.set_value(f"col_tip_{n}", col_tip)
+            except Exception:
+                pass
             # Tint the color button with the preset's actual color
             if c:
                 r, g, b = int(c.red), int(c.green), int(c.blue)
@@ -6059,6 +6073,18 @@ class GUIEngine:
                 dpg.bind_item_theme(f"cs_btn_{n}", theme if theme else 0)
             except Exception:
                 pass
+            try:
+                if cs:
+                    ncues = len(cs.cues)
+                    cur   = cs.current
+                    cs_tip = f"Cuestack {n}: {cs.name}\n{ncues} cue(s)"
+                    if cur is not None:
+                        cs_tip += f"\n▶ Cue {cur:.0f}"
+                else:
+                    cs_tip = f"Cuestack {n} — empty"
+                dpg.set_value(f"cs_tip_{n}", cs_tip)
+            except Exception:
+                pass
 
         # Cues (slots 1-48, from the active cuestack)
         active_cs = None
@@ -6090,6 +6116,20 @@ class GUIEngine:
             lbl = f"{n}:{p.name[:6]}" if p else f"FX{n}"
             try:
                 dpg.set_item_label(f"fx_btn_{n}", lbl)
+            except Exception:
+                pass
+            try:
+                if p and p.layers:
+                    layer_strs = [f"{ld['waveform']} {ld['channel']} {ld.get('bpm', 60):.0f}BPM"
+                                  for ld in p.layers[:3]]
+                    fx_tip = f"FX {n}: {p.name}\n" + "\n".join(layer_strs)
+                    if len(p.layers) > 3:
+                        fx_tip += f"\n+ {len(p.layers)-3} more layer(s)"
+                elif p:
+                    fx_tip = f"FX {n}: {p.name} (empty)"
+                else:
+                    fx_tip = f"FX {n} — empty"
+                dpg.set_value(f"fx_tip_{n}", fx_tip)
             except Exception:
                 pass
 
