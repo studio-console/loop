@@ -11059,15 +11059,15 @@ def export_presets(what='all'):
     if what_l in ('all', 'rates'):
         doc = _read_file(ShowFile.RATES)
         if doc:
-            bundle['rate_pool'] = doc.get('rates', {})
+            bundle['rate_pool'] = doc.get('rate_presets', {})
     if what_l in ('all', 'sizes'):
         doc = _read_file(ShowFile.SIZES)
         if doc:
-            bundle['size_pool'] = doc.get('sizes', {})
+            bundle['size_pool'] = doc.get('size_presets', {})
     if what_l in ('all', 'spreads'):
         doc = _read_file(ShowFile.SPREADS)
         if doc:
-            bundle['spread_pool'] = doc.get('spreads', {})
+            bundle['spread_pool'] = doc.get('spread_presets', {})
 
     ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = os.path.join(DATA_DIR, f"preset_export_{ts}.json")
@@ -11114,6 +11114,68 @@ def import_presets(path):
             p.name = d.get('name', ''); p.level = d.get('level', 1.0)
         ShowFile.save_dims(dim_pool)
         imported.append(f"{len(bundle['dims'])} dims")
+    if 'fx_pool' in bundle:
+        count = 0
+        for pid_s, pdata in bundle['fx_pool'].items():
+            pid    = int(pid_s)
+            preset = FXPreset(pid, pdata.get("name", f"FX {pid}"))
+            for ld in pdata.get("layers", []):
+                preset.add_layer(
+                    ld["waveform"], ld["channel"],
+                    bpm=ld.get("bpm", ld.get("rate_bpm", 60.0)),
+                    size=ld.get("size", 100.0), spread=ld.get("spread", 0.0),
+                    phase_offset=ld.get("phase_offset", 0.0),
+                    form_id=ld.get("form_id"), rate_id=ld.get("rate_id"),
+                    size_id=ld.get("size_id"), spread_id=ld.get("spread_id"),
+                    block_size=ld.get("block_size", 1),
+                    order=ld.get("order", "linear"), direction=ld.get("direction", "forward"),
+                    target_scope=ld.get("target_scope"),
+                )
+            fx_pool.store(pid, preset)
+            count += 1
+        ShowFile.save_fx_pool(fx_pool)
+        imported.append(f"{count} fx")
+    if 'forms' in bundle:
+        count = 0
+        for fid_s, fdata in bundle['forms'].items():
+            fid = int(fid_s)
+            if fid < FormPool.FIRST_CUSTOM_SLOT:
+                continue
+            form = FormPreset(fid, fdata.get("name", f"Form {fid}"),
+                              fdata.get("form_type", "breakpoints"),
+                              breakpoints=fdata.get("breakpoints", []))
+            form_pool.store(fid, form)
+            count += 1
+        if count:
+            ShowFile.save_forms(form_pool)
+            imported.append(f"{count} forms")
+    if 'rate_pool' in bundle:
+        count = 0
+        for pid_s, d in bundle['rate_pool'].items():
+            pid = int(pid_s)
+            rate_pool.store(pid, RatePreset(pid, d.get("name", f"Rate {pid}"),
+                                            d.get("bpm", 60.0)))
+            count += 1
+        ShowFile.save_rate_pool(rate_pool)
+        imported.append(f"{count} rates")
+    if 'size_pool' in bundle:
+        count = 0
+        for pid_s, d in bundle['size_pool'].items():
+            pid = int(pid_s)
+            size_pool.store(pid, SizePreset(pid, d.get("name", f"Size {pid}"),
+                                            d.get("size", 100.0)))
+            count += 1
+        ShowFile.save_size_pool(size_pool)
+        imported.append(f"{count} sizes")
+    if 'spread_pool' in bundle:
+        count = 0
+        for pid_s, d in bundle['spread_pool'].items():
+            pid = int(pid_s)
+            spread_pool.store(pid, SpreadPreset(pid, d.get("name", f"Spread {pid}"),
+                                                d.get("spread", 0.0)))
+            count += 1
+        ShowFile.save_spread_pool(spread_pool)
+        imported.append(f"{count} spreads")
     if not imported:
         return "IMPORT PRESETS: nothing imported (bundle has no recognized preset categories)"
     return "Imported: " + ", ".join(imported)
