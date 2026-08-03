@@ -12793,9 +12793,25 @@ def run_command(cmd_str):
             pid = int(tokens[2])
         except ValueError:
             return f"RECORD DIM: bad slot number '{tokens[2]}'"
+        # RECORD DIM <n> [name] <level%>  — explicit percentage value
+        _raw_num = [t.rstrip('%') for t in tokens[3:]
+                    if t.rstrip('%').replace('.','',1).lstrip('-').isdigit()]
+        if _raw_num:
+            try:
+                pct = float(_raw_num[0])
+            except ValueError:
+                return "RECORD DIM: bad level value"
+            level = max(0.0, min(1.0, pct / 100.0 if pct > 1.0 else pct))
+            _non_num = [t for t in tokens[3:] if not t.rstrip('%').replace('.','',1).lstrip('-').isdigit()]
+            name = " ".join(_non_num).title() or f"Dimmer {pid}"
+            p = DimmerPreset(pid, name)
+            p.level = level
+            dim_pool.presets[pid] = p
+            save_show()
+            return f"Recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"Dimmer {pid}"
         p = dim_pool.record(pid, prog, name=name)
-        if p and p.data:
+        if p and p.level > 0.0:
             save_show()
             return f"Recorded: {p}  (show saved)"
         return "RECORD DIM: no dimmer data in programmer  (set a dim level first)"
