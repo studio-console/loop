@@ -5196,7 +5196,7 @@ class GUIEngine:
                         dpg.add_spacer(width=2)
                         dpg.add_slider_float(
                             tag=f"fq_dim_{fid}",
-                            default_value=float(master.virtual_dimmer),
+                            default_value=1.0,
                             min_value=0.0, max_value=1.0,
                             width=-1, height=14,
                             format="%.0f%%",
@@ -8071,10 +8071,11 @@ class GUIEngine:
                 ex.level = float(value)
 
     def _on_fixture_dim_slider(self, _sender, value, user_data):
-        """Set virtual_dimmer on a single master fixture from the quick-set panel."""
+        """Write dim into programmer layer for a single master fixture."""
         fid = int(user_data)
-        if self._patch and fid in self._patch.fixtures:
-            self._patch.fixtures[fid].virtual_dimmer = float(value)
+        if self._cmd:
+            pct = int(round(float(value) * 100))
+            self._cmd(f"{fid} AT DIM {pct}")
 
     def _on_fixture_dim_select_all(self):
         """Select all fixtures in the programmer."""
@@ -8253,14 +8254,18 @@ class GUIEngine:
         except Exception:
             pass
 
-        # Sync per-fixture dim quick-set sliders
+        # Sync per-fixture dim quick-set sliders from programmer/cue output
         try:
-            if self._patch:
+            if self._patch and self._out:
+                cue_m = self._out._merged_cue_layer()
                 for master in self._patch.all_fixtures():
                     fid = master.fixture_id
                     tag = f"fq_dim_{fid}"
                     if not dpg.is_item_active(tag):
-                        dpg.set_value(tag, float(master.virtual_dimmer))
+                        pl = self._out.programmer_layer.get(str(fid), {})
+                        cl = cue_m.get(str(fid), {})
+                        dim = pl.get('dim', cl.get('dim', master.virtual_dimmer))
+                        dpg.set_value(tag, float(dim))
         except Exception:
             pass
 
