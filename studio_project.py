@@ -8569,9 +8569,17 @@ class GUIEngine:
         except Exception:
             pass
 
-        if active_n != self._displayed_executor or current_name != self._displayed_cs_name:
-            self._displayed_executor = active_n
-            self._displayed_cs_name  = current_name
+        # Include cue count and notes hash so the list rebuilds after note edits
+        notes_hash = tuple(
+            (n, getattr(c, 'note', ''))
+            for n, c in active_cs.cues.items()
+        ) if active_cs else ()
+        if (active_n != self._displayed_executor
+                or current_name != self._displayed_cs_name
+                or notes_hash != getattr(self, '_displayed_notes_hash', None)):
+            self._displayed_executor    = active_n
+            self._displayed_cs_name     = current_name
+            self._displayed_notes_hash  = notes_hash
             try:
                 self._rebuild_cue_list(active_cs)
             except Exception:
