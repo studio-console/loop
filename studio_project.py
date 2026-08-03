@@ -4676,7 +4676,7 @@ class GUIEngine:
 
     def _build_header(self):
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.17", color=_C_ACCENT)
+            dpg.add_text("studio console  v0.18", color=_C_ACCENT)
             dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
             dpg.add_text("   |   ", color=_C_DIM)
