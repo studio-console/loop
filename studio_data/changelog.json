@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "Sync changelog.json",
+      "details": []
+    },
+    {
+      "date": "2026-08-03",
       "summary": "Merge remote changelog before push",
       "details": []
     },
