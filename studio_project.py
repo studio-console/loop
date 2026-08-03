@@ -4725,12 +4725,15 @@ class GUIEngine:
             dpg.add_text("PT", tag="sb_pt_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
             dpg.add_text("SEL", color=_C_DIM)
-            dpg.add_spacer(width=6)
-            # One chip per patched fixture — lit when selected
+            dpg.add_spacer(width=4)
+            # One clickable chip per patched fixture — click to select, Shift+click to add
             if self._patch:
                 for master in self._patch.all_fixtures():
                     fid = master.fixture_id
-                    dpg.add_text(f"[{fid}]", tag=f"sb_sel_{fid}", color=_C_DIM)
+                    dpg.add_button(label=f"[{fid}]", tag=f"sb_sel_{fid}",
+                                   width=34, height=16,
+                                   callback=self._on_fixture_chip_click,
+                                   user_data=fid)
                     dpg.add_spacer(width=2)
         dpg.add_separator()
 
@@ -8078,6 +8081,27 @@ class GUIEngine:
         if self._cmd:
             self._cmd("1 THRU 6")
 
+    def _on_fixture_chip_click(self, sender, app_data, user_data):
+        """Click a fixture chip in the status bar to select it (Shift+click to add)."""
+        fid = int(user_data)
+        if not self._patch or fid not in self._patch.fixtures:
+            return
+        master = self._patch.fixtures[fid]
+        shift = (dpg.is_key_down(dpg.mvKey_LShift) or
+                 dpg.is_key_down(dpg.mvKey_RShift))
+        if shift and self._prog:
+            cur = [f for f in self._prog.selection if isinstance(f, MasterFixture)]
+            if master in cur:
+                cur.remove(master)
+            else:
+                cur.append(master)
+            self._prog.select(cur)
+            sel_str = " ".join(str(m.fixture_id) for m in cur) or "none"
+            self._log(f"> SELECT {sel_str}")
+        else:
+            if self._cmd:
+                self._cmd(str(fid))
+
     def _cue_timing_target(self):
         """Return (CueStack, Cue) for the currently active cue, or (None, None)."""
         active_n = self._active_executor[0] if self._active_executor else 1
@@ -8218,10 +8242,14 @@ class GUIEngine:
                        else getattr(f, 'master_id', None) for f in sel}
             sel_ids.discard(None)
             for master in self._patch.all_fixtures():
-                fid = master.fixture_id
+                fid    = master.fixture_id
                 active = fid in sel_ids
-                dpg.configure_item(f"sb_sel_{fid}",
-                                   color=_C_TEXT if active else _C_DIM)
+                theme  = self._go_theme if active else self._dim_btn_theme
+                if theme:
+                    try:
+                        dpg.bind_item_theme(f"sb_sel_{fid}", theme)
+                    except Exception:
+                        pass
         except Exception:
             pass
 
