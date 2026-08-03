@@ -5963,9 +5963,29 @@ class GUIEngine:
     def _build_midi_popup(self):
         """Floating MIDI mapping window — hidden by default, opened via header button."""
         with dpg.window(tag="midi_window", label="midi mappings",
-                        width=700, height=420, show=False,
+                        width=860, height=540, show=False,
                         pos=(200, 150), no_collapse=False):
             dpg.add_text("midi mappings", color=_C_ACCENT)
+            dpg.add_separator()
+
+            # ── Port selector ──────────────────────────────────
+            with dpg.group(horizontal=True):
+                dpg.add_text("port:", color=_C_DIM)
+                try:
+                    import mido as _mido_tmp
+                    _port_names = _mido_tmp.get_input_names()
+                except Exception:
+                    _port_names = []
+                dpg.add_combo(tag="midi_port_combo",
+                              items=_port_names,
+                              default_value=_port_names[1] if len(_port_names) > 1 else (_port_names[0] if _port_names else ""),
+                              width=280)
+                dpg.add_button(label="connect", width=70,
+                               callback=self._on_midi_port_connect)
+                dpg.add_button(label="disconnect", width=80,
+                               callback=self._on_midi_port_disconnect)
+                dpg.add_spacer(width=6)
+                dpg.add_text("", tag="midi_port_status", color=_C_DIM)
             dpg.add_separator()
 
             with dpg.table(tag="midi_table", header_row=True,
@@ -6013,6 +6033,26 @@ class GUIEngine:
                           default_value=target_names[0] if target_names else "",
                           width=300)
             dpg.add_text("Click LEARN, then move the control (CC) or press a key/pad (Note).", color=_C_DIM)
+
+            # ── Direct entry (no physical MIDI needed) ────────
+            with dpg.group(horizontal=True):
+                dpg.add_text("direct:", color=_C_DIM)
+                dpg.add_text("CH", color=_C_DIM)
+                dpg.add_input_int(tag="direct_ch",   label="", width=42,
+                                  default_value=1, min_value=1, max_value=16,
+                                  step=0, step_fast=0)
+                dpg.add_radio_button(items=["CC", "Note"],
+                                     tag="direct_type_radio",
+                                     default_value="CC", horizontal=True)
+                dpg.add_input_int(tag="direct_num",  label="", width=46,
+                                  default_value=7, min_value=0, max_value=127,
+                                  step=0, step_fast=0)
+                dpg.add_combo(items=target_names, tag="direct_target",
+                              default_value=target_names[0] if target_names else "",
+                              width=200)
+                dpg.add_button(label="add", width=52,
+                               callback=self._on_direct_add)
+                dpg.add_text("", tag="direct_status", color=_C_ACCENT)
 
             dpg.add_separator()
             dpg.add_text("go directly to a cue via note:", color=_C_DIM)
@@ -7419,6 +7459,65 @@ class GUIEngine:
             dpg.set_value("hdr_save_status", "  saved ✓")
         else:
             dpg.set_value("hdr_save_status", "  no save_fn")
+
+    def _on_midi_port_connect(self):
+        """Switch the MIDI input port to the one selected in the combo."""
+        try:
+            port_name = dpg.get_value("midi_port_combo")
+        except Exception:
+            return
+        if not port_name:
+            return
+        if self._midi:
+            self._midi.stop()
+            self._midi.start(port_name)
+        try:
+            dpg.set_value("midi_port_status", f"→ {port_name}")
+            dpg.configure_item("midi_port_status", color=_C_ACCENT)
+        except Exception:
+            pass
+
+    def _on_midi_port_disconnect(self):
+        """Close the current MIDI port without opening a new one."""
+        if self._midi:
+            self._midi.stop()
+        try:
+            dpg.set_value("midi_port_status", "disconnected")
+            dpg.configure_item("midi_port_status", color=_C_DIM)
+        except Exception:
+            pass
+
+    def _on_direct_add(self):
+        """Add a CC or Note mapping directly from typed channel/number inputs."""
+        try:
+            ch   = int(dpg.get_value("direct_ch"))
+            num  = int(dpg.get_value("direct_num"))
+            kind = dpg.get_value("direct_type_radio")  # "CC" or "Note"
+            target_name = dpg.get_value("direct_target")
+        except Exception:
+            return
+        if not target_name or target_name not in self.target_registry:
+            try:
+                dpg.set_value("direct_status", "pick target")
+            except Exception:
+                pass
+            return
+        entry  = self.target_registry[target_name]
+        cb     = entry[0]
+        soft   = entry[1]
+        off_cb = entry[3] if len(entry) > 3 else None
+        if kind == "CC":
+            self._midi.map_cc(ch, num, cb, name=target_name, soft_takeover=soft)
+            label = f"CC{num}"
+        else:
+            self._midi.map_note(ch, num, cb, off_cb, name=target_name)
+            label = f"Note{num}"
+        ShowFile.save_midi(self._midi)
+        self._refresh_midi_table()
+        try:
+            dpg.set_value("direct_status", f"CH{ch} {label} → {target_name}")
+        except Exception:
+            pass
 
     def _on_learn_type_change(self, sender, value):
         self._learn_type = 'cc' if value == 'CC' else 'note'
