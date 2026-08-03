@@ -10822,7 +10822,7 @@ def _osc_key(address, *args):
 
 # Register MA3-style OSC handlers
 osc.map("/gma3/cmd",         _osc_cmd)
-osc.map("/gma3/fader/*/*/*", _osc_fader)  # /gma3/fader/page/exec
+osc.map("/gma3/fader/*/*",   _osc_fader)  # /gma3/fader/page/exec
 osc.map("/gma3/key/*/*/*",   _osc_key)    # /gma3/key/page/exec/type
 # Catch-all: print anything else (helps discover what Chataigne is sending)
 osc.map("/*", lambda addr, *a: print(f"  OSC (unmapped): {addr}  {list(a)}"),
@@ -14110,6 +14110,23 @@ if STUDIO_HEADLESS:
             r_attr = run_command(f"RECORD {_attr} 9 Smoke{_attr.title()}")
             _check(f"RECORD {_attr} handles no-data case cleanly",
                    "no" in r_attr.lower() and "data in programmer" in r_attr.lower())
+
+        # OSC input dispatch (Block 11) — /gma3/fader/PAGE/EXEC is documented
+        # as a 2-segment address (page, exec) and _osc_fader parses it as
+        # such, but the registered pattern had an extra "/*" wildcard segment
+        # baked in since it was first added, so real /gma3/fader/1/1 messages
+        # never matched it and silently fell through to the unmapped default
+        # handler. Exercise the real dispatcher (not just call the handler
+        # function directly) so a future pattern/handler mismatch here is
+        # caught the same way this one was found.
+        from pythonosc.osc_message_builder import OscMessageBuilder as _OscMsgBuilder
+        _prev_fader_dim = _fader_dim[0]
+        _fader_msg = _OscMsgBuilder(address="/gma3/fader/1/1")
+        _fader_msg.add_arg(0.42)
+        osc._dispatch.call_handlers_for_packet(_fader_msg.build().dgram, ("127.0.0.1", 0))
+        _check("OSC /gma3/fader/1/1 reaches _osc_fader and sets grandmaster dim",
+               abs(_fader_dim[0] - 0.42) < 1e-6)
+        _fader_dim[0] = _prev_fader_dim
 
         # AudioEngine (Block 9) is not wired into any command/GUI path yet,
         # but its import used to be unconditional -- a missing sounddevice
