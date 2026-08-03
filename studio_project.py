@@ -10396,6 +10396,7 @@ class ShowFile:
                     'dim_id':       ld.get('dim_id'),
                     'color_id':     ld.get('color_id'),
                     'group_id':     ld.get('group_id'),
+                    'speed_id':     ld.get('speed_id'),
                     'block_size':   ld.get('block_size', 1),
                     'order':        ld.get('order', 'linear'),
                     'direction':    ld.get('direction', 'forward'),
@@ -10430,6 +10431,7 @@ class ShowFile:
                     dim_id       = ld.get("dim_id"),
                     color_id     = ld.get("color_id"),
                     group_id     = ld.get("group_id"),
+                    speed_id     = ld.get("speed_id"),
                     block_size   = ld.get("block_size",     1),
                     order        = ld.get("order",   "linear"),
                     direction    = ld.get("direction","forward"),
@@ -11729,6 +11731,8 @@ def import_presets(path):
                     phase_offset=ld.get("phase_offset", 0.0),
                     form_id=ld.get("form_id"), rate_id=ld.get("rate_id"),
                     size_id=ld.get("size_id"), spread_id=ld.get("spread_id"),
+                    dim_id=ld.get("dim_id"), color_id=ld.get("color_id"),
+                    group_id=ld.get("group_id"), speed_id=ld.get("speed_id"),
                     block_size=ld.get("block_size", 1),
                     order=ld.get("order", "linear"), direction=ld.get("direction", "forward"),
                     target_scope=ld.get("target_scope"),
@@ -13162,6 +13166,7 @@ def run_command(cmd_str):
                 bpm          = ld.get('bpm',    60.0),
                 size         = ld.get('size',   100.0),
                 spread       = ld.get('spread',   0.0),
+                phase_offset = ld.get('phase_offset', 0.0),
                 form_id      = ld.get('form_id'),
                 rate_id      = ld.get('rate_id'),
                 size_id      = ld.get('size_id'),
@@ -13169,6 +13174,7 @@ def run_command(cmd_str):
                 dim_id       = ld.get('dim_id'),
                 color_id     = ld.get('color_id'),
                 group_id     = ld.get('group_id'),
+                speed_id     = ld.get('speed_id'),
                 block_size   = ld.get('block_size',      1),
                 order        = ld.get('order',    'linear'),
                 direction    = ld.get('direction','forward'),
@@ -14931,6 +14937,34 @@ if STUDIO_HEADLESS:
         run_command("FX CLEAR")
         r_fx_fire = run_command("FIRE FX 9")
         _check("FIRE FX reapplies preset", "FX" in r_fx_fire)
+        run_command("FX CLEAR")
+
+        # FX pool save/load round-trip must preserve speed_id (SpeedMaster
+        # link) -- was silently dropped by save_fx_pool/load_fx_pool, so a
+        # layer linked to a speed master reverted to its raw bpm on every
+        # restart with no error.
+        _speed_preset = FXPreset(19, "SmokeSpeedLink")
+        _speed_preset.add_layer("sine", "red", bpm=45.0, speed_id=3)
+        fx_pool.store(19, _speed_preset)
+        ShowFile.save_fx_pool(fx_pool)
+        _reloaded_fx_pool = FXPool()
+        ShowFile.load_fx_pool(_reloaded_fx_pool)
+        _reloaded_layer = _reloaded_fx_pool.get(19).layers[0]
+        _check("fx_pool save/load preserves speed_id",
+               _reloaded_layer.get("speed_id") == 3)
+
+        # RECORD FX must also forward speed_id from the programmer's FX defs
+        # into the stored preset (same bug, second call site).
+        run_command("1 THRU 3")
+        run_command("FX SINE GREEN BPM 50")
+        for _fid, _vals in prog.data.items():
+            if '.' not in _fid:
+                for _ld in _vals.get('fx', []):
+                    _ld['speed_id'] = 7
+        r_fx_rec2 = run_command("RECORD FX 20 SmokeSpeedRec")
+        _check("RECORD FX from programmer", "Recorded" in r_fx_rec2)
+        _check("RECORD FX preserves speed_id",
+               fx_pool.get(20).layers[0].get("speed_id") == 7)
         run_command("FX CLEAR")
 
         # Attribute pools (POSITION/GOBO/ZOOM/FOCUS/BEAM/CONTROL) — GUI panel
