@@ -5447,6 +5447,7 @@ class GUIEngine:
 
             # --- Master bar colour (sampled from first sub-fixture) ---
             r = g = b = 0
+            dim = master.virtual_dimmer   # default before output engine query
             if self._out:
                 first_sub = next(iter(master.sub_fixtures.values()), None)
                 if first_sub:
