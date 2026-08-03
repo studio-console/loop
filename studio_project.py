@@ -4380,6 +4380,26 @@ def _make_back_theme():
     return t
 
 
+def _make_alert_btn_theme():
+    """Red-tinted button for active alert states (BLIND, BLACKOUT)."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (120, 20, 20, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (200, 40, 40, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (255, 60, 60, 255))
+    return t
+
+
+def _make_dim_btn_theme():
+    """Dimmed/inactive button style for toggleable status indicators."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (30, 24, 50, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 40, 80, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (70, 55, 110, 255))
+    return t
+
+
 def _load_console_font():
     """Load SF Mono if available; returns the font tag or None."""
     sf_mono = "/System/Library/Fonts/SFNSMono.ttf"
@@ -4549,6 +4569,8 @@ class GUIEngine:
         self._go_theme       = _make_go_theme()
         self._back_theme     = _make_back_theme()
         self._fade_bar_theme = _make_fade_bar_theme()
+        self._alert_btn_theme = _make_alert_btn_theme()
+        self._dim_btn_theme   = _make_dim_btn_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
                             # non-resizable full-height viewport, clipping the bottom
@@ -4692,9 +4714,13 @@ class GUIEngine:
             dpg.add_text("●", tag="sb_prog_dot",   color=_C_DIM)
             dpg.add_text("PROGRAMMER", tag="sb_prog_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
-            dpg.add_text("BLIND", tag="sb_blind_lbl", color=_C_DIM)
+            dpg.add_button(label="blind", tag="sb_blind_lbl",
+                           width=54, height=16,
+                           callback=lambda: self._cmd("BLIND") if self._cmd else None)
             dpg.add_spacer(width=10)
-            dpg.add_text("BBO", tag="sb_bbo_lbl", color=_C_DIM)
+            dpg.add_button(label="bbo", tag="sb_bbo_lbl",
+                           width=44, height=16,
+                           callback=lambda: self._cmd("BLACKOUT") if self._cmd else None)
             dpg.add_spacer(width=20)
             dpg.add_text("PT", tag="sb_pt_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
@@ -8115,22 +8141,25 @@ class GUIEngine:
         except Exception:
             pass
 
-        # BLIND indicator
+        # BLIND indicator (button — clickable toggle)
         try:
             blind = self._out.blind if self._out else False
-            _blind_col  = (255, 60, 60, 255)   # red when active — important warning
             dpg.configure_item("sb_blind_lbl",
-                               color=_blind_col if blind else _C_DIM)
-            dpg.set_value("sb_blind_lbl", "■ BLIND" if blind else "blind")
+                               label="■ BLIND" if blind else "blind")
+            theme = self._alert_btn_theme if blind else self._dim_btn_theme
+            if theme:
+                dpg.bind_item_theme("sb_blind_lbl", theme)
         except Exception:
             pass
 
-        # BLACKOUT indicator
+        # BLACKOUT indicator (button — clickable toggle)
         try:
             bbo = (self._out.master_level == 0.0) if self._out else False
-            _bbo_col = (255, 30, 30, 255)
-            dpg.configure_item("sb_bbo_lbl", color=_bbo_col if bbo else _C_DIM)
-            dpg.set_value("sb_bbo_lbl", "■ BBO" if bbo else "bbo")
+            dpg.configure_item("sb_bbo_lbl",
+                               label="■ BBO" if bbo else "bbo")
+            theme = self._alert_btn_theme if bbo else self._dim_btn_theme
+            if theme:
+                dpg.bind_item_theme("sb_bbo_lbl", theme)
             # Also sync master fader widget
             if bbo:
                 try:
