@@ -6368,9 +6368,10 @@ class GUIEngine:
             except Exception:
                 pass
             try:
-                if g and self._patch:
-                    members = g.recall(self._patch)
-                    tip = f"Group {n}: {g.name}\n{len(members)} fixture(s)"
+                if g:
+                    ids = [str(fid) for _, fid in g.members]
+                    id_str = ", ".join(ids[:8]) + ("…" if len(ids) > 8 else "")
+                    tip = f"Group {n}: {g.name}\n{len(ids)} fixture(s): [{id_str}]"
                 else:
                     tip = f"Group {n} — empty"
                 dpg.set_value(f"grp_tip_{n}", tip)
