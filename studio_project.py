@@ -4867,6 +4867,9 @@ class GUIEngine:
                         dpg.add_menu_item(label="Rename...",
                             callback=self._ctx_prefill,
                             user_data=f"RENAME RATE {n} ")
+                        dpg.add_menu_item(label="Copy to slot...",
+                            callback=self._ctx_prefill,
+                            user_data=f"COPY RATE {n} TO ")
                         dpg.add_separator()
                         dpg.add_menu_item(label="Delete Rate",
                             callback=self._ctx_exec, user_data=f"DELETE RATE {n}")
@@ -4889,6 +4892,9 @@ class GUIEngine:
                         dpg.add_menu_item(label="Rename...",
                             callback=self._ctx_prefill,
                             user_data=f"RENAME SIZEP {n} ")
+                        dpg.add_menu_item(label="Copy to slot...",
+                            callback=self._ctx_prefill,
+                            user_data=f"COPY SIZEP {n} TO ")
                         dpg.add_separator()
                         dpg.add_menu_item(label="Delete Size",
                             callback=self._ctx_exec, user_data=f"DELETE SIZEP {n}")
@@ -4911,6 +4917,9 @@ class GUIEngine:
                         dpg.add_menu_item(label="Rename...",
                             callback=self._ctx_prefill,
                             user_data=f"RENAME SPREADP {n} ")
+                        dpg.add_menu_item(label="Copy to slot...",
+                            callback=self._ctx_prefill,
+                            user_data=f"COPY SPREADP {n} TO ")
                         dpg.add_separator()
                         dpg.add_menu_item(label="Delete Spread",
                             callback=self._ctx_exec, user_data=f"DELETE SPREADP {n}")
@@ -5947,6 +5956,9 @@ class GUIEngine:
                             dpg.add_menu_item(label="Rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME {attr_name.upper()} {n} ")
+                            dpg.add_menu_item(label="Copy to slot...",
+                                callback=self._ctx_prefill,
+                                user_data=f"COPY {attr_name.upper()} {n} TO ")
                             dpg.add_separator()
                             dpg.add_menu_item(label=f"Clear {attr_name.title()}",
                                 callback=self._ctx_exec,
@@ -13248,7 +13260,9 @@ def run_command(cmd_str):
     #         [0]   [1]  [2] [3] [4]  [5+]
     if t0 == 'COPY' and len(tokens) >= 5 and tokens[3] == 'TO':
         sub = tokens[1]
-        if sub in ('COLOR', 'COLOUR', 'DIM', 'GROUP', 'FX'):
+        if sub in ('COLOR', 'COLOUR', 'DIM', 'GROUP', 'FX',
+                   'RATE', 'SIZEP', 'SIZE', 'SPREADP', 'SPREAD',
+                   'POSITION', 'GOBO', 'ZOOM', 'FOCUS', 'BEAM', 'CONTROL'):
             try:
                 src_n = int(tokens[2])
                 dst_n = int(tokens[4])
@@ -13292,6 +13306,49 @@ def run_command(cmd_str):
                 fx_pool.presets[dst_n] = dst
                 save_show()
                 return f"Copied FX {src_n} '{src.name}' → FX {dst_n} '{dst.name}'"
+            if sub == 'RATE':
+                src = rate_pool.get(src_n)
+                if not src: return f"Rate {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.preset_id = dst_n
+                dst.name      = new_name or f"{src.name} (copy)"
+                rate_pool.presets[dst_n] = dst
+                save_show()
+                return f"Copied Rate {src_n} '{src.name}' → Rate {dst_n} '{dst.name}'"
+            if sub in ('SIZEP', 'SIZE'):
+                src = size_pool.get(src_n)
+                if not src: return f"Size {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.preset_id = dst_n
+                dst.name      = new_name or f"{src.name} (copy)"
+                size_pool.presets[dst_n] = dst
+                save_show()
+                return f"Copied Size {src_n} '{src.name}' → Size {dst_n} '{dst.name}'"
+            if sub in ('SPREADP', 'SPREAD'):
+                src = spread_pool.get(src_n)
+                if not src: return f"Spread {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.preset_id = dst_n
+                dst.name      = new_name or f"{src.name} (copy)"
+                spread_pool.presets[dst_n] = dst
+                save_show()
+                return f"Copied Spread {src_n} '{src.name}' → Spread {dst_n} '{dst.name}'"
+            if sub in ('POSITION', 'GOBO', 'ZOOM', 'FOCUS', 'BEAM', 'CONTROL'):
+                _copy_attr_map = {
+                    'POSITION': position_pool, 'GOBO': gobo_pool,
+                    'ZOOM': zoom_pool, 'FOCUS': focus_pool,
+                    'BEAM': beam_pool, 'CONTROL': control_pool,
+                }
+                pool = _copy_attr_map[sub]
+                src = pool.get(src_n)
+                if not src: return f"{sub.title()} Preset {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.preset_id = dst_n
+                dst.name      = new_name or f"{src.name} (copy)"
+                pool.presets[dst_n] = dst
+                save_show()
+                return (f"Copied {sub.title()} {src_n} '{src.name}' "
+                        f"→ {sub.title()} {dst_n} '{dst.name}'")
 
     if t0 == 'KILL' and len(tokens) >= 2 and tokens[1] == 'FX':
         # Write fx_kill flag into programmer master data for selected (or all) fixtures.
