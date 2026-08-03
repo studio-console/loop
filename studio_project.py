@@ -11499,7 +11499,8 @@ def run_command(cmd_str):
         if not stack:
             return f"CueStack {cs_n} not found"
         executor_pool.assign(ex_n, stack)
-        return f"CS {cs_n} assigned to Executor {ex_n}"
+        save_show()
+        return f"CS {cs_n} assigned to Executor {ex_n}  (saved)"
 
     # ── EXEC <n> GO / BACK / STOP ────────────────────────────
     if t0 == 'EXEC' and len(tokens) >= 2:
@@ -11531,7 +11532,8 @@ def run_command(cmd_str):
                 return f"EXEC GOTO: bad cue number '{tokens[3]}'"
             executor_pool.bump_priority(ex_n)
             msg = ex.goto(num, patch, fade_engine)
-            _on_cue_fire(num)
+            if not msg or 'not found' not in msg:
+                _on_cue_fire(num)
             return msg or f"Exec {ex_n} GOTO {num}"
         elif verb == 'TIME':
             # EXEC <n> TIME <fade> [DELAY <delay>]  |  EXEC <n> TIME OFF
@@ -12120,7 +12122,7 @@ def run_command(cmd_str):
 
         executor_pool.bump_priority(ex.exec_id)
         msg = ex.goto(cue_num, patch, fade_engine)
-        if ex.cuestack:
+        if ex.cuestack and (not msg or 'not found' not in msg):
             _on_cue_fire(ex.cuestack.current)
         return msg or f"GO CS {cs_n or active_executor[0]} CUE {cue_num}"
 
@@ -12869,7 +12871,9 @@ def run_command(cmd_str):
         save_show()
         return "Show saved."
 
-    if t0 == 'LOAD' and len(tokens) >= 3 and tokens[1] == 'SHOW':
+    if t0 == 'LOAD' and len(tokens) >= 2 and tokens[1] == 'SHOW':
+        if len(tokens) < 3:
+            return "Usage: LOAD SHOW <name>  (use LIST SHOWS to see available saves)"
         name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
         return load_show_from(name)
 
