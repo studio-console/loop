@@ -5177,6 +5177,29 @@ class GUIEngine:
                                 else:
                                     dpg.add_button(label=label, width=w, height=_NH,
                                                    callback=cb)
+
+            dpg.add_separator()
+            # ── Per-fixture intensity quick-set ─────────────────
+            with dpg.group(horizontal=True):
+                dpg.add_text("fixture dim", color=_C_DIM)
+                dpg.add_spacer(width=8)
+                dpg.add_button(label="all", width=34, height=16,
+                               callback=self._on_fixture_dim_select_all)
+            if self._patch:
+                for master in self._patch.all_fixtures():
+                    fid = master.fixture_id
+                    with dpg.group(horizontal=True):
+                        dpg.add_text(f"{fid}", color=_C_DIM, indent=4)
+                        dpg.add_spacer(width=2)
+                        dpg.add_slider_float(
+                            tag=f"fq_dim_{fid}",
+                            default_value=float(master.virtual_dimmer),
+                            min_value=0.0, max_value=1.0,
+                            width=-1, height=14,
+                            format="%.0f%%",
+                            callback=self._on_fixture_dim_slider,
+                            user_data=fid,
+                        )
     # ── Layout budget: 1920 × 1080, no scrollbars anywhere ──────
     _W          = 1920
     _H          = 1080
@@ -8043,6 +8066,17 @@ class GUIEngine:
             if ex:
                 ex.level = float(value)
 
+    def _on_fixture_dim_slider(self, _sender, value, user_data):
+        """Set virtual_dimmer on a single master fixture from the quick-set panel."""
+        fid = int(user_data)
+        if self._patch and fid in self._patch.fixtures:
+            self._patch.fixtures[fid].virtual_dimmer = float(value)
+
+    def _on_fixture_dim_select_all(self):
+        """Select all fixtures in the programmer."""
+        if self._cmd:
+            self._cmd("1 THRU 6")
+
     def _cue_timing_target(self):
         """Return (CueStack, Cue) for the currently active cue, or (None, None)."""
         active_n = self._active_executor[0] if self._active_executor else 1
@@ -8184,6 +8218,17 @@ class GUIEngine:
                 active = fid in sel_ids
                 dpg.configure_item(f"sb_sel_{fid}",
                                    color=_C_TEXT if active else _C_DIM)
+        except Exception:
+            pass
+
+        # Sync per-fixture dim quick-set sliders
+        try:
+            if self._patch:
+                for master in self._patch.all_fixtures():
+                    fid = master.fixture_id
+                    tag = f"fq_dim_{fid}"
+                    if not dpg.is_item_active(tag):
+                        dpg.set_value(tag, float(master.virtual_dimmer))
         except Exception:
             pass
 
