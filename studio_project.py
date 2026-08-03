@@ -12821,13 +12821,8 @@ def run_command(cmd_str):
             lines = ["Color Presets:"]
             for pid in sorted(color_pool.presets):
                 p = color_pool.presets[pid]
-                # Sample RGB from first sub-fixture entry that has RGB data
-                rgb = "—"
-                for fid, vals in p.data.items():
-                    if 'red' in vals:
-                        r, g, b = int(vals['red']), int(vals.get('green', 0)), int(vals.get('blue', 0))
-                        rgb = f"R{r} G{g} B{b}"
-                        break
+                r, g, b = int(p.red), int(p.green), int(p.blue)
+                rgb = f"R{r} G{g} B{b}"
                 lines.append(f"  [{pid}] {p.name}  {rgb}")
             return "\n".join(lines)
         if sub in ('DIM', 'DIMS'):
@@ -12836,9 +12831,7 @@ def run_command(cmd_str):
             lines = ["Dim Presets:"]
             for pid in sorted(dim_pool.presets):
                 p = dim_pool.presets[pid]
-                dim_val = next((v.get('dim') for v in p.data.values() if 'dim' in v), None)
-                dim_str = f"{dim_val:.0%}" if dim_val is not None else "?"
-                lines.append(f"  [{pid}] {p.name}  {dim_str}")
+                lines.append(f"  [{pid}] {p.name}  {p.level:.0%}")
             return "\n".join(lines)
         if sub in ('GROUP', 'GROUPS'):
             if not group_pool.groups:
