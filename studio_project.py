@@ -7210,11 +7210,15 @@ class GUIEngine:
         sel = list(self._prog.selection)
         if not sel:
             return
-        fid = str(sel[0])
-        vals = self._prog.data.get(fid, {})
-        r = int(vals.get('red',   0) * 255 + 0.5)
-        g = int(vals.get('green', 0) * 255 + 0.5)
-        b = int(vals.get('blue',  0) * 255 + 0.5)
+        master = sel[0]
+        fid_master = str(getattr(master, 'fixture_id', master))
+        # programmer stores sub-fixture RGB — look in first sub if master has no RGB
+        vals = self._prog.data.get(fid_master, {})
+        first_sub_fid = f"{fid_master}.1"
+        sub_vals = self._prog.data.get(first_sub_fid, vals)
+        r = max(0, min(255, int(sub_vals.get('red',   vals.get('red',   0)))))
+        g = max(0, min(255, int(sub_vals.get('green', vals.get('green', 0)))))
+        b = max(0, min(255, int(sub_vals.get('blue',  vals.get('blue',  0)))))
         try:
             dpg.set_value("cpick_wheel", (r, g, b, 255))
             dpg.set_value("cpick_status", f"R {r}  G {g}  B {b}")
@@ -7932,7 +7936,21 @@ class GUIEngine:
         prog_active = any(v for v in prog_data.values() if v)
         try:
             if prog_active:
-                dpg.configure_item("sb_prog_dot", color=_C_ACCENT)
+                # Compute average RGB across all sub-fixtures in programmer
+                r_sum = g_sum = b_sum = n = 0
+                for fid, vals in prog_data.items():
+                    if '.' in fid and vals:
+                        r_sum += vals.get('red',   0)
+                        g_sum += vals.get('green', 0)
+                        b_sum += vals.get('blue',  0)
+                        n += 1
+                if n > 0:
+                    mix = (max(60, r_sum // n), max(60, g_sum // n),
+                           max(60, b_sum // n), 255)
+                    dot_col = mix
+                else:
+                    dot_col = _C_ACCENT
+                dpg.configure_item("sb_prog_dot", color=dot_col)
                 dpg.configure_item("sb_prog_lbl", color=_C_ACCENT)
                 dpg.set_value("sb_prog_lbl", "PROGRAMMER  DIRTY")
             else:
