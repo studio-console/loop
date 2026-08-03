@@ -1668,15 +1668,17 @@ class Executor:
                 self.fx_engine.remove(fxid)
         self._fx_ids.clear()
 
-    def _start_cue_fx(self, cue, patch, default_infade=0.0):
+    def _start_cue_fx(self, cue, patch, default_infade=0.0, default_outfade=0.0):
         """
         Read FX defs from cue.data master entries and start layers.
         Old layers are outfaded (not instant-killed) so FX crossfades naturally.
         Each layer ID is exec_id * 10000 + ever-increasing counter so IDs never
         repeat even while outfading layers are still in the engine.
-        default_infade — used when the FX def doesn't specify its own infade;
-                         callers pass the effective cue fade time so FX ramps in
-                         alongside the DMX crossfade.
+        default_infade  — fallback infade when the FX def doesn't set one;
+                          callers pass the effective cue fade time.
+        default_outfade — fallback outfade applied to outgoing layers that
+                          had no explicit outfade; callers pass eff_fade so
+                          old FX ramps out in sync with the DMX crossfade.
         """
         if not self.fx_engine:
             self._fx_ids = []
@@ -1685,7 +1687,7 @@ class Executor:
         # Outfade old layers — they self-remove when amplitude reaches 0
         now = time.monotonic()
         for fxid in self._fx_ids:
-            self.fx_engine.remove(fxid, now)
+            self.fx_engine.remove(fxid, now, default_outfade=default_outfade)
         self._fx_ids = []
 
         fx_defs_by_fid = {}
@@ -2340,7 +2342,7 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     # Effective fade time — used as default FX infade so FX ramps match DMX fades
     eff_fade = ov_fade if ov_fade is not None else cue.fade_time
 
-    executor._start_cue_fx(cue, patch, default_infade=eff_fade)
+    executor._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=eff_fade)
 
     fade_engine.fire(cue, executor, data_to=resolved,
                      override_fade=ov_fade, override_delay=ov_delay)
@@ -2918,16 +2920,19 @@ class FXEngine:
         print(f"Added: {layer}")
         return layer
 
-    def remove(self, fx_id, now=None):
+    def remove(self, fx_id, now=None, default_outfade=0.0):
         """Remove a layer. Triggers outfade if the layer has outfade > 0;
-        otherwise removes immediately."""
+        otherwise removes immediately. default_outfade is used when the
+        layer was created with outfade=0 (callers pass the cue fade time)."""
         with self._lock:
             layer = self._layers.get(fx_id)
             if layer is None:
                 return
+            # Apply default_outfade when the layer has no explicit outfade set
+            if layer.outfade == 0.0 and default_outfade > 0:
+                layer.outfade = float(default_outfade)
             if layer.outfade > 0 and layer._out_start is None:
                 layer.begin_outfade(now)
-                # Layer stays in _layers; _run() will sweep it when is_active→False
                 print(f"FX {fx_id} outfading ({layer.outfade}s).")
             else:
                 self._layers.pop(fx_id, None)
