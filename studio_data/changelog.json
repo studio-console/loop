@@ -3,6 +3,17 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "Fix OSC /gma3/key FLASH: press-and-hold silently dropped on every OSC page/exec",
+      "details": [
+        "Re-checked the established roadmap first (GUI polish, manual popup, changelog popup, MIDI-held FLASH, Block 12 AI layer, MIDI mapping GUI, attribute pool panels) -- all still confirmed landed by direct code inspection. Spawned a background research pass over the whole file looking for the next real gap (asymmetries between sibling features, MIDI/OSC parity, dead code) rather than re-doing finished work.",
+        "Found one: _osc_key (the /gma3/key/PAGE/EXEC/TYPE MA3-style OSC handler) returned immediately on any release (0) event before even parsing TYPE, and on press only recognized TYPE in ('go','go+','back','go-'). FLASH is a fully first-class trigger mode everywhere else -- EXEC <n> FLASH ON/OFF exists in the command parser, the GUI executor buttons do press-to-ON/release-to-OFF, and MIDI notes support the identical press/release pairing via map_note(on_callback, off_callback) -- but a TouchOSC/Chataigne template sending /gma3/key/1/3/flash with 1 then 0 hit nothing at all, silently, on any page/exec.",
+        "Fixed: TYPE 'flash' is now checked before the press/release early-return (it needs both edges, unlike go/back which only act on press). Press fires 'EXEC <n> FLASH ON', release fires 'EXEC <n> FLASH OFF' -- the same run_command path MIDI-learned flash notes and the GUI flash button already use. go/back behavior for page 1 exec 1 (legacy) and all other executors is unchanged.",
+        "Smoke test extended: dispatches real /gma3/key/1/3/flash press (1) then release (0) through osc._dispatch.call_handlers_for_packet() (not just calling the handler directly), confirming executor 3 goes active on press and inactive on release -- same pattern as the existing go/back and fader dispatch tests. 68/68 passing (66 previous + 2 new). Verified studio_data/*.json untouched via git status.",
+        "No schema or persisted-data changes -- pure bugfix in existing OSC dispatch code, fully backward compatible."
+      ]
+    },
+    {
+      "date": "2026-08-03",
       "summary": "FX editor dim scope fix, column alignment, color wheel real-time update, and MA2/MA3-style speed master system",
       "details": [
         "FX editor dim scope bug: _bucket_fx_defs forced scope=\"fixture\" for dim channel, preventing per-pixel phasing even when dim layers had no explicit target_scope set. One-line fix removes the special-case, so all channels default to per-pixel scope as intended.",

@@ -11051,17 +11051,24 @@ def _osc_key(address, *args):
     behavior, kept for existing OSC templates). Any other page/exec fires
     GO/BACK on that specific executor via the same "EXEC <n> GO|BACK"
     command MIDI and the command line already use.
+
+    TYPE "flash" is press-and-hold, same as a MIDI note's on/off pair or
+    the GUI's FLASH button: unlike go/back it needs the release (0) event
+    too, so that branch is handled before the go/back-only early return.
     """
     if not args:
         return
     pressed = int(args[0]) == 1
-    if not pressed:
-        return
     parts = address.strip('/').split('/')
     page     = int(parts[2]) if len(parts) > 2 else 1
     exec_num = int(parts[3]) if len(parts) > 3 else 1
     key_type = parts[4] if len(parts) > 4 else "go"
-    print(f"\n  OSC key P{page}/E{exec_num}/{key_type} ▼")
+    print(f"\n  OSC key P{page}/E{exec_num}/{key_type} {'▼' if pressed else '▲'}")
+    if key_type.lower() == 'flash':
+        run_command(f"EXEC {exec_num} FLASH {'ON' if pressed else 'OFF'}")
+        return
+    if not pressed:
+        return
     is_go   = key_type.lower() in ('go', 'go+')
     is_back = key_type.lower() in ('back', 'go-')
     if not (is_go or is_back):
@@ -14644,6 +14651,22 @@ if STUDIO_HEADLESS:
         osc._dispatch.call_handlers_for_packet(_key3_msg.build().dgram, ("127.0.0.1", 0))
         _check("OSC /gma3/key/1/3/go GOes executor 3 (routes through EXEC 3 GO)",
                _osc_ex.is_active)
+
+        # /gma3/key/PAGE/EXEC/flash used to be silently dropped: the handler
+        # returned immediately on any release (0) event regardless of TYPE,
+        # and even on press only recognized go/go+/back/go-. A TouchOSC/
+        # Chataigne "flash" key sent 1 then 0 and nothing happened at all.
+        # Exercise both press and release through the real dispatcher.
+        _flash_press_msg = _OscMsgBuilder(address="/gma3/key/1/3/flash")
+        _flash_press_msg.add_arg(1)
+        osc._dispatch.call_handlers_for_packet(_flash_press_msg.build().dgram, ("127.0.0.1", 0))
+        _check("OSC /gma3/key/1/3/flash press fires EXEC 3 FLASH ON",
+               _osc_ex.is_active)
+        _flash_release_msg = _OscMsgBuilder(address="/gma3/key/1/3/flash")
+        _flash_release_msg.add_arg(0)
+        osc._dispatch.call_handlers_for_packet(_flash_release_msg.build().dgram, ("127.0.0.1", 0))
+        _check("OSC /gma3/key/1/3/flash release fires EXEC 3 FLASH OFF",
+               not _osc_ex.is_active)
 
         # AudioEngine (Block 9) is not wired into any command/GUI path yet,
         # but its import used to be unconditional -- a missing sounddevice
