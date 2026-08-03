@@ -6494,6 +6494,8 @@ class GUIEngine:
                 dt_s  = f"  delay {cue.delay_time}s" if cue.delay_time else ""
                 fw    = getattr(cue, 'follow_time', 0.0)
                 fw_s  = f"  →{fw:.0f}s" if fw > 0 else ""
+                fxo   = getattr(cue, 'fx_outfade', None)
+                fxo_s = f"  FXOut:{fxo}s" if fxo is not None else ""
                 nfix  = sum(1 for k in getattr(cue, 'data', {}) if not k.startswith('__') and '.' not in k) if hasattr(cue, 'data') else 0
                 fix_s = f"\n{nfix} fixture(s)" if nfix else ""
                 nfx   = 0
@@ -6504,7 +6506,7 @@ class GUIEngine:
                 fx_s  = f"\n{nfx} FX layer(s)" if nfx else ""
                 note  = getattr(cue, 'note', '')
                 note_s = f"\n📝 {note}" if note else ""
-                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fix_s}{fx_s}{note_s}"
+                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fxo_s}{fix_s}{fx_s}{note_s}"
             else:
                 lbl = f"{n}"
                 tip = f"Cue {n} — empty"
@@ -15263,15 +15265,33 @@ if STUDIO_HEADLESS:
                _cleared_sel)
 
         # CLEAR COLOUR removes RGB from programmer, leaves dim intact
+        # dim lives in master key ("1"), RGB in sub-fixture keys ("1.1" etc.)
+        prog.clear_programmer()
         run_command("1 THRU 3")
-        run_command("@ FULL")        # set dim
-        run_command("@ COLOR 1 0 0") # set red
-        _pre_dim = prog.data.get("1", {}).get('dim')
+        run_command("@ FULL")           # set dim=1.0 on selection
+        run_command("1 THRU 3 R 255 G 128 B 64")  # set explicit RGB
+        _pre_dim  = prog.data.get("1", {}).get('dim')
+        _sub1     = next((k for k in prog.data if k.startswith("1.")), None)
+        _pre_red  = prog.data.get(_sub1, {}).get('red') if _sub1 else None
+        _check("CLEAR COLOUR pre-check: red was set", _pre_red == 255)
         run_command("CLEAR COLOUR")
-        _post_rgb = prog.data.get("1", {}).get('red')
+        _post_rgb = prog.data.get(_sub1, {}).get('red') if _sub1 else None
         _post_dim = prog.data.get("1", {}).get('dim')
         _check("CLEAR COLOUR removes RGB and leaves dim intact",
                _post_rgb is None and _post_dim == _pre_dim)
+
+        # CLEAR DIM removes only dimmer, leaves RGB intact
+        # RGB lives in sub-fixture keys ("1.1"), dim in master key ("1")
+        prog.clear_programmer()
+        run_command("1 THRU 3")
+        run_command("@ FULL")
+        run_command("1 THRU 3 R 200 G 100 B 50")
+        run_command("CLEAR DIM")
+        _post_dim2 = prog.data.get("1", {}).get('dim')
+        _first_sub = next((k for k in prog.data if k.startswith("1.")), None)
+        _post_red2 = prog.data.get(_first_sub, {}).get('red') if _first_sub else None
+        _check("CLEAR DIM removes dim, leaves RGB intact",
+               _post_dim2 is None and _post_red2 == 200)
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
