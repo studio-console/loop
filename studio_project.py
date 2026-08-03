@@ -1475,6 +1475,7 @@ class CueStack:
         self.cues            = {}        # { cue_number (float): Cue }
         self.current         = None      # Current cue number (float) or None
         self.allow_exec_time = True      # False = ignore executor time override for this stack
+        self.wrap            = False     # True = fire cue 1 clean on wrap-around (no LTP bleed)
 
     def _sorted_cue_numbers(self):
         """Returns cue numbers in ascending order."""
@@ -2448,14 +2449,19 @@ def _cuestack_go(self, patch, fade_engine, executor):
     numbers = self._sorted_cue_numbers()
     if not numbers:
         return "CueStack is empty"
+    wrap_occurred = False
     if self.current is None:
         next_num = numbers[0]
     else:
         try:
             idx      = numbers.index(self.current)
-            next_num = numbers[(idx + 1) % len(numbers)]
+            next_idx = (idx + 1) % len(numbers)
+            next_num = numbers[next_idx]
+            wrap_occurred = (next_idx == 0 and idx == len(numbers) - 1)
         except ValueError:
             next_num = numbers[0]
+    if wrap_occurred and getattr(self, 'wrap', False):
+        executor.layer.clear()  # no LTP bleed from last cue back to first
     return _cuestack_fire_cue(self, next_num, patch, fade_engine, executor)
 
 def _cuestack_back(self, patch, fade_engine, executor):
@@ -5004,8 +5010,9 @@ class GUIEngine:
             with dpg.group(horizontal=True):
                 dpg.add_text("cuestack", color=_C_ACCENT)
                 dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
-                              width=-1, height_mode=dpg.mvComboHeight_Small,
+                              width=-120, height_mode=dpg.mvComboHeight_Small,
                               callback=self._on_cs_combo_select)
+                dpg.add_text("", tag="hdr_wrap", color=_C_ACCENT)
             dpg.add_separator()
             # Fixed-height scroll area for the cue list
             with dpg.child_window(tag="cue_list_scroll", width=-1, height=78,
@@ -7212,6 +7219,8 @@ class GUIEngine:
                 ("EXEC 1 TIME OFF",       "Remove executor 1 time override"),
                 ("EXEC 1 TIMELOCK OFF",   "Lock cuestack on exec 1 to its own times"),
                 ("EXEC 1 TIMELOCK ON",    "Re-enable executor time override for cuestack"),
+                ("CS 1 WRAP ON",          "CS 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
+                ("CS 1 WRAP OFF",         "CS 1: restore normal LTP tracking across wrap-around (default)"),
                 ("PROG TIME 2",           "Programmer time: all cues fade at 2s"),
                 ("PROG TIME OFF",         "Disable programmer time override"),
             ]),
@@ -9488,23 +9497,26 @@ class GUIEngine:
         except Exception:
             pass
 
-        # Include cue count and notes hash so the list rebuilds after note edits
+        # Include cue count, notes hash, and wrap state so list rebuilds on changes
         notes_hash = tuple(
             (n, getattr(c, 'note', ''))
             for n, c in active_cs.cues.items()
         ) if active_cs else ()
+        wrap_state = getattr(active_cs, 'wrap', False) if active_cs else False
         if (active_n != self._displayed_executor
                 or current_name != self._displayed_cs_name
-                or notes_hash != getattr(self, '_displayed_notes_hash', None)):
+                or notes_hash != getattr(self, '_displayed_notes_hash', None)
+                or wrap_state != getattr(self, '_displayed_wrap', None)):
             self._displayed_executor    = active_n
             self._displayed_cs_name     = current_name
             self._displayed_notes_hash  = notes_hash
+            self._displayed_wrap        = wrap_state
             try:
                 self._rebuild_cue_list(active_cs)
             except Exception:
                 pass
 
-        # Header: current cue
+        # Header: current cue + wrap badge
         cur = getattr(active_cs, 'current', None) if active_cs else None
         try:
             if cur is not None:
@@ -9513,6 +9525,8 @@ class GUIEngine:
                 dpg.set_value("hdr_cue", f"▶  Cue {cur:.0f}: {name}")
             else:
                 dpg.set_value("hdr_cue", "▶  (none)")
+            dpg.set_value("hdr_wrap",
+                          "  ⟳WRAP" if getattr(active_cs, 'wrap', False) else "")
         except Exception:
             pass
 
@@ -10010,6 +10024,7 @@ class ShowFile:
             doc["cuestacks"][str(sid)] = {
                 "name":            stack.name,
                 "allow_exec_time": stack.allow_exec_time,
+                "wrap":            stack.wrap,
                 "cues":            cues_out,
             }
         _write_file(ShowFile.CUESTACKS, doc)
@@ -10224,6 +10239,7 @@ class ShowFile:
             sid   = int(sid_str)
             stack = CueStack(sid, sdata["name"])
             stack.allow_exec_time = bool(sdata.get("allow_exec_time", True))
+            stack.wrap            = bool(sdata.get("wrap", False))
             for num_str, cdata in sdata["cues"].items():
                 num      = float(num_str)
                 cue      = Cue(num, cdata["name"],
@@ -11878,11 +11894,28 @@ def run_command(cmd_str):
 
     # ── Executor selection ────────────────────────────────────
     # CUESTACK N  — make executor N the active one
-    if t0 == 'CUESTACK' and len(tokens) > 1:
+    if t0 in ('CUESTACK', 'CS') and len(tokens) > 1:
         try:
             n = int(tokens[1])
         except ValueError:
             return f"CUESTACK: bad number '{tokens[1]}'"
+        # CS n WRAP ON/OFF — clean restart at top after last cue
+        if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            state = tokens[3].upper()
+            if state == 'ON':
+                cs.wrap = True
+                save_show()
+                return f"CS {n} '{cs.name}': WRAP ON — cue 1 fires clean after last cue"
+            elif state == 'OFF':
+                cs.wrap = False
+                save_show()
+                return f"CS {n} '{cs.name}': WRAP OFF — LTP tracking across loop"
+            return "WRAP: use ON or OFF"
+        if t0 == 'CS':
+            return f"Usage: CS <n> WRAP ON|OFF"
         if cuestack_pool.get(n):
             active_executor[0] = n
             cs = cuestack_pool.get(n)
@@ -15308,6 +15341,15 @@ if STUDIO_HEADLESS:
         _post_red2 = prog.data.get(_first_sub, {}).get('red') if _first_sub else None
         _check("CLEAR DIM zeroes dim, leaves RGB intact",
                _post_dim2 == 0.0 and _post_red2 == 200)
+
+        # CS n WRAP ON/OFF — clean restart at top after last cue
+        run_command("RECORD CUESTACK 99 WrapTest")
+        _cs99 = cuestack_pool.get(99)
+        _check("CS WRAP: default is False", _cs99.wrap is False)
+        run_command("CS 99 WRAP ON")
+        _check("CS 99 WRAP ON sets .wrap = True", _cs99.wrap is True)
+        run_command("CS 99 WRAP OFF")
+        _check("CS 99 WRAP OFF sets .wrap = False", _cs99.wrap is False)
 
         # UNDO must not desync output_state.programmer_layer from prog.data --
         # link_programmer() aliases them to the *same* dict object, so undo()
