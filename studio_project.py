@@ -2197,13 +2197,14 @@ class NetworkEngine:
     Reads merged DMX values from OutputState every frame.
     """
     def __init__(self, output_state, universes, source_name="Studio Console",
-                 broadcast_mode=False, bind_address="", dry_run=False):
+                 broadcast_mode=False, bind_address="", dry_run=False, fx_engine=None):
         self.output_state   = output_state
         self.universes      = universes
         self.source_name    = source_name
         self.broadcast_mode = broadcast_mode
         self.bind_address   = bind_address
         self.dry_run        = dry_run   # True: compute DMX every tick but never open a real socket
+        self.fx_engine      = fx_engine # if set, FX is re-evaluated here at send time for accuracy
         self._sender        = None
         self._running       = False
         self._thread        = None
@@ -2246,7 +2247,14 @@ class NetworkEngine:
         print("Network engine stopped.")
 
     def _run(self):
+        # 100Hz output loop: tighter strobe timing, finer fade resolution.
+        # FX is re-evaluated at each tick (not from a cached snapshot) so strobe
+        # ON/OFF transitions land within ~10ms of the true phase boundary rather
+        # than up to 22ms late (1 tick at 44Hz).
         while self._running:
+            now = time.monotonic()
+            if self.fx_engine is not None:
+                self.fx_engine.compute_merged(now)
             if self.dry_run:
                 # Exercise the compute path only — catches exceptions in FX/output
                 # resolution without touching a socket.
@@ -2263,7 +2271,7 @@ class NetworkEngine:
             else:
                 for u in self.universes:
                     self._sender[u].dmx_data = self.output_state.get_dmx_for_universe(u)
-            time.sleep(1 / 44)
+            time.sleep(1 / 100)
 
 
 # ------------------------------------------------------------
@@ -3077,33 +3085,41 @@ class FXEngine:
             print(f"  {layer}")
         print("=====================\n")
 
+    def compute_merged(self, now):
+        """Evaluate all active FX layers at timestamp `now`, update output_state.fx_layer,
+        and remove any layers whose outfade has finished. Thread-safe via internal lock.
+
+        Called by the network thread right before each sACN transmission so strobe
+        transitions are evaluated at the exact send moment, not from a cached snapshot
+        that could be up to one full FX tick (22ms at 44Hz) stale."""
+        merged = {}
+        dead   = []
+        with self._lock:
+            for fx_id, layer in self._layers.items():
+                vals = layer.get_values(now)
+                env  = getattr(layer, '_last_env', 1.0)
+                if not layer.is_active:
+                    dead.append(fx_id)
+                    continue
+                for fid, value in vals.items():
+                    if fid not in merged:
+                        merged[fid] = {}
+                    merged[fid][layer.channel] = (
+                        merged[fid].get(layer.channel, 0) + value
+                    )
+                    env_key = f'_env_{layer.channel}'
+                    if env > merged[fid].get(env_key, 0.0):
+                        merged[fid][env_key] = env
+            for fx_id in dead:
+                self._layers.pop(fx_id, None)
+                print(f"FX {fx_id} outfade complete — removed.")
+        self.output_state.fx_layer = merged
+
     def _run(self):
+        # Background loop for envelope/outfade tracking when the network thread
+        # is not driving compute_merged() (e.g. dry_run with no network engine).
         while self._running:
-            now    = time.monotonic()
-            merged = {}
-            dead   = []
-            with self._lock:
-                for fx_id, layer in self._layers.items():
-                    vals = layer.get_values(now)
-                    env  = getattr(layer, '_last_env', 1.0)
-                    if not layer.is_active:
-                        dead.append(fx_id)
-                        continue
-                    for fid, value in vals.items():
-                        if fid not in merged:
-                            merged[fid] = {}
-                        merged[fid][layer.channel] = (
-                            merged[fid].get(layer.channel, 0) + value
-                        )
-                        # Store max envelope so get_dmx_for_universe can lerp
-                        # base → FX rather than replacing base at env=0.
-                        env_key = f'_env_{layer.channel}'
-                        if env > merged[fid].get(env_key, 0.0):
-                            merged[fid][env_key] = env
-                for fx_id in dead:
-                    self._layers.pop(fx_id, None)
-                    print(f"FX {fx_id} outfade complete — removed.")
-            self.output_state.fx_layer = merged
+            self.compute_merged(time.monotonic())
             time.sleep(1 / 44)
 
     def stop(self):
@@ -10736,7 +10752,8 @@ _NET_BIND     = _net_bind  if _net_bind  is not None else "192.168.1.161"
 _NET_UNIVERSES = _net_univs if _net_univs is not None else [1, 2]
 network      = NetworkEngine(output_state, universes=_NET_UNIVERSES,
                              bind_address=_NET_BIND,
-                             dry_run=STUDIO_DRY_RUN)
+                             dry_run=STUDIO_DRY_RUN,
+                             fx_engine=fx_engine)
 network.start()
 
 midi = MIDIEngine()
