@@ -1698,9 +1698,11 @@ class Executor:
         self.time_override_on    = False  # master enable for this executor's override
         self._follow_at          = None   # monotonic time to auto-GO (None = manual)
         # Three assignable action buttons per fader slot
-        self.btn_a = 'GO'    # GO / BACK / STOP / FLASH
+        self.btn_a = 'GO'    # GO / BACK / STOP / FLASH / RATE+ / RATE-
         self.btn_b = 'BACK'
         self.btn_c = 'STOP'
+        # Playback rate multiplier: 1.0 = normal, 2.0 = twice as fast (divides fade times)
+        self.rate_factor = 1.0
 
     def assign(self, cuestack):
         self.cuestack = cuestack
@@ -2415,6 +2417,14 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     if ov_fade is None and _prog_time.get('on'):
         ov_fade  = float(_prog_time['fade'])
         ov_delay = float(_prog_time['delay'])
+
+    # Apply executor rate_factor — scales fade (and delay) times; >1.0 = faster
+    _rate = getattr(executor, 'rate_factor', 1.0)
+    if _rate > 0 and _rate != 1.0:
+        ov_fade  = (ov_fade  if ov_fade  is not None else cue.fade_time)  / _rate
+        ov_delay = (ov_delay if ov_delay is not None else cue.delay_time) / _rate
+        if ov_delay == 0.0:
+            ov_delay = None  # avoid setting a zero override that masks auto
 
     # Effective fade time — used as default FX infade so FX ramps match DMX fades
     eff_fade = ov_fade if ov_fade is not None else cue.fade_time
@@ -7284,7 +7294,9 @@ class GUIEngine:
                 ("EXEC 1 MODE TOGGLE",    "Set trigger mode: GO/BACK advance (default)"),
                 ("EXEC 1 FLASH ON",       "Fire instantly (0s), works regardless of mode"),
                 ("EXEC 1 FLASH OFF",      "Release a flash — fully stops the executor"),
-                ("EXEC 1 BTN A GO",       "Set executor 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH)"),
+                ("EXEC 1 BTN A GO",       "Set executor 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH/RATE+/RATE-)"),
+                ("EXEC 1 RATE+ / RATE-",  "Nudge playback speed ×1.25 / ÷1.25 (divides fade times)"),
+                ("EXEC 1 RATE RESET",     "Restore normal playback speed (rate_factor → 1.0)"),
                 ("PAGE 1 NAME Verses",    "Name page 1"),
                 ("PAGE 1 ADD CS 3",       "Add cuestack 3 to page 1"),
                 ("PAGE 1 REMOVE CS 3",    "Remove cuestack 3 from page 1"),
@@ -10337,6 +10349,7 @@ class ShowFile:
                 "btn_a":        ex.btn_a,
                 "btn_b":        ex.btn_b,
                 "btn_c":        ex.btn_c,
+                "rate_factor":  ex.rate_factor,
             }
         _write_file(ShowFile.EXECUTORS, doc)
         print(f"  Saved executors  → {len(doc['executors'])} slot(s)")
@@ -10360,10 +10373,12 @@ class ShowFile:
             ex.level        = float(edata.get("level",  1.0))
             ex.priority     = int(edata.get("priority", 0))
             ex.trigger_mode = edata.get("trigger_mode", "toggle")
-            _valid_fns      = {'GO', 'BACK', 'STOP', 'FLASH'}
+            _valid_fns      = {'GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-'}
             ex.btn_a        = edata.get("btn_a", "GO")  if edata.get("btn_a", "GO")   in _valid_fns else "GO"
             ex.btn_b        = edata.get("btn_b", "BACK") if edata.get("btn_b", "BACK") in _valid_fns else "BACK"
             ex.btn_c        = edata.get("btn_c", "STOP") if edata.get("btn_c", "STOP") in _valid_fns else "STOP"
+            _rf             = float(edata.get("rate_factor", 1.0))
+            ex.rate_factor  = max(0.1, min(8.0, _rf))
         print(f"  Loaded executors — {count} assignment(s)")
         return True
 
@@ -12321,8 +12336,8 @@ def run_command(cmd_str):
             if slot not in ('A', 'B', 'C'):
                 return "BTN: slot must be A, B, or C"
             fn = tokens[4].upper() if len(tokens) > 4 else ''
-            if fn not in ('GO', 'BACK', 'STOP', 'FLASH'):
-                return "BTN: function must be GO, BACK, STOP, or FLASH"
+            if fn not in ('GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-'):
+                return "BTN: function must be GO, BACK, STOP, FLASH, RATE+ or RATE-"
             setattr(ex, f'btn_{slot.lower()}', fn)
             save_show()
             return f"Exec {ex_n} button {slot} → {fn}"
@@ -12337,6 +12352,16 @@ def run_command(cmd_str):
             ex.level = max(0.0, min(1.0, pct / 100.0))
             save_show()
             return f"Exec {ex_n} level → {ex.level * 100:.0f}%"
+        elif verb in ('RATE+', 'RATE-'):
+            # EXEC <n> RATE+ / RATE- — nudge playback speed by ×1.25 / ÷1.25
+            step = 1.25 if verb == 'RATE+' else (1.0 / 1.25)
+            ex.rate_factor = max(0.1, min(8.0, ex.rate_factor * step))
+            save_show()
+            return f"Exec {ex_n} rate → ×{ex.rate_factor:.2f}"
+        elif verb == 'RATE' and len(tokens) >= 4 and tokens[3].upper() == 'RESET':
+            ex.rate_factor = 1.0
+            save_show()
+            return f"Exec {ex_n} rate reset → ×1.00"
         else:
             return f"EXEC {ex_n}: unknown verb '{verb}'"
 
@@ -15692,6 +15717,20 @@ if STUDIO_HEADLESS:
         _check("EXEC 1 BTN A GO restores btn_a to GO",   _fpg_ex.btn_a == 'GO')
         r_btn3 = run_command("EXEC 1 BTN")  # missing slot → usage hint
         _check("EXEC 1 BTN without slot returns current state", "btn" in r_btn3.lower() or "usage" in r_btn3.lower() or "A=" in r_btn3)
+
+        # RATE+/RATE- and RATE RESET smoke tests
+        _rate_ex = executor_pool.get(2)
+        _rate_ex.rate_factor = 1.0
+        run_command("EXEC 2 RATE+")
+        _check("EXEC 2 RATE+ increases rate_factor to ~1.25", abs(_rate_ex.rate_factor - 1.25) < 0.01)
+        run_command("EXEC 2 RATE-")
+        _check("EXEC 2 RATE- returns rate_factor to ~1.00", abs(_rate_ex.rate_factor - 1.0) < 0.01)
+        run_command("EXEC 2 RATE+")
+        run_command("EXEC 2 RATE RESET")
+        _check("EXEC 2 RATE RESET returns rate_factor to 1.0", _rate_ex.rate_factor == 1.0)
+        r_rate_btn = run_command("EXEC 2 BTN C RATE+")
+        _check("EXEC 2 BTN C RATE+ sets btn_c to RATE+", _rate_ex.btn_c == 'RATE+')
+        run_command("EXEC 2 BTN C STOP")  # restore
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
