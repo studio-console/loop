@@ -4676,7 +4676,7 @@ class GUIEngine:
 
     def _build_header(self):
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.16", color=_C_ACCENT)
+            dpg.add_text("studio console  v0.17", color=_C_ACCENT)
             dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
             dpg.add_text("   |   ", color=_C_DIM)
@@ -5259,9 +5259,10 @@ class GUIEngine:
                                callback=self._on_fixture_dim_select_all)
             if self._patch:
                 for master in self._patch.all_fixtures():
-                    fid = master.fixture_id
+                    fid  = master.fixture_id
+                    name = master.name[:6] if len(master.name) > 2 else str(fid)
                     with dpg.group(horizontal=True):
-                        dpg.add_text(f"{fid}", color=_C_DIM, indent=4)
+                        dpg.add_text(name, color=_C_DIM, indent=4)
                         dpg.add_spacer(width=2)
                         dpg.add_slider_float(
                             tag=f"fq_dim_{fid}",
