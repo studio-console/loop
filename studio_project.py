@@ -12752,7 +12752,10 @@ def run_command(cmd_str):
         return "\n".join(lines)
 
     # ── Stack info ───────────────────────────────────────────
-    if t0 in ('CUES', 'STACK', 'LIST'):
+    # CUES / STACK / LIST (bare) — show active cuestack contents
+    # NOTE: LIST with a sub-command (LIST DIM, LIST COLOR, etc.) is handled
+    # below; only bare LIST falls through here.
+    if t0 in ('CUES', 'STACK') or (t0 == 'LIST' and len(tokens) == 1):
         cs = _active_stack()
         if not cs:
             return "No active cuestack"
@@ -13769,6 +13772,29 @@ if STUDIO_HEADLESS:
 
         run_command("EXEC 1 FLASH OFF")
         _check("executor inactive after FLASH OFF", not executor_pool.get(1).is_active)
+
+        # RECORD COLOR/DIM from programmer — verify no AttributeError
+        run_command("ALL AT R 200 G 100 B 50")
+        r_col = run_command("RECORD COLOR 1 TestRed")
+        _check("RECORD COLOR from programmer", "Recorded" in r_col or "no RGB" in r_col)
+
+        run_command("ALL AT DIM 80")
+        r_dim = run_command("RECORD DIM 1 TestDim")
+        _check("RECORD DIM from programmer", "Recorded" in r_dim or "no dimmer" in r_dim)
+
+        # Explicit-value record
+        r_col2 = run_command("RECORD COLOR 2 BlueTest 0 0 255")
+        _check("RECORD COLOR explicit RGB", "Recorded" in r_col2)
+
+        r_dim2 = run_command("RECORD DIM 2 Half 50%")
+        _check("RECORD DIM explicit level", "Recorded" in r_dim2)
+
+        # LIST COLOR/DIM — verify no AttributeError on pool iteration
+        r_lc = run_command("LIST COLOR")
+        _check("LIST COLOR no exception", "Color" in r_lc)
+
+        r_ld = run_command("LIST DIM")
+        _check("LIST DIM no exception", "Dim" in r_ld)
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
