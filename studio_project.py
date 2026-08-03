@@ -4739,6 +4739,7 @@ class GUIEngine:
         self._out_bar_themes  = {}     # {fid: ((r,g,b), theme_id)} — output monitor bar tints
         self._prog_bar_themes = {}     # {fid: ((r,g,b), theme_id)} — programmer bar tints
         self._tap_times       = []     # monotonic timestamps of recent BPM taps
+        self._error_flash_time = None  # monotonic time of last _log_error call
 
         self._learn_pending      = None    # (ch, number) captured by learn
         self._learn_target       = None    # display name chosen in dropdown
@@ -5458,6 +5459,9 @@ class GUIEngine:
                                   border=True, horizontal_scrollbar=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("", tag="cmd_log", wrap=0)
+
+            # ── Error flash — shows last error in red; clears on next success ─
+            dpg.add_text("", tag="cmd_error_flash", color=[255, 80, 80, 220], wrap=0)
 
             # ── Input row ──────────────────────────────────────
             with dpg.group(horizontal=True):
@@ -8038,9 +8042,22 @@ class GUIEngine:
             dpg.set_y_scroll("cmd_log_win", 99999)
         except Exception:
             pass
+        # Clear any pending error flash on the next non-error log line
+        if self._error_flash_time is not None:
+            self._error_flash_time = None
+            try:
+                dpg.set_value("cmd_error_flash", "")
+            except Exception:
+                pass
 
     def _log_error(self, line):
+        import time as _time
         self._log(f"⚠ {line}")
+        self._error_flash_time = _time.monotonic()
+        try:
+            dpg.set_value("cmd_error_flash", f"⚠  {line}")
+        except Exception:
+            pass
 
     def _build_ai_history_popup(self):
         with dpg.window(tag="ai_history_window", label="ai history",
@@ -9265,6 +9282,16 @@ class GUIEngine:
         if self._pending_table_refresh:
             self._pending_table_refresh = False
             self._refresh_midi_table()
+
+        # Auto-clear error flash after 8 s if operator doesn't run another command
+        if self._error_flash_time is not None:
+            import time as _time
+            if _time.monotonic() - self._error_flash_time > 8.0:
+                self._error_flash_time = None
+                try:
+                    dpg.set_value("cmd_error_flash", "")
+                except Exception:
+                    pass
 
         self._tick_pools()
         self._tick_stage()
