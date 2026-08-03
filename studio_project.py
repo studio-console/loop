@@ -4740,7 +4740,9 @@ class GUIEngine:
                            width=36, height=16,
                            callback=self._on_highlight_toggle)
             dpg.add_spacer(width=20)
-            dpg.add_text("PT", tag="sb_pt_lbl", color=_C_DIM)
+            dpg.add_button(label="PT", tag="sb_pt_lbl",
+                           width=36, height=16,
+                           callback=self._on_pt_toggle)
             dpg.add_spacer(width=20)
             dpg.add_text("SEL", color=_C_DIM)
             dpg.add_spacer(width=4)
@@ -6611,6 +6613,7 @@ class GUIEngine:
                 ("[1] [2] … chips",       "Click a fixture chip to select that fixture (same as typing the number)"),
                 ("Shift + chip click",    "Add/remove that fixture from the current selection without clearing others"),
                 ("hl button",             "Toggle HIGHLIGHT — selected fixtures go full white at 100%; glows green when active"),
+                ("PT button",             "Toggle programmer time: click to set 2s fade on all cues; click again to turn off"),
                 ("flash button (executor)", "Hold for FLASH ON; release for FLASH OFF — button shows ■ FLASH while held"),
             ]),
             ("FIXTURE DIM PANEL (right column)", [
@@ -8272,6 +8275,15 @@ class GUIEngine:
             if self._cmd:
                 self._cmd(str(fid))
 
+    def _on_pt_toggle(self):
+        """Programmer time toggle: click to set 2s fade, click again to turn off."""
+        if self._cmd:
+            pt = _prog_time
+            if pt.get('on'):
+                self._cmd("PROG TIME OFF")
+            else:
+                self._cmd("PROG TIME 2")
+
     def _on_highlight_toggle(self):
         """Toggle HIGHLIGHT mode — selected fixtures go full-white at full dim."""
         if not self._out:
@@ -8476,11 +8488,13 @@ class GUIEngine:
                 pt_label = f"PT {pt['fade']:.1f}s"
                 if pt.get('delay', 0.0):
                     pt_label += f" d{pt['delay']:.1f}"
-                dpg.set_value("sb_pt_lbl", pt_label)
-                dpg.configure_item("sb_pt_lbl", color=_C_ACCENT)
+                dpg.configure_item("sb_pt_lbl", label=pt_label)
+                if self._go_theme:
+                    dpg.bind_item_theme("sb_pt_lbl", self._go_theme)
             else:
-                dpg.set_value("sb_pt_lbl", "PT")
-                dpg.configure_item("sb_pt_lbl", color=_C_DIM)
+                dpg.configure_item("sb_pt_lbl", label="PT")
+                if self._dim_btn_theme:
+                    dpg.bind_item_theme("sb_pt_lbl", self._dim_btn_theme)
         except Exception:
             pass
 
