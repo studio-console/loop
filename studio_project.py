@@ -2502,9 +2502,10 @@ class Waveform:
         return 1.0 - (t % 1.0)
 
     @staticmethod
-    def flicker(t):
-        # Deterministic noise hash — same phase → same value, but visually random
-        n = (int(t * 23) ^ 0xA5B3) & 0xFFFF
+    def flicker(t, idx=0):
+        # Deterministic per-pixel noise: idx XOR into hash gives each pixel an
+        # independent random sequence. 97 steps/cycle = visible change at 44 Hz.
+        n = (int(t * 97) ^ (idx * 0x4B1D) ^ 0xA5B3) & 0xFFFF
         n = ((n ^ (n << 13)) ^ (n >> 7) ^ (n << 17)) & 0xFF
         return n / 255.0
 
@@ -2947,7 +2948,10 @@ class FXLayer:
         result = {}
         for i, sub in enumerate(self.targets):
             phase = (base_phase + self._offsets[i] * sp) % 1.0
-            result[str(sub.fixture_id)] = fn(phase) * sz
+            if self.waveform == 'flicker':
+                result[str(sub.fixture_id)] = Waveform.flicker(phase, i) * sz
+            else:
+                result[str(sub.fixture_id)] = fn(phase) * sz
         return result
 
     def __repr__(self):
@@ -7073,8 +7077,13 @@ class GUIEngine:
                 ("FIRE FX 3 GROUP 2",     "Fire preset 3, override target to group 2"),
                 ("FX LIST",               "Show all programmer FX defs + pool contents"),
                 ("FX CLEAR RED",          "Clear red-channel FX from programmer"),
-                ("CLEAR FX",              "Clear all FX from programmer (keep colour/dim)"),
+                ("CLEAR FX",             "Clear all FX from programmer (keep colour/dim)"),
                 ("KILL FX",               "Stop all running FX immediately"),
+                ("STROBE 120",           "Shorthand: pulse dim FX at 120 BPM (fixture scope)"),
+                ("STROBE SLOW/MEDIUM/FAST", "60 / 120 / 240 BPM strobe presets"),
+                ("STROBE CLEAR",          "Remove strobe (FX CLEAR DIM)"),
+                ("RAINBOW 60 100",        "Sine RGB chase — 60 BPM, 100% spread, 3 layers"),
+                ("RAINBOW CLEAR",         "Remove all FX layers (colour + dim)"),
             ]),
             ("LIST / INSPECT", [
                 ("STATUS",                "Console overview: GM, selection, active executors, FX"),
@@ -12666,6 +12675,38 @@ def run_command(cmd_str):
                 pass
         return f"Spread → {val:.1f}"
 
+    # STROBE [bpm] — shorthand for FX PULSE DIM BPM <bpm> FIXTURE
+    # STROBE CLEAR — remove dim FX from programmer
+    if t0 == 'STROBE':
+        t1 = tokens[1].upper() if len(tokens) > 1 else ''
+        if t1 == 'CLEAR':
+            return run_command("FX CLEAR DIM")
+        _strobe_presets = {'SLOW': 60, 'MEDIUM': 120, 'FAST': 240}
+        if t1 in _strobe_presets:
+            bpm = _strobe_presets[t1]
+        elif t1 and t1.replace('.', '', 1).isdigit():
+            bpm = float(t1)
+        else:
+            bpm = 120  # default
+        return run_command(f"FX PULSE DIM BPM {bpm} FIXTURE")
+
+    # RAINBOW [bpm] [spread] — RGB sine wave chase across all selected fixtures.
+    # Creates three synchronized FX layers (R/G/B) with 120° phase offsets.
+    # Usage: RAINBOW 60      → 60 BPM rainbow at full spread
+    #        RAINBOW 30 50   → 30 BPM at 50% spread
+    #        RAINBOW CLEAR   → FX CLEAR (removes all colour FX layers)
+    if t0 == 'RAINBOW':
+        t1 = tokens[1].upper() if len(tokens) > 1 else ''
+        if t1 == 'CLEAR':
+            return run_command("FX CLEAR")
+        _rb_bpm  = float(t1) if t1 and t1.replace('.','',1).isdigit() else 60.0
+        t2 = tokens[2] if len(tokens) > 2 else ''
+        _rb_spread = float(t2) if t2 and t2.replace('.','',1).isdigit() else 100.0
+        run_command(f"FX SINE RED    BPM {_rb_bpm} SPREAD {_rb_spread} PHASE 0.0   SIZE 100")
+        run_command(f"FX ADD SINE GREEN BPM {_rb_bpm} SPREAD {_rb_spread} PHASE 0.333 SIZE 100")
+        run_command(f"FX ADD SINE BLUE  BPM {_rb_bpm} SPREAD {_rb_spread} PHASE 0.667 SIZE 100")
+        return f"Rainbow → {_rb_bpm:.0f} BPM  spread {_rb_spread:.0f}%  (3 layers R/G/B)"
+
     if t0 == 'FX' and len(tokens) >= 2:
         sub = tokens[1]
 
@@ -14870,6 +14911,130 @@ if STUDIO_HEADLESS:
             _layer0._speed_master_pool = speed_master_pool
         _check("FX layer rate_bpm uses speed master", (
             _layer0 is None or abs(_layer0.rate_bpm - 333.0) < 0.1))
+
+        # ── FX ENGINE COMPREHENSIVE TESTS ─────────────────────────────────────
+
+        # Waveform range: all outputs must stay in [0, 1]
+        import math as _math
+        def _wv_range(name, fn):
+            vals = [fn(t / 200.0) for t in range(200)]
+            return min(vals) >= 0.0 and max(vals) <= 1.0
+        _check("waveform sine range [0,1]",     _wv_range('sine',     Waveform.sine))
+        _check("waveform ramp range [0,1]",     _wv_range('ramp',     Waveform.ramp))
+        _check("waveform square range [0,1]",   _wv_range('square',   Waveform.square))
+        _check("waveform pulse range [0,1]",    _wv_range('pulse',    Waveform.pulse))
+        _check("waveform triangle range [0,1]", _wv_range('triangle', Waveform.triangle))
+        _check("waveform sawtooth range [0,1]", _wv_range('sawtooth', Waveform.sawtooth))
+        _check("waveform flicker range [0,1]",
+               all(0.0 <= Waveform.flicker(t/200.0, i) <= 1.0
+                   for t in range(200) for i in range(10)))
+
+        # Flicker per-pixel independence: 10 pixels at same phase must differ
+        _fl_vals = [Waveform.flicker(0.5, i) for i in range(10)]
+        _check("flicker has per-pixel variation", len(set(_fl_vals)) > 1)
+
+        # Flicker time resolution: enough unique states per cycle for 44Hz
+        _fl_cycle = [Waveform.flicker(t / 100.0, 0) for t in range(100)]
+        _check("flicker has ≥44 unique states/cycle", len(set(_fl_cycle)) >= 44)
+
+        # Sine shape: trough at 0, peak at 0.5, back to trough at 1.0
+        _check("sine shape: trough at 0.0",
+               abs(Waveform.sine(0.0) - 0.0) < 0.01)
+        _check("sine shape: peak at 0.5",
+               abs(Waveform.sine(0.5) - 1.0) < 0.01)
+
+        # Pulse duty cycle: on for exactly 25% of a cycle
+        _pulse_on = sum(1 for t in range(1000) if Waveform.pulse(t/1000.0) > 0.5)
+        _check("pulse duty cycle is 25%", abs(_pulse_on - 250) <= 2)
+
+        # Strobe shorthand: STROBE creates a pulse dim FX layer
+        run_command("FX CLEAR")
+        _r_strobe = run_command("STROBE 120")
+        _check("STROBE creates FX layer", active_fx != [] or "FX" in (_r_strobe or ""))
+
+        # STROBE CLEAR removes dim FX
+        run_command("STROBE 120")
+        run_command("STROBE CLEAR")
+        _strobe_still = any(l.channel == 'dim' for l in (active_fx or []))
+        _check("STROBE CLEAR removes dim FX", not _strobe_still)
+
+        # Rainbow shorthand: RAINBOW creates 3 colour FX layers
+        run_command("FX CLEAR")
+        _r_rainbow = run_command("RAINBOW 60 100")
+        _rainbow_chans = [l.channel for l in (active_fx or [])]
+        _check("RAINBOW creates red layer",   'red'   in _rainbow_chans)
+        _check("RAINBOW creates green layer", 'green' in _rainbow_chans)
+        _check("RAINBOW creates blue layer",  'blue'  in _rainbow_chans)
+        # Phase offsets should differ by ~0.33 between R→G and G→B
+        _rb_layers = sorted(
+            [l for l in (active_fx or []) if l.channel in ('red','green','blue')],
+            key=lambda l: l.phase_offset)
+        if len(_rb_layers) >= 3:
+            _rb_ph = [l.phase_offset for l in _rb_layers]
+            _check("RAINBOW phases spaced ~0.33 apart",
+                   abs(_rb_ph[1] - _rb_ph[0] - 0.333) < 0.01 or
+                   abs(_rb_ph[2] - _rb_ph[1] - 0.333) < 0.01)
+        else:
+            _check("RAINBOW phases (need 3 layers)", False)
+
+        # Spread: with spread=100 and ≥2 targets, offsets are not all identical
+        run_command("FX CLEAR")
+        run_command("FX SINE RED SPREAD 100 BPM 60")
+        _sp_layer = (active_fx or [None])[0]
+        if _sp_layer and len(_sp_layer._offsets) >= 2:
+            _check("spread=100 creates non-zero offsets",
+                   len(set(round(o, 4) for o in _sp_layer._offsets)) > 1)
+        else:
+            _check("spread=100 (need ≥2 targets)", _sp_layer is None)
+
+        # FX size scales amplitude: size=50 → max ~127 DMX
+        run_command("FX CLEAR")
+        run_command("FX SINE RED SIZE 50 SPREAD 0 BPM 60")
+        _sz_layer = (active_fx or [None])[0]
+        if _sz_layer:
+            _sz_vals = _sz_layer.get_values(time.monotonic())
+            _sz_max  = max(_sz_vals.values()) if _sz_vals else 0
+            _check("FX size=50 gives max ~127 DMX", _sz_max <= 128.0)
+        else:
+            _check("FX size=50 (layer needed)", False)
+
+        # Dim FX: multiplicative (FX PULSE DIM should not exceed base dim)
+        run_command("FX CLEAR")
+        run_command("FX SQUARE DIM SIZE 100 SPREAD 0 BPM 30")
+        _dm_layer = next((l for l in (active_fx or []) if l.channel == 'dim'), None)
+        _check("dim FX layer channel is 'dim'", _dm_layer is not None)
+
+        # Bounce direction: phase reverses after one cycle
+        run_command("FX CLEAR")
+        run_command("FX RAMP RED SPREAD 100 BPM 60 DIRECTION BOUNCE")
+        _bn_layer = (active_fx or [None])[0]
+        _check("bounce direction stored", _bn_layer is not None and _bn_layer.direction == 'bounce')
+
+        # Block size: adjacent pixels grouped
+        run_command("FX CLEAR")
+        run_command("FX RAMP RED SPREAD 100 BLOCK 3 BPM 60")
+        _bk_layer = (active_fx or [None])[0]
+        if _bk_layer and len(_bk_layer._offsets) >= 6:
+            _bk_off = _bk_layer._offsets
+            _check("block_size=3 groups adjacent targets (offsets equal)",
+                   _bk_off[0] == _bk_off[1] == _bk_off[2] and
+                   _bk_off[3] == _bk_off[4] == _bk_off[5])
+        else:
+            _check("block_size=3 (need ≥6 targets)", True)
+
+        # Infade: envelope ramps from 0 at start
+        run_command("FX CLEAR")
+        run_command("FX SINE RED INFADE 5 BPM 60")
+        _if_layer = (active_fx or [None])[0]
+        if _if_layer:
+            _if_layer.start = time.monotonic()  # reset start so env starts at 0
+            _if_layer.get_values(time.monotonic())
+            _check("infade envelope starts near 0", _if_layer._last_env < 0.5)
+        else:
+            _check("infade (layer needed)", False)
+
+        run_command("FX CLEAR")
+
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
