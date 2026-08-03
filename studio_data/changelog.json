@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "Merge remote changelog before push",
+      "details": []
+    },
+    {
+      "date": "2026-08-03",
       "summary": "AI: explicit pronoun resolution from recent_commands context",
       "details": []
     },
