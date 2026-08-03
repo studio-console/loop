@@ -7108,6 +7108,8 @@ class GUIEngine:
 
     def _build_ai_bar(self):
         dpg.add_separator()
+        # Header + chips merged into one row — keeps total bar height to 2 rows
+        # so the input never falls under the macOS dock on 1080p displays.
         with dpg.group(horizontal=True):
             dpg.add_text("ai prompt", color=_C_ACCENT)
             dpg.add_spacer(width=8)
@@ -7119,18 +7121,17 @@ class GUIEngine:
                            callback=lambda: dpg.configure_item(
                                "ai_history_window",
                                show=not dpg.is_item_shown("ai_history_window")))
+            dpg.add_spacer(width=16)
+            for label, prompt in self._AI_CHIPS:
+                dpg.add_button(label=label, width=98,
+                               callback=self._on_ai_chip,
+                               user_data=prompt)
         with dpg.group(horizontal=True):
             dpg.add_input_text(tag="ai_input", hint="describe the look...",
                                width=-120, on_enter=True,
                                callback=self._on_ai_send)
             dpg.add_button(label="send", width=110,
                            callback=self._on_ai_send)
-        # Quick-prompt chips
-        with dpg.group(horizontal=True):
-            for label, prompt in self._AI_CHIPS:
-                dpg.add_button(label=label, width=98,
-                               callback=self._on_ai_chip,
-                               user_data=prompt)
 
     # ── Callbacks ────────────────────────────────────────────
 
