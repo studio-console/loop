@@ -7617,7 +7617,7 @@ class GUIEngine:
         _FXED_BTN_W  = 108   # 8 × 108 + 7 × 6 spacing ≈ 906, fits in 940px window
         _FXED_BTN_H  = 28
         with dpg.window(tag="fx_editor_window", label="fx editor",
-                        width=940, height=580, show=False,
+                        width=1100, height=580, show=False,
                         pos=(120, 100), no_collapse=False):
 
             # ── Preset selector row ───────────────────────────
@@ -7683,9 +7683,9 @@ class GUIEngine:
                     dpg.add_table_column(label="Size",     width_fixed=True, init_width_or_weight=64)
                     dpg.add_table_column(label="Spread",   width_fixed=True, init_width_or_weight=59)
                     dpg.add_table_column(label="Phase",    width_fixed=True, init_width_or_weight=59)
-                    dpg.add_table_column(label="Grp",      width_fixed=True, init_width_or_weight=50)
-                    dpg.add_table_column(label="Col",      width_fixed=True, init_width_or_weight=50)
-                    dpg.add_table_column(label="Dim",      width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="Group",    width_fixed=True, init_width_or_weight=96)
+                    dpg.add_table_column(label="Color",    width_fixed=True, init_width_or_weight=96)
+                    dpg.add_table_column(label="Dim",      width_fixed=True, init_width_or_weight=96)
                     dpg.add_table_column(label="SPD",      width_fixed=True, init_width_or_weight=50)
                     dpg.add_table_column(label="",         width_fixed=True, init_width_or_weight=30)
 
@@ -7797,6 +7797,27 @@ class GUIEngine:
             dpg.set_value("fxed_name", "Chase RGB")
         self._fxed_rebuild_rows()
 
+    def _fxed_named_items(self, pool, id_attr='groups', name_attr='name', trunc=8):
+        """Build ["—", "1: name", ...] items from a pool dict; only existing entries."""
+        items = ["—"]
+        pool_dict = getattr(pool, id_attr, {}) if pool else {}
+        for pid in sorted(pool_dict):
+            entry = pool_dict[pid]
+            label = getattr(entry, name_attr, str(pid))[:trunc]
+            items.append(f"{pid}: {label}")
+        return items
+
+    def _fxed_id_to_label(self, pid, pool, id_attr='groups', name_attr='name', trunc=8):
+        """Return "n: name" for a given pool ID, or bare "n" if not found."""
+        if pid is None:
+            return "—"
+        pool_dict = getattr(pool, id_attr, {}) if pool else {}
+        entry = pool_dict.get(int(pid))
+        if entry:
+            label = getattr(entry, name_attr, str(pid))[:trunc]
+            return f"{pid}: {label}"
+        return str(pid)
+
     def _fxed_rebuild_rows(self):
         for row_id in getattr(self, '_fxed_row_ids', []):
             try:
@@ -7806,8 +7827,11 @@ class GUIEngine:
         self._fxed_row_ids = []
 
         _spd_items = ["—"] + [str(n) for n in range(1, SpeedMasterPool._DEFAULT_SLOTS + 1)]
+        _grp_items = self._fxed_named_items(self._groups,  'groups',  'name')
+        _col_items = self._fxed_named_items(self._colors,  'presets', 'name')
+        _dim_items = self._fxed_named_items(self._dims,    'presets', 'name')
+
         for i, ld in enumerate(self._fx_ed_layers):
-            _ref_items = ["—"] + [str(n) for n in range(1, self._POOL_SLOTS + 1)]
             _gid = ld.get('group_id')
             _cid = ld.get('color_id')
             _did = ld.get('dim_id')
@@ -7851,18 +7875,18 @@ class GUIEngine:
                                     step=0, format="%.3f")
                 dpg.set_value(f"fxed_r{i}_phase", ld.get('phase_offset', 0.0))
 
-                dpg.add_combo(tag=f"fxed_r{i}_grp", label="", width=46,
-                              items=_ref_items,
-                              default_value="—" if _gid is None else str(_gid))
-                dpg.set_value(f"fxed_r{i}_grp", "—" if _gid is None else str(_gid))
-                dpg.add_combo(tag=f"fxed_r{i}_col", label="", width=46,
-                              items=_ref_items,
-                              default_value="—" if _cid is None else str(_cid))
-                dpg.set_value(f"fxed_r{i}_col", "—" if _cid is None else str(_cid))
-                dpg.add_combo(tag=f"fxed_r{i}_dim", label="", width=46,
-                              items=_ref_items,
-                              default_value="—" if _did is None else str(_did))
-                dpg.set_value(f"fxed_r{i}_dim", "—" if _did is None else str(_did))
+                _gval = self._fxed_id_to_label(_gid, self._groups,  'groups',  'name')
+                dpg.add_combo(tag=f"fxed_r{i}_grp", label="", width=90,
+                              items=_grp_items, default_value=_gval)
+                dpg.set_value(f"fxed_r{i}_grp", _gval)
+                _cval = self._fxed_id_to_label(_cid, self._colors,  'presets', 'name')
+                dpg.add_combo(tag=f"fxed_r{i}_col", label="", width=90,
+                              items=_col_items, default_value=_cval)
+                dpg.set_value(f"fxed_r{i}_col", _cval)
+                _dval = self._fxed_id_to_label(_did, self._dims,    'presets', 'name')
+                dpg.add_combo(tag=f"fxed_r{i}_dim", label="", width=90,
+                              items=_dim_items, default_value=_dval)
+                dpg.set_value(f"fxed_r{i}_dim", _dval)
 
                 dpg.add_combo(tag=f"fxed_r{i}_spd", label="", width=46,
                               items=_spd_items,
@@ -7896,7 +7920,13 @@ class GUIEngine:
     def _fxed_sync_rows(self):
         """Read current widget values back into _fx_ed_layers."""
         def _ref(v):
-            return None if v == "—" else int(v)
+            if not v or v == "—":
+                return None
+            # values may be "n" or "n: name" (from named dropdowns)
+            try:
+                return int(v.split(":")[0].strip())
+            except (ValueError, IndexError):
+                return None
         for i in range(len(self._fx_ed_layers)):
             try:
                 self._fx_ed_layers[i]['waveform']     = dpg.get_value(f"fxed_r{i}_wave")

@@ -1,0 +1,128 @@
+{
+  "patch_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 774,
+    "height": 749,
+    "show": false
+  },
+  "osc_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 620,
+    "height": 360,
+    "show": false
+  },
+  "midi_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 859,
+    "height": 533,
+    "show": false
+  },
+  "fx_editor_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 1100,
+    "height": 580,
+    "show": false
+  },
+  "keys_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 705,
+    "height": 1082,
+    "show": false
+  },
+  "changelog_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 746,
+    "height": 1041,
+    "show": false
+  },
+  "pages_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 560,
+    "height": 400,
+    "show": false
+  },
+  "monitors_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 1586,
+    "height": 405,
+    "show": false
+  },
+  "ai_history_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 700,
+    "height": 460,
+    "show": false
+  },
+  "attr_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 1904,
+    "height": 303,
+    "show": false
+  },
+  "ai_prompts_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 640,
+    "height": 480,
+    "show": false
+  },
+  "ai_bar_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 760,
+    "height": 230,
+    "show": false
+  },
+  "color_picker_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 512,
+    "height": 524,
+    "show": false
+  },
+  "speed_master_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 560,
+    "height": 340,
+    "show": false
+  }
+}
