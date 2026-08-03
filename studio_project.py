@@ -7068,8 +7068,13 @@ class GUIEngine:
                         dpg.add_table_column(label="desc", init_width_or_weight=0.58)
                         for cmd, desc in rows:
                             with dpg.table_row():
-                                dpg.add_text(cmd,  color=_C_TEXT)
-                                dpg.add_text(desc, color=_C_DIM)
+                                # wrap= so long command strings (e.g. the
+                                # "1 AT YELLOW / ORANGE / ..." shorthand rows)
+                                # break onto a second line instead of being
+                                # silently cut off at the column edge with no
+                                # way to read the rest.
+                                dpg.add_text(cmd,  color=_C_TEXT, wrap=280)
+                                dpg.add_text(desc, color=_C_DIM,  wrap=380)
                     dpg.add_spacer(height=6)
 
     # ── Changelog popup ──────────────────────────────────────────
@@ -7847,7 +7852,7 @@ class GUIEngine:
     def _build_color_picker_popup(self):
         """Floating RGB color picker — live mode fires to programmer on every drag."""
         with dpg.window(tag="color_picker_window", label="color picker",
-                        width=310, height=390, show=False,
+                        width=370, height=480, show=False,
                         pos=(800, 200), no_collapse=False):
             with dpg.group(horizontal=True):
                 dpg.add_text("color picker", color=_C_ACCENT)
