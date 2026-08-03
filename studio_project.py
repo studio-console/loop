@@ -10979,34 +10979,27 @@ def load_show_from(name):
     for fname in os.listdir(src):
         if fname.endswith('.json'):
             _sh.copy2(os.path.join(src, fname), os.path.join(DATA_DIR, fname))
-    # Reload pools from newly-copied files
-    doc = _read_file(ShowFile.CUESTACKS)
-    if doc:
-        ShowFile.load_cuestacks(doc, cuestack_pool)
-    doc = _read_file(ShowFile.GROUPS)
-    if doc:
-        ShowFile.load_groups(doc, group_pool)
-    doc = _read_file(ShowFile.COLORS)
-    if doc:
-        ShowFile.load_colors(doc, color_pool)
-    doc = _read_file(ShowFile.DIMS)
-    if doc:
-        ShowFile.load_dims(doc, dim_pool)
-    doc = _read_file(ShowFile.FX_POOL)
-    if doc:
-        ShowFile.load_fx_pool(doc, fx_pool)
-    doc = _read_file(ShowFile.FORMS)
-    if doc:
-        ShowFile.load_forms(doc, form_pool)
-    doc = _read_file(ShowFile.RATES)
-    if doc:
-        ShowFile.load_rate_pool(doc, rate_pool)
-    doc = _read_file(ShowFile.SIZES)
-    if doc:
-        ShowFile.load_size_pool(doc, size_pool)
-    doc = _read_file(ShowFile.SPREADS)
-    if doc:
-        ShowFile.load_spread_pool(doc, spread_pool)
+    # Reload pools from newly-copied files (each loader reads from DATA_DIR itself)
+    cuestack_pool.stacks.clear()
+    ShowFile.load_cuestacks(cuestack_pool, cue_pool)
+    group_pool.groups.clear()
+    ShowFile.load_groups(group_pool)
+    color_pool.presets.clear()
+    ShowFile.load_colors(color_pool)
+    dim_pool.presets.clear()
+    ShowFile.load_dims(dim_pool)
+    fx_pool.presets.clear()
+    ShowFile.load_fx_pool(fx_pool)
+    # Clear only custom form slots (builtins 1-4 are never saved to file)
+    for _fid in [k for k in form_pool.forms if k >= FormPool.FIRST_CUSTOM_SLOT]:
+        del form_pool.forms[_fid]
+    ShowFile.load_forms(form_pool)
+    rate_pool.presets.clear()
+    ShowFile.load_rate_pool(rate_pool)
+    size_pool.presets.clear()
+    ShowFile.load_size_pool(size_pool)
+    spread_pool.presets.clear()
+    ShowFile.load_spread_pool(spread_pool)
     return f"Show '{name}' loaded — restart may be needed for patch/MIDI changes"
 
 
