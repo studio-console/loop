@@ -12902,6 +12902,52 @@ def run_command(cmd_str):
                 p = pool.presets[pid]
                 lines.append(f"  {p}")
             return "\n".join(lines)
+        if sub in ('EXEC', 'EXECUTORS', 'EXECUTOR'):
+            if not executor_pool.executors:
+                return "No executors configured"
+            lines = ["Executors:"]
+            for eid in sorted(executor_pool.executors):
+                ex = executor_pool.executors[eid]
+                cs = ex.cuestack
+                if cs:
+                    cur_s = (f"  cue {cs.current:.0f}" if cs.current is not None else "  not started")
+                    active_s = "  ACTIVE" if ex.is_active else "  idle"
+                    mode_s = f"  mode={ex.trigger_mode}"
+                    lines.append(f"  [{eid}] → CS {cs.stack_id}: {cs.name}{cur_s}{active_s}{mode_s}")
+                else:
+                    lines.append(f"  [{eid}] → (unassigned)")
+            return "\n".join(lines)
+        if sub == 'MIDI':
+            if not midi or (not midi.cc_maps and not midi.note_maps):
+                return "No MIDI mappings"
+            lines = ["MIDI Mappings:"]
+            for (ch, cc), m in sorted(midi.cc_maps.items()):
+                status = "live" if m.taken_over else "takeover"
+                lines.append(f"  CH{ch} CC{cc:3d}  → {m.name} [{status}]")
+            for (ch, note), m in sorted(midi.note_maps.items()):
+                lines.append(f"  CH{ch} Note{note:3d} → {m.name}")
+            return "\n".join(lines) if len(lines) > 1 else "No MIDI mappings"
+        if sub in ('OSC', 'TARGETS'):
+            clients = osc._clients if osc else {}
+            if not clients:
+                return "No OSC targets"
+            lines = ["OSC Targets:"]
+            for name, c in clients.items():
+                lines.append(f"  {name}  {c._address}:{c._port}")
+            return "\n".join(lines)
+        if sub == 'PATCH':
+            if not patch or not patch.fixtures:
+                return "Patch is empty"
+            lines = ["Patch:"]
+            for fid in sorted(patch.fixtures):
+                m = patch.fixtures[fid]
+                first_sub = m.get_sub(1)
+                if first_sub and first_sub.outputs:
+                    out = first_sub.outputs[0]
+                    lines.append(f"  [{fid}] {m.name}  {m.profile.name}  U{out['universe']}@{out['address']}")
+                else:
+                    lines.append(f"  [{fid}] {m.name}  {m.profile.name}")
+            return "\n".join(lines)
 
     # ── Clear — programmer only, never touches cuestacks ────────
     # ── RELEASE — stop executor(s) ───────────────────────────
