@@ -4426,7 +4426,7 @@ class GUIEngine:
     _POPUP_TAGS = [
         "patch_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
-        "ai_history_window",
+        "ai_history_window", "attr_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -4517,6 +4517,7 @@ class GUIEngine:
         self._build_fx_editor_popup()
         self._build_changelog_popup()
         self._build_pages_popup()
+        self._build_attr_popup()
         self._build_monitors_popup()
         self._build_ai_history_popup()
 
@@ -4605,6 +4606,9 @@ class GUIEngine:
             dpg.add_spacer(width=4)
             dpg.add_button(label="pages", width=55,
                            callback=self._on_pages_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="attr", width=50,
+                           callback=self._on_attr_popup_toggle)
             dpg.add_spacer(width=4)
             dpg.add_button(label="mon", width=50,
                            callback=self._on_monitors_toggle)
@@ -4883,6 +4887,16 @@ class GUIEngine:
         except Exception:
             pass
 
+    def _on_attr_popup_toggle(self):
+        try:
+            if dpg.is_item_shown("attr_window"):
+                self._save_popup_layout()
+                dpg.hide_item("attr_window")
+            else:
+                dpg.show_item("attr_window")
+        except Exception:
+            pass
+
     def _on_monitors_toggle(self):
         try:
             if dpg.is_item_shown("monitors_window"):
@@ -5014,8 +5028,13 @@ class GUIEngine:
     _W          = 1920
     _H          = 1080
     # Section heights — sized to fit 1040px viewport with no scroll (no-AI case).
-    # Budget: 1040px viewport - 12px WindowPadding - 10×4px ItemSpacing gaps = 988px for content.
-    # Header~36 + 3-col~420 + sep~2 + P1~150 + P2~150 + Forms~56 + Attr×2~164 = 978px ✓
+    # Budget: 1040px viewport - 12px WindowPadding - gaps ≈ 988px for content.
+    # Header~70 + 3-col row~480 + sep~2 + P1~170 + P2~170 + Forms~88 = 980px ✓ (no AI bar)
+    # Attribute pools (position/gobo/zoom/focus/beam) live in a separate popup
+    # (_build_attr_popup), not stacked in the main window — see _build_pools_row.
+    # AI bar (~70px, only when self._ai is set) is the one section not counted
+    # above; the main window keeps scrolling enabled as a fallback for that case
+    # since it can't be verified pixel-exact without a real display.
     _H_MAIN     = 480   # main 3-col area — tall enough for all left-col FX controls
     _H_P1       = 170   # pool row 1: 4×24btn + 3×4gap + 26header + 12WP = 146 content, 170 total
     _H_P2       = 170   # pool row 2
@@ -5225,9 +5244,11 @@ class GUIEngine:
             self._build_fx_pool_panel()
         # Row 3: Forms (full width)
         self._build_forms_panel()
-        # Attr pool panels (position/gobo/zoom/focus/beam) are omitted from the main
-        # layout — they're irrelevant for pure-RGB pixel tubes and were causing
-        # vertical overflow. They remain functional via the command line.
+        # Attr pool panels (position/gobo/zoom/focus/beam) live in a separate
+        # floating popup (see _build_attr_popup / 'attr' header button) rather
+        # than a 5th stacked row here — they're irrelevant for the pure-RGB
+        # pixel tubes in this rig and a 5th row pushed the main window past
+        # the 1920x1080 budget.
 
     def _build_group_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -5433,6 +5454,33 @@ class GUIEngine:
                         with dpg.tooltip(f"{tag_prefix}_btn_{n}"):
                             dpg.add_text(f"{attr_name.title()} {n}",
                                          tag=f"{tag_prefix}_tip_{n}")
+
+    # ── Attribute pools popup ────────────────────────────────
+    # Position/gobo/zoom/focus/beam panels used to live in the main pools
+    # row but were pulled out (see _build_pools_row) because a 5th stacked
+    # row pushed the main window past the 1920x1080 budget. The panels
+    # themselves (_build_attr_pool_panel) and their live tick/click wiring
+    # (_tick_pools, _on_attr_click) were already correct and untouched —
+    # this just gives them a floating home, same pattern as the MIDI and
+    # executor-pages popups.
+
+    def _build_attr_popup(self):
+        """Floating attribute pool panel — hidden by default, opened via header button."""
+        with dpg.window(tag="attr_window", label="Attribute Pools",
+                        width=1902, height=250, show=False,
+                        pos=(10, 80), no_collapse=False):
+            dpg.add_text("position / gobo / zoom / focus / beam", color=_C_ACCENT)
+            dpg.add_text("Moving-light attributes — not used by the 6 LT-200 pixel tubes "
+                         "in this rig, but recalled the same way as color/dim presets "
+                         "for any fixture patched with these channels.", color=_C_DIM, wrap=1860)
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                self._build_attr_pool_panel("position", _C_P_POSITION, "pos")
+                self._build_attr_pool_panel("gobo",     _C_P_GOBO,  "gobo")
+                self._build_attr_pool_panel("zoom",     _C_P_ZOOM,  "zoom")
+            with dpg.group(horizontal=True):
+                self._build_attr_pool_panel("focus",    _C_P_FOCUS, "focus")
+                self._build_attr_pool_panel("beam",     _C_P_BEAM,  "beam")
 
     def _build_forms_panel(self):
         # Spans the same width as the 3 pool panels above (3 × _PANEL_W).
@@ -6094,6 +6142,12 @@ class GUIEngine:
                 ("PAGE LIST",             "List all pages and their cuestacks"),
                 ("PAGES button",          "Same page commands via a GUI table — no typing needed"),
             ]),
+            ("ATTRIBUTE POOLS", [
+                ("RECORD POSITION 1 Wide", "Snapshot pan/tilt from programmer into slot 1"),
+                ("POSITION 1",            "Apply position preset 1 to programmer"),
+                ("RECORD GOBO 1 / GOBO 1", "Same pattern for gobo, zoom, focus, beam"),
+                ("attr button",           "Open the position/gobo/zoom/focus/beam GUI panels"),
+            ]),
             ("programmer", [
                 ("CLEAR",                 "Clear selection (tap 1) then programmer (tap 2)"),
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
@@ -6125,6 +6179,7 @@ class GUIEngine:
                 ("MIDI button",           "Open MIDI mapping editor"),
                 ("PATCH button",          "Open patch editor"),
                 ("PAGES button",          "Open pages editor (assign cuestacks to pages)"),
+                ("attr button",           "Open the attribute pools (position/gobo/zoom/focus/beam)"),
             ]),
         ]
 
@@ -11630,7 +11685,7 @@ fx_engine.stop()
 #   fx_pool       — FXPreset     (numbered, 1-12 visible in GUI, saved to fx_pool.json)
 #   form_pool     — FormPreset   (1-4 built-in builtins: sine/ramp/pulse/square;
 #                                 5+ custom breakpoint curves; saved to forms.json)
-#   executor_pool — Executor     (runtime only, not persisted)
+#   executor_pool — Executor     (cuestack/level/priority/mode saved to executors.json)
 #
 # ── WHAT WORKS ────────────────────────────────────────────────────────────────
 # - Full output pipeline (sACN, FX additive, programmer+cue merge)
