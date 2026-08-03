@@ -14024,6 +14024,38 @@ if STUDIO_HEADLESS:
         _check("BLACKOUT overrides HIGHLIGHT in DMX output", max(_dmx_bbo) == 0)
         run_command("BLACKOUT OFF")
         run_command("HIGHLIGHT OFF")
+
+        # RECORD GROUP + recall — untested prior to this session
+        run_command("1 THRU 3")
+        r_grp = run_command("RECORD GROUP 9 SmokeGroup")
+        _check("RECORD GROUP from selection", "Recorded" in r_grp)
+        r_grp_recall = run_command("GROUP 9")
+        _check("GROUP recall", "recalled" in r_grp_recall.lower())
+
+        # RECORD FORM (custom breakpoint curve) — untested prior to this session
+        r_form = run_command("RECORD FORM 6 SmokeWave 0.0,0.0 0.5,1.0 1.0,0.0")
+        _check("RECORD FORM custom breakpoints", "Recorded" in r_form)
+        r_form_list = run_command("FORM LIST")
+        _check("FORM LIST shows recorded form", "smokewave" in r_form_list.lower())
+
+        # RECORD FX + FIRE FX roundtrip — untested prior to this session
+        run_command("1 THRU 3")
+        run_command("FX SINE BLUE BPM 40")
+        r_fx_rec = run_command("RECORD FX 9 SmokeFX")
+        _check("RECORD FX from programmer", "Recorded" in r_fx_rec)
+        run_command("FX CLEAR")
+        r_fx_fire = run_command("FIRE FX 9")
+        _check("FIRE FX reapplies preset", "FX" in r_fx_fire)
+        run_command("FX CLEAR")
+
+        # Attribute pools (POSITION/GOBO/ZOOM/FOCUS/BEAM/CONTROL) — GUI panel
+        # landed last session but the record path was never smoke-tested.
+        # These fixtures (SGM_RGB_54) have no pan/tilt/gobo/etc channels, so
+        # recording should fail gracefully (not crash) rather than succeed.
+        for _attr in ("POSITION", "GOBO", "ZOOM", "FOCUS", "BEAM", "CONTROL"):
+            r_attr = run_command(f"RECORD {_attr} 9 Smoke{_attr.title()}")
+            _check(f"RECORD {_attr} handles no-data case cleanly",
+                   "no" in r_attr.lower() and "data in programmer" in r_attr.lower())
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
