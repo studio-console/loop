@@ -12810,11 +12810,15 @@ def run_command(cmd_str):
             save_show()
             return f"Recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"Dimmer {pid}"
+        # Check if programmer has dim data before recording
+        _has_dim = any('dim' in vals
+                       for fid, vals in prog.data.items()
+                       if '.' not in fid)
+        if not _has_dim:
+            return "RECORD DIM: no dimmer data in programmer  (set a dim level first)"
         p = dim_pool.record(pid, prog, name=name)
-        if p and p.level > 0.0:
-            save_show()
-            return f"Recorded: {p}  (show saved)"
-        return "RECORD DIM: no dimmer data in programmer  (set a dim level first)"
+        save_show()
+        return f"Recorded: {p}  (show saved)"
 
     # ── Attribute pool record / recall ───────────────────────────
     # Covers: POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL
