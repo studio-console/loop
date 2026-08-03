@@ -5622,6 +5622,9 @@ class GUIEngine:
                             dpg.add_menu_item(label="Rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME GROUP {n} ")
+                            dpg.add_menu_item(label="Copy to slot...",
+                                callback=self._ctx_prefill,
+                                user_data=f"COPY GROUP {n} TO ")
                             dpg.add_separator()
                             dpg.add_menu_item(label="Clear Group",
                                 callback=self._ctx_exec,
@@ -5656,6 +5659,9 @@ class GUIEngine:
                             dpg.add_menu_item(label="Rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME COLOR {n} ")
+                            dpg.add_menu_item(label="Copy to slot...",
+                                callback=self._ctx_prefill,
+                                user_data=f"COPY COLOR {n} TO ")
                             dpg.add_separator()
                             dpg.add_menu_item(label="Clear Color",
                                 callback=self._ctx_exec,
@@ -5690,6 +5696,9 @@ class GUIEngine:
                             dpg.add_menu_item(label="Rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME DIM {n} ")
+                            dpg.add_menu_item(label="Copy to slot...",
+                                callback=self._ctx_prefill,
+                                user_data=f"COPY DIM {n} TO ")
                             dpg.add_separator()
                             dpg.add_menu_item(label="Clear Dim",
                                 callback=self._ctx_exec,
@@ -5892,6 +5901,9 @@ class GUIEngine:
                             dpg.add_menu_item(label="Rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME FX {n} ")
+                            dpg.add_menu_item(label="Copy to slot...",
+                                callback=self._ctx_prefill,
+                                user_data=f"COPY FX {n} TO ")
                             dpg.add_separator()
                             dpg.add_menu_item(label="Clear FX Preset",
                                 callback=self._ctx_exec,
@@ -13202,6 +13214,57 @@ def run_command(cmd_str):
 
         except (ValueError, IndexError) as _e:
             return f"COPY CUE: bad syntax — {_e}"
+
+    # ── COPY pool preset ──────────────────────────────────────────────────────
+    # COPY COLOR/DIM/GROUP/FX <src> TO <dst> [name]
+    # tokens: COPY  TYPE  N  TO  M  [name...]
+    #         [0]   [1]  [2] [3] [4]  [5+]
+    if t0 == 'COPY' and len(tokens) >= 5 and tokens[3] == 'TO':
+        sub = tokens[1]
+        if sub in ('COLOR', 'COLOUR', 'DIM', 'GROUP', 'FX'):
+            try:
+                src_n = int(tokens[2])
+                dst_n = int(tokens[4])
+            except ValueError:
+                return f"COPY {sub}: bad slot numbers"
+            new_name = _name_after(raw, 5) or None
+
+            if sub in ('COLOR', 'COLOUR'):
+                src = color_pool.get(src_n)
+                if not src: return f"Color {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.preset_id = dst_n
+                dst.name      = new_name or f"{src.name} (copy)"
+                color_pool.presets[dst_n] = dst
+                save_show()
+                return f"Copied Color {src_n} '{src.name}' → Color {dst_n} '{dst.name}'"
+            if sub == 'DIM':
+                src = dim_pool.get(src_n)
+                if not src: return f"Dim {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.preset_id = dst_n
+                dst.name      = new_name or f"{src.name} (copy)"
+                dim_pool.presets[dst_n] = dst
+                save_show()
+                return f"Copied Dim {src_n} '{src.name}' → Dim {dst_n} '{dst.name}'"
+            if sub == 'GROUP':
+                src = group_pool.get(src_n)
+                if not src: return f"Group {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.group_id = dst_n
+                dst.name     = new_name or f"{src.name} (copy)"
+                group_pool.groups[dst_n] = dst
+                save_show()
+                return f"Copied Group {src_n} '{src.name}' → Group {dst_n} '{dst.name}'"
+            if sub == 'FX':
+                src = fx_pool.get(src_n)
+                if not src: return f"FX {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.preset_id = dst_n
+                dst.name      = new_name or f"{src.name} (copy)"
+                fx_pool.presets[dst_n] = dst
+                save_show()
+                return f"Copied FX {src_n} '{src.name}' → FX {dst_n} '{dst.name}'"
 
     if t0 == 'KILL' and len(tokens) >= 2 and tokens[1] == 'FX':
         # Write fx_kill flag into programmer master data for selected (or all) fixtures.
