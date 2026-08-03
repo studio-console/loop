@@ -8021,7 +8021,7 @@ class GUIEngine:
     def _on_cpick_change(self, sender, color_val):
         """Called realtime as the user drags the picker — fires if live is on."""
         if dpg.get_value("cpick_live"):
-            self._cpick_fire(color_val)
+            self._cpick_fire(color_val, live=True)
 
     def _on_cpick_apply(self):
         """Apply button — push current picker color to programmer unconditionally."""
@@ -8033,34 +8033,64 @@ class GUIEngine:
         dpg.set_value("cpick_wheel", (r, g, b, 255))
         self._cpick_fire((r, g, b, 255))
 
-    def _cpick_fire(self, color_val):
-        """Send R G B values to the programmer for the current fixture selection."""
+    def _cpick_fire(self, color_val, live=False):
+        """Send R G B values to the programmer for the current fixture selection.
+
+        Uses set_rgb() directly for an atomic single-undo update instead of
+        routing through run_command (which does 3 separate set_channel calls).
+        During live drag (live=True), near-black values are skipped — they are
+        almost always drag artifacts from the wheel's black corner, not intent.
+        """
         r = max(0, min(255, int(color_val[0])))
         g = max(0, min(255, int(color_val[1])))
         b = max(0, min(255, int(color_val[2])))
-        if self._cmd:
-            self._cmd(f"R {r} G {g} B {b}")
+        if live and r + g + b < 6:
+            return  # skip transient black during drag; use Off button for intentional black
+        if self._prog:
+            self._prog.set_rgb(r, g, b)
         try:
             dpg.set_value("cpick_status", f"R {r}  G {g}  B {b}")
         except Exception:
             pass
 
     def _cpick_sync_from_programmer(self):
-        """Seed the picker with the current programmer RGB of the first selected fixture."""
+        """Seed the picker with the live output RGB of the first selected fixture.
+
+        Priority: programmer data → cue output → bright white.
+        Using a bright seed ensures the wheel's inner triangle cursor is never
+        stuck at the black corner, which would cause every hue drag to fire (0,0,0).
+        """
         if not self._prog:
             return
         sel = list(self._prog.selection)
         if not sel:
             return
         master = sel[0]
-        fid_master = str(getattr(master, 'fixture_id', master))
-        # programmer stores sub-fixture RGB — look in first sub if master has no RGB
-        vals = self._prog.data.get(fid_master, {})
+        fid_master  = str(getattr(master, 'fixture_id', master))
         first_sub_fid = f"{fid_master}.1"
-        sub_vals = self._prog.data.get(first_sub_fid, vals)
-        r = max(0, min(255, int(sub_vals.get('red',   vals.get('red',   0)))))
-        g = max(0, min(255, int(sub_vals.get('green', vals.get('green', 0)))))
-        b = max(0, min(255, int(sub_vals.get('blue',  vals.get('blue',  0)))))
+
+        # 1. Try programmer (sub-fixture first, then master)
+        sub_vals = self._prog.data.get(first_sub_fid) or self._prog.data.get(fid_master) or {}
+        if 'red' in sub_vals or 'green' in sub_vals or 'blue' in sub_vals:
+            r = max(0, min(255, int(sub_vals.get('red',   0))))
+            g = max(0, min(255, int(sub_vals.get('green', 0))))
+            b = max(0, min(255, int(sub_vals.get('blue',  0))))
+        else:
+            # 2. Fall back to the live cue-merge output so the wheel opens at the
+            #    actual displayed colour, not at black.
+            r = g = b = 255  # safe default: full white
+            if self._out:
+                try:
+                    cue_layer = self._out._merged_cue_layer()
+                    cue_sub   = cue_layer.get(first_sub_fid, {})
+                    cr = max(0, min(255, int(cue_sub.get('red',   0))))
+                    cg = max(0, min(255, int(cue_sub.get('green', 0))))
+                    cb = max(0, min(255, int(cue_sub.get('blue',  0))))
+                    if cr + cg + cb > 0:
+                        r, g, b = cr, cg, cb
+                except Exception:
+                    pass
+
         try:
             dpg.set_value("cpick_wheel", (r, g, b, 255))
             dpg.set_value("cpick_status", f"R {r}  G {g}  B {b}")
