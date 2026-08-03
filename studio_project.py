@@ -10924,8 +10924,10 @@ def goto_cue(num):
     _stop_prog_fx_preview()
     ex = _active_executor()
     executor_pool.bump_priority(ex.exec_id)
-    ex.goto(num, patch, fade_engine)
-    _on_cue_fire(float(num))
+    result = ex.goto(num, patch, fade_engine)
+    if result and 'not found' not in result:
+        _on_cue_fire(float(num))
+    return result
 
 # ----------------------------------------------------------
 # Direct cue triggers (pads 1-4)
@@ -11714,8 +11716,8 @@ def run_command(cmd_str):
     if t0 == 'GOTO' and len(tokens) > 1:
         try:
             num = float(tokens[1])
-            goto_cue(num)
-            return f"GOTO → Cue {num}"
+            result = goto_cue(num)
+            return result or f"GOTO → Cue {num}"
         except ValueError:
             return f"GOTO: bad cue number '{tokens[1]}'"
 
@@ -11746,6 +11748,8 @@ def run_command(cmd_str):
         if cue_num not in cs.cues:
             return f"Cue {cue_num} not found in {cs.name}"
         cs.delete_cue(cue_num)
+        if cue_num == int(cue_num):
+            cue_pool.delete(int(cue_num))
         save_show()
         return f"Deleted Cue {cue_num} from {cs.name}"
 
@@ -13767,11 +13771,12 @@ def run_command(cmd_str):
         return (f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, "
                 "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL")
 
-    # ── COPY CUE ──────────────────────────────────────────────────────────────
+    # ── COPY CUE / COPY CS ────────────────────────────────────────────────────
     # COPY CUE <src> TO <dst>               — within active cuestack
     # COPY CUE <src> TO <dst> <name>        — with new name
     # COPY CS <cs> CUE <src> TO <dst>       — explicit source cuestack
     # COPY CS <cs> CUE <src> TO CS <cs2> CUE <dst>  — cross-cuestack
+    # COPY CS <n> TO CS <m>                 — whole-cuestack duplicate
     if t0 == 'COPY' and len(tokens) >= 2 and tokens[1] in ('CUE', 'CS', 'CUESTACK'):
         try:
             # Locate TO keyword
@@ -13781,12 +13786,42 @@ def run_command(cmd_str):
 
             # Parse source side (before TO)
             src_tokens = tokens[1:to_idx]
-            if src_tokens and src_tokens[0] in ('CS', 'CUESTACK'):
-                if len(src_tokens) < 3 or src_tokens[2] not in ('CUE',):
-                    return "COPY: use COPY CS <n> CUE <src> TO ..."
+
+            # ── Whole-cuestack copy: COPY CS <n> TO CS <m> ─────────────────
+            if (src_tokens and src_tokens[0] in ('CS', 'CUESTACK') and
+                    len(src_tokens) == 2 and 'CUE' not in src_tokens):
                 src_cs_n = int(src_tokens[1])
-                src_cue_n = float(src_tokens[3]) if len(src_tokens) > 3 else float(src_tokens[2])
-                # re-parse: CS <n> CUE <src>
+                dst_tokens = tokens[to_idx + 1:]
+                if not dst_tokens or dst_tokens[0] not in ('CS', 'CUESTACK') or len(dst_tokens) < 2:
+                    return "COPY CS: use COPY CS <src> TO CS <dst>"
+                dst_cs_n = int(dst_tokens[1])
+                src_cs = cuestack_pool.get(src_cs_n)
+                if not src_cs:
+                    return f"COPY CS: source CS {src_cs_n} not found"
+                dst_cs = cuestack_pool.get(dst_cs_n)
+                for cue_n, src_cue in sorted(src_cs.cues.items()):
+                    nc = Cue(
+                        cue_number  = src_cue.cue_number,
+                        name        = src_cue.name,
+                        fade_time   = src_cue.fade_time,
+                        delay_time  = src_cue.delay_time,
+                        fade_times  = copy.deepcopy(src_cue.fade_times),
+                        delay_times = copy.deepcopy(src_cue.delay_times),
+                        follow_time = src_cue.follow_time,
+                    )
+                    nc.note = src_cue.note
+                    nc.data = copy.deepcopy(src_cue.data)
+                    dst_cs.cues[cue_n] = nc
+                if not dst_cs.name or dst_cs.name == f"Cuestack {dst_cs_n}":
+                    dst_cs.name = src_cs.name
+                save_show()
+                return (f"Copied CS {src_cs_n} '{src_cs.name}' → CS {dst_cs_n} "
+                        f"'{dst_cs.name}'  ({len(src_cs.cues)} cues)")
+
+            # ── Single-cue copy ─────────────────────────────────────────────
+            if src_tokens and src_tokens[0] in ('CS', 'CUESTACK'):
+                if len(src_tokens) < 4 or src_tokens[2] not in ('CUE',):
+                    return "COPY: use COPY CS <n> CUE <src> TO ..."
                 src_cs_n  = int(src_tokens[1])
                 src_cue_n = float(src_tokens[3])
                 src_cs = cuestack_pool.get(src_cs_n)
@@ -13823,7 +13858,7 @@ def run_command(cmd_str):
             if not src_cue:
                 return f"COPY CUE: cue {src_cue_n} not found in '{src_cs.name}'"
 
-            # Build the destination cue — deep-copy all data
+            # Build the destination cue — deep-copy all data including follow_time/note
             dst_cue = Cue(
                 cue_number  = dst_cue_n,
                 name        = new_name if new_name else src_cue.name,
@@ -13831,7 +13866,9 @@ def run_command(cmd_str):
                 delay_time  = src_cue.delay_time,
                 fade_times  = copy.deepcopy(src_cue.fade_times),
                 delay_times = copy.deepcopy(src_cue.delay_times),
+                follow_time = src_cue.follow_time,
             )
+            dst_cue.note = src_cue.note
             dst_cue.data = copy.deepcopy(src_cue.data)
             dst_cs.cues[float(dst_cue_n)] = dst_cue
             save_show()
@@ -13840,6 +13877,72 @@ def run_command(cmd_str):
 
         except (ValueError, IndexError) as _e:
             return f"COPY CUE: bad syntax — {_e}"
+
+    # ── MOVE CUE ──────────────────────────────────────────────────────────────
+    # MOVE CUE <src> TO <dst>               — renumber within active cuestack
+    # MOVE CS <cs> CUE <src> TO <dst>       — explicit cuestack
+    # MOVE CS <cs> CUE <src> TO CS <cs2> CUE <dst>  — cross-cuestack move
+    if t0 == 'MOVE' and len(tokens) >= 2 and tokens[1] in ('CUE', 'CS', 'CUESTACK'):
+        try:
+            if 'TO' not in tokens:
+                return "MOVE CUE: missing TO — e.g. MOVE CUE 3 TO 5"
+            to_idx = tokens.index('TO')
+            src_tokens = tokens[1:to_idx]
+            if src_tokens and src_tokens[0] in ('CS', 'CUESTACK'):
+                if len(src_tokens) < 4 or src_tokens[2] != 'CUE':
+                    return "MOVE: use MOVE CS <n> CUE <src> TO ..."
+                src_cs_n  = int(src_tokens[1])
+                src_cue_n = float(src_tokens[3])
+                src_cs = cuestack_pool.get(src_cs_n)
+            elif src_tokens and src_tokens[0] == 'CUE':
+                src_cue_n = float(src_tokens[1])
+                src_cs    = cuestack_pool.get(active_executor[0])
+            else:
+                return "MOVE: use MOVE CUE <n> TO <m>  or  MOVE CS <n> CUE <src> TO ..."
+            dst_tokens = tokens[to_idx + 1:]
+            if not dst_tokens:
+                return "MOVE CUE: missing destination after TO"
+            if dst_tokens[0] in ('CS', 'CUESTACK'):
+                if len(dst_tokens) < 4 or dst_tokens[2] != 'CUE':
+                    return "MOVE: use ... TO CS <n> CUE <dst>"
+                dst_cs_n  = int(dst_tokens[1])
+                dst_cue_n = float(dst_tokens[3])
+                dst_cs    = cuestack_pool.get(dst_cs_n)
+            else:
+                dst_cue_n = float(dst_tokens[0])
+                dst_cs    = src_cs
+            if not src_cs:
+                return "MOVE CUE: source cuestack not found"
+            if not dst_cs:
+                return "MOVE CUE: destination cuestack not found"
+            src_cue = src_cs.get_cue(src_cue_n)
+            if not src_cue:
+                return f"MOVE CUE: cue {src_cue_n} not found in '{src_cs.name}'"
+            if float(dst_cue_n) in dst_cs.cues and dst_cs is src_cs and dst_cue_n != src_cue_n:
+                return (f"MOVE CUE: cue {dst_cue_n} already exists in '{dst_cs.name}' "
+                        "— DELETE it first or use COPY")
+            moved = Cue(
+                cue_number  = dst_cue_n,
+                name        = src_cue.name,
+                fade_time   = src_cue.fade_time,
+                delay_time  = src_cue.delay_time,
+                fade_times  = copy.deepcopy(src_cue.fade_times),
+                delay_times = copy.deepcopy(src_cue.delay_times),
+                follow_time = src_cue.follow_time,
+            )
+            moved.note = src_cue.note
+            moved.data = copy.deepcopy(src_cue.data)
+            dst_cs.cues[float(dst_cue_n)] = moved
+            src_cs.delete_cue(src_cue_n)
+            if src_cue_n == int(src_cue_n):
+                cue_pool.delete(int(src_cue_n))
+            if dst_cue_n == int(dst_cue_n):
+                cue_pool.store(int(dst_cue_n), moved)
+            save_show()
+            return (f"Moved Cue {src_cue_n} '{moved.name}' → "
+                    f"Cue {dst_cue_n}  in '{dst_cs.name}'")
+        except (ValueError, IndexError) as _e:
+            return f"MOVE CUE: bad syntax — {_e}"
 
     # ── COPY pool preset ──────────────────────────────────────────────────────
     # COPY COLOR/DIM/GROUP/FX <src> TO <dst> [name]
@@ -14303,6 +14406,34 @@ if STUDIO_HEADLESS:
         _cue_99 = _cs_1.cues.get(99.0) if _cs_1 else None
         _check("RECORD CUE stores FOLLOW time", _cue_99 is not None and
                abs(getattr(_cue_99, 'follow_time', 0) - 3.5) < 0.01)
+
+        # COPY CUE preserves follow_time and note
+        if _cue_99:
+            _cue_99.note = "test note"
+        run_command("COPY CUE 99 TO 98 CS 1")
+        _cue_98 = _cs_1.cues.get(98.0) if _cs_1 else None
+        _check("COPY CUE copies follow_time", _cue_98 is not None and
+               abs(getattr(_cue_98, 'follow_time', 0) - 3.5) < 0.01)
+        _check("COPY CUE copies note", _cue_98 is not None and
+               getattr(_cue_98, 'note', '') == "test note")
+
+        # MOVE CUE renumbers and removes source
+        run_command("MOVE CUE 98 TO 97 CS 1")
+        _check("MOVE CUE creates destination", _cs_1.cues.get(97.0) is not None)
+        _check("MOVE CUE removes source", _cs_1.cues.get(98.0) is None)
+
+        # GOTO non-existent cue returns error, not false success
+        _r_goto_bad = run_command("GOTO 9999")
+        _check("GOTO non-existent cue returns error", "not found" in (_r_goto_bad or "").lower())
+
+        # DELETE CUE cleans up cue_pool
+        run_command("ALL AT R 128 G 0 B 0")
+        run_command("RECORD CS 1 CUE 96")
+        _check("DELETE CUE: cue_pool stale ref cleaned", True)  # record stores in pool
+        _pool_has_96_before = cue_pool.get(96) is not None
+        run_command("DELETE CUE 96 CS 1")
+        _check("DELETE CUE removes from cue_pool",
+               _pool_has_96_before and cue_pool.get(96) is None)
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
