@@ -6891,6 +6891,7 @@ class GUIEngine:
                 ("RECORD COLOR 4 Red",    "Record programmer colour as preset 4"),
                 ("RECORD COLOR 5 Amber 255 140 0", "Record explicit RGB (no programmer needed)"),
                 ("RECORD DIM 2 Half",     "Record programmer dim as preset 2"),
+                ("RECORD DIM 3 75%",      "Record explicit level (no programmer needed)"),
                 ("RECORD FORM 6 Wave 0,0 0.5,1 1,0",  "Record custom waveform"),
                 ("RECORD RATE 3 Name 120","Record 120 BPM to rate pool slot 3"),
                 ("RECORD CUESTACK 2 Name","Create a new named cuestack on executor 2"),
@@ -12442,20 +12443,8 @@ def run_command(cmd_str):
         for dst_id in dst_ids:
             dst_str = str(dst_id)
 
-            # Color presets
-            for preset in color_pool.presets.values():
-                if src_str in preset.data:
-                    preset.data[dst_str] = dict(preset.data[src_str])
-                # Also copy per-sub entries (pixel-mapped colors)
-                for si in range(1, n_subs + 1):
-                    src_sub = f"{src_str}.{si}"
-                    if src_sub in preset.data:
-                        preset.data[f"{dst_str}.{si}"] = dict(preset.data[src_sub])
-
-            # Dim presets
-            for preset in dim_pool.presets.values():
-                if src_str in preset.data:
-                    preset.data[dst_str] = dict(preset.data[src_str])
+            # Color/Dim presets store a single global value, not per-fixture data;
+            # nothing to copy here — groups and cues carry the fixture-specific data.
 
             # Groups — add dst to every group that contains src
             for group in group_pool.groups.values():
@@ -12938,7 +12927,7 @@ def run_command(cmd_str):
         try:
             spread = float(tokens[-1])
         except ValueError:
-            return "RECORD SPREADP: last token must be spread 0.0-1.0  e.g. RECORD SPREADP 4 Wave 0.5"
+            return "RECORD SPREADP: last token must be spread 0-100  e.g. RECORD SPREADP 4 Wave 50"
         name = " ".join(tokens[3:-1]).title() or f"Spread {pid}"
         p = SpreadPreset(pid, name, spread)
         spread_pool.store(pid, p)
