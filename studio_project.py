@@ -6162,6 +6162,9 @@ class GUIEngine:
                 ("LOAD SHOW <name>",      "Restore a snapshot (cuestacks/presets reload live)"),
                 ("LIST SHOWS",            "List all saved show snapshots"),
                 ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
+                ("EXPORT PRESETS",        "Bundle colors/dims/fx/forms to preset_export_YYYYMMDD.json"),
+                ("EXPORT PRESETS colors", "Export only color presets"),
+                ("IMPORT PRESETS <file>", "Merge a preset bundle JSON into live pools"),
                 ("CLONE 1 TO 7",          "Copy fixture 1's presets / cue data to fixture 7"),
                 ("CLONE 1 TO 7 THRU 9",   "Clone to a range of destinations"),
             ]),
@@ -9521,6 +9524,97 @@ def list_shows():
         lines.append(f"  {s}  [{ts}]")
     return "\n".join(lines)
 
+
+def export_presets(what='all'):
+    """
+    Bundle presets into a single JSON file in studio_data/.
+    what: 'all' | 'colors' | 'dims' | 'fx' | 'forms' | 'rates' | 'sizes' | 'spreads'
+    Returns the output path on success.
+    """
+    import datetime as _dt
+    bundle = {"version": ShowFile.VERSION,
+              "exported": _dt.datetime.now().isoformat()}
+    what_l = what.lower()
+
+    if what_l in ('all', 'colors'):
+        bundle['colors'] = {}
+        for pid, p in color_pool.presets.items():
+            bundle['colors'][str(pid)] = {'name': p.name, 'red': p.red,
+                                           'green': p.green, 'blue': p.blue}
+    if what_l in ('all', 'dims'):
+        bundle['dims'] = {}
+        for pid, p in dim_pool.presets.items():
+            bundle['dims'][str(pid)] = {'name': p.name, 'level': p.level}
+    if what_l in ('all', 'fx'):
+        doc = _read_file(ShowFile.FX_POOL)
+        if doc:
+            bundle['fx_pool'] = doc.get('fx_presets', {})
+    if what_l in ('all', 'forms'):
+        doc = _read_file(ShowFile.FORMS)
+        if doc:
+            bundle['forms'] = doc.get('forms', {})
+    if what_l in ('all', 'rates'):
+        doc = _read_file(ShowFile.RATES)
+        if doc:
+            bundle['rate_pool'] = doc.get('rates', {})
+    if what_l in ('all', 'sizes'):
+        doc = _read_file(ShowFile.SIZES)
+        if doc:
+            bundle['size_pool'] = doc.get('sizes', {})
+    if what_l in ('all', 'spreads'):
+        doc = _read_file(ShowFile.SPREADS)
+        if doc:
+            bundle['spread_pool'] = doc.get('spreads', {})
+
+    ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_path = os.path.join(DATA_DIR, f"preset_export_{ts}.json")
+    with open(out_path, 'w') as f:
+        json.dump(bundle, f, indent=2)
+    cats = [k for k in ('colors','dims','fx_pool','forms','rate_pool','size_pool','spread_pool')
+            if k in bundle]
+    return f"Exported {', '.join(cats)} → {os.path.basename(out_path)}"
+
+
+def import_presets(path):
+    """
+    Merge a preset bundle JSON into the live pools.
+    Existing presets are overwritten only where the bundle has data.
+    """
+    if not os.path.isabs(path):
+        # try relative to DATA_DIR first, then cwd
+        candidate = os.path.join(DATA_DIR, path)
+        if os.path.exists(candidate):
+            path = candidate
+    if not os.path.exists(path):
+        return f"IMPORT PRESETS: file not found — {path}"
+    try:
+        with open(path) as f:
+            bundle = json.load(f)
+    except Exception as e:
+        return f"IMPORT PRESETS: bad JSON — {e}"
+
+    imported = []
+    if 'colors' in bundle:
+        for pid_s, d in bundle['colors'].items():
+            pid = int(pid_s)
+            p = color_pool.presets.setdefault(pid, type('ColorPreset', (), {
+                'preset_id': pid, 'name': '', 'red': 0, 'green': 0, 'blue': 0})())
+            p.name = d.get('name', ''); p.red = d.get('red', 0)
+            p.green = d.get('green', 0); p.blue = d.get('blue', 0)
+        ShowFile.save_colors(color_pool)
+        imported.append(f"{len(bundle['colors'])} colors")
+    if 'dims' in bundle:
+        for pid_s, d in bundle['dims'].items():
+            pid = int(pid_s)
+            p = dim_pool.presets.setdefault(pid, type('DimPreset', (), {
+                'preset_id': pid, 'name': '', 'level': 1.0})())
+            p.name = d.get('name', ''); p.level = d.get('level', 1.0)
+        ShowFile.save_dims(dim_pool)
+        imported.append(f"{len(bundle['dims'])} dims")
+    if not imported:
+        return "IMPORT PRESETS: nothing imported (bundle has no recognized preset categories)"
+    return "Imported: " + ", ".join(imported)
+
 # ── MIDI restore (must happen after target_registry is built) ──
 _midi_doc = _read_file(ShowFile.MIDI)
 if _midi_doc:
@@ -10903,6 +10997,14 @@ def run_command(cmd_str):
 
     if t0 == 'LIST' and len(tokens) >= 2 and tokens[1] == 'SHOWS':
         return list_shows()
+
+    if t0 == 'EXPORT' and len(tokens) >= 2 and tokens[1] == 'PRESETS':
+        what = tokens[2] if len(tokens) >= 3 else 'all'
+        return export_presets(what)
+
+    if t0 == 'IMPORT' and len(tokens) >= 3 and tokens[1] == 'PRESETS':
+        path = raw.split(None, 2)[2]
+        return import_presets(path)
 
     # ── Stack info ───────────────────────────────────────────
     if t0 in ('CUES', 'STACK', 'LIST'):
