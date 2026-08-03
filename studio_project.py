@@ -13795,6 +13795,15 @@ if STUDIO_HEADLESS:
 
         r_ld = run_command("LIST DIM")
         _check("LIST DIM no exception", "Dim" in r_ld)
+
+        # Verify LIST sub-commands route correctly (not to cuestack listing)
+        for _cmd, _kw in [
+            ("LIST RATE", "Rate"), ("LIST SIZEP", "Size"),
+            ("LIST SPREADP", "Spread"), ("LIST CUESTACKS", "CueStack"),
+            ("STATUS", "Console"), ("LIST", "Cuestack"),
+        ]:
+            _r = run_command(_cmd)
+            _check(f"{_cmd!r} routes correctly", _kw.lower() in _r.lower())
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
