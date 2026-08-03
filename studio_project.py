@@ -1668,12 +1668,15 @@ class Executor:
                 self.fx_engine.remove(fxid)
         self._fx_ids.clear()
 
-    def _start_cue_fx(self, cue, patch):
+    def _start_cue_fx(self, cue, patch, default_infade=0.0):
         """
         Read FX defs from cue.data master entries and start layers.
         Old layers are outfaded (not instant-killed) so FX crossfades naturally.
         Each layer ID is exec_id * 10000 + ever-increasing counter so IDs never
         repeat even while outfading layers are still in the engine.
+        default_infade — used when the FX def doesn't specify its own infade;
+                         callers pass the effective cue fade time so FX ramps in
+                         alongside the DMX crossfade.
         """
         if not self.fx_engine:
             self._fx_ids = []
@@ -1700,6 +1703,8 @@ class Executor:
         def _add(ld, ch, targets):
             self._fx_counter += 1
             fxid = self.exec_id * 10000 + self._fx_counter
+            # Use default_infade (cue fade time) when the FX def has no explicit infade
+            infade = ld['infade'] if 'infade' in ld else default_infade
             self.fx_engine.add(
                 fxid, ld.get('waveform', 'sine'), ch,
                 rate_bpm     = ld.get('bpm',          60.0),
@@ -1712,7 +1717,7 @@ class Executor:
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
                 dim_id       = ld.get('dim_id'),
-                infade       = ld.get('infade',        0.0),
+                infade       = infade,
                 outfade      = ld.get('outfade',       0.0),
                 block_size   = ld.get('block_size',      1),
                 order        = ld.get('order',    'linear'),
@@ -2310,7 +2315,6 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
         for fid_vals in executor.layer.values():
             fid_vals.pop('fx_kill', None)
 
-    executor._start_cue_fx(cue, patch)   # start FX embedded in cue data
     resolved = _resolve_cue_refs(
         cue.data, patch,
         getattr(executor, 'color_pool',    None),
@@ -2332,6 +2336,11 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     if ov_fade is None and _prog_time.get('on'):
         ov_fade  = float(_prog_time['fade'])
         ov_delay = float(_prog_time['delay'])
+
+    # Effective fade time — used as default FX infade so FX ramps match DMX fades
+    eff_fade = ov_fade if ov_fade is not None else cue.fade_time
+
+    executor._start_cue_fx(cue, patch, default_infade=eff_fade)
 
     fade_engine.fire(cue, executor, data_to=resolved,
                      override_fade=ov_fade, override_delay=ov_delay)
