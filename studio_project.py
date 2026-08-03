@@ -4058,13 +4058,20 @@ Rules:
 - "fx_stop" stops FX on one channel; omit "channel" to stop all.
 - "exec_level" sets executor master fader (level 0.0–1.0).
 - "cue_fire" is an alias for goto_cue (fires the named cue immediately).
+- "fade_time" only affects the next cue_go/cue_back/goto_cue/cue_fire action
+  in this same array — put it immediately before the cue action it should
+  apply to (e.g. a slow fade into a cue: [{"action":"fade_time","seconds":5},
+  {"action":"goto_cue","stack":1,"num":2}]). It does not change any other
+  timing and is not a standing default.
+- "stack" identifies a cuestack by id, not an executor slot — it is resolved
+  to whichever executor that cuestack is currently assigned to.
 - Only return the JSON array. No explanation, no markdown.
 """
 
     _CMD_HISTORY_MAX = 12
 
     def __init__(self, patch, prog, output_state, fx_engine, fade_engine,
-                 cuestacks=None, executor_pool=None, cmd_fn=None, log_fn=None,
+                 cuestack_pool=None, executor_pool=None, cmd_fn=None, log_fn=None,
                  model="claude-haiku-4-5-20251001"):
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -4079,12 +4086,14 @@ Rules:
         self._output         = output_state
         self._fx             = fx_engine
         self._fade           = fade_engine
-        self._stacks         = cuestacks or {}
+        # Live pool reference (not a snapshot) so newly created/loaded
+        # cuestacks are visible without re-constructing the AI engine.
+        self._stack_pool     = cuestack_pool
         self._executor_pool  = executor_pool
         self._cmd            = cmd_fn    # run_command — full console command parser
         self._log            = log_fn    # GUI log callback
         self._enabled        = True
-        self._last_fade      = 2.0
+        self._last_fade      = None      # pending fade_time override, consumed by the next cue fire
         self._cmd_history    = []        # last N commands for context
         self._token_cb       = None      # optional callback(in_tok, out_tok) for GUI
         print(f"  AI Engine: ready ({model})")
@@ -4102,7 +4111,7 @@ Rules:
             for m in self._patch.all_fixtures()
         ]
         stacks = {}
-        for sid, stack in self._stacks.items():
+        for sid, stack in (self._stack_pool.stacks.items() if self._stack_pool else {}):
             cues = [
                 {"num": n, "name": stack.cues[n].name,
                  "fade": stack.cues[n].fade_time}
@@ -4218,6 +4227,45 @@ Rules:
                 print(f"\n  {msg}")
             return []
 
+    def _exec_for_stack(self, stack_id):
+        """
+        Resolve a cuestack id (as used in ACTION_SCHEMA's "stack" field and
+        in _state()'s cuestacks section) to the executor slot it's actually
+        assigned to. Falls back to a same-numbered executor slot if no
+        executor currently has that cuestack assigned (preserves the
+        default 1:1 stack/executor wiring set up at startup).
+        """
+        if not self._executor_pool:
+            return None
+        for ex in self._executor_pool.executors.values():
+            if ex.cuestack and ex.cuestack.stack_id == stack_id:
+                return ex
+        return self._executor_pool.get(stack_id)
+
+    def _fire(self, ex, fire_fn, *args):
+        """
+        Fire a cue via one of Executor.go/back/goto, applying a pending
+        fade_time override (if any) for just this one fire, then logging
+        the result (including failures like 'no cuestack assigned', which
+        were previously discarded silently).
+        """
+        if self._last_fade is not None:
+            prev = (ex.time_override_on, ex.time_override_fade, ex.time_override_delay)
+            ex.time_override_on    = True
+            ex.time_override_fade  = self._last_fade
+            ex.time_override_delay = 0.0
+            try:
+                msg = fire_fn(*args)
+            finally:
+                (ex.time_override_on, ex.time_override_fade,
+                 ex.time_override_delay) = prev
+            self._last_fade = None
+        else:
+            msg = fire_fn(*args)
+        if msg and self._log:
+            self._log(f"  → {msg}")
+        return msg
+
     def execute(self, actions):
         """Run a list of action dicts on the console."""
         for a in actions:
@@ -4229,20 +4277,20 @@ Rules:
                     else:
                         self._prog.execute(a["cmd"])
                 elif act == "goto_cue":
-                    ex = self._executor_pool.get(a.get("stack", 1)) if self._executor_pool else None
+                    ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
                         self._executor_pool.bump_priority(ex.exec_id)
-                        ex.goto(a["num"], self._patch, self._fade)
+                        self._fire(ex, ex.goto, a["num"], self._patch, self._fade)
                 elif act == "cue_go":
-                    ex = self._executor_pool.get(a.get("stack", 1)) if self._executor_pool else None
+                    ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
                         self._executor_pool.bump_priority(ex.exec_id)
-                        ex.go(self._patch, self._fade)
+                        self._fire(ex, ex.go, self._patch, self._fade)
                 elif act == "cue_back":
-                    ex = self._executor_pool.get(a.get("stack", 1)) if self._executor_pool else None
+                    ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
                         self._executor_pool.bump_priority(ex.exec_id)
-                        ex.back(self._patch, self._fade)
+                        self._fire(ex, ex.back, self._patch, self._fade)
                 elif act == "dim":
                     val = float(a["value"])
                     for master in self._patch.all_fixtures():
@@ -4266,26 +4314,37 @@ Rules:
                             1, a.get("waveform", "sine"), a.get("channel", "red"),
                             rate_bpm=bpm, size=sz, targets=all_s, spread=sp
                         )
-                elif act in ("cue_fire", "goto_cue") and "num" in a:
-                    ex = self._executor_pool.get(a.get("stack", 1)) if self._executor_pool else None
+                elif act == "cue_fire" and "num" in a:
+                    ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
                         self._executor_pool.bump_priority(ex.exec_id)
-                        ex.goto(float(a["num"]), self._patch, self._fade)
+                        self._fire(ex, ex.goto, float(a["num"]), self._patch, self._fade)
                 elif act == "group_select":
                     if self._cmd:
                         self._cmd(f"GROUP {a['group']}")
                 elif act == "fx_stop":
                     ch = a.get("channel")
-                    if ch and self._cmd:
-                        self._cmd(f"FX CLEAR {ch.upper()}")
+                    if self._cmd:
+                        self._cmd(f"FX CLEAR {ch.upper()}" if ch else "FX CLEAR")
                     else:
                         self._fx.clear()
                 elif act == "exec_level":
                     if self._executor_pool and self._cmd:
                         self._cmd(f"EXEC {a.get('exec', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
                 elif act == "fx_clear":
-                    self._fx.clear()
+                    # Route through the real FX CLEAR handler — it both stops
+                    # the FX engine layers *and* clears the programmer's
+                    # pending 'fx' defs, so a rebuild tick can't resurrect
+                    # them. self._fx.clear() alone did neither correctly:
+                    # it also wiped executor-owned cue FX layers whose ids
+                    # are tracked separately in ex._fx_ids.
+                    if self._cmd:
+                        self._cmd("FX CLEAR")
+                    else:
+                        self._fx.clear()
                 elif act == "fade_time":
+                    # Applied once, to whichever cue-fire action follows in
+                    # this same batch (see _fire()) — not a standing default.
                     self._last_fade = float(a["seconds"])
             except Exception as e:
                 print(f"  AI execute error ({a}): {e}")
@@ -10902,7 +10961,7 @@ ai = AIEngine(
     output_state  = output_state,
     fx_engine     = fx_engine,
     fade_engine   = fade_engine,
-    cuestacks     = {1: cs1},
+    cuestack_pool = cuestack_pool,
     executor_pool = executor_pool,
     # cmd_fn and log_fn wired after run_command / GUIEngine are defined below
 )
