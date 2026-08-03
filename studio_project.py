@@ -1819,23 +1819,26 @@ class ExecutorPool:
     def get_page(self, n):
         n = int(n)
         if n not in self.pages:
-            self.pages[n] = {'name': f'Page {n}', 'slots': []}
+            self.pages[n] = {'name': f'Page {n}', 'cuestacks': []}
         return self.pages[n]
 
     def set_page_name(self, n, name):
         self.get_page(n)['name'] = name
 
-    def add_to_page(self, n, exec_id):
+    def add_to_page(self, n, cs_id):
         page = self.get_page(n)
-        exec_id = int(exec_id)
-        if exec_id not in page['slots']:
-            page['slots'].append(exec_id)
+        cs_id = int(cs_id)
+        if cs_id not in page['cuestacks']:
+            page['cuestacks'].append(cs_id)
 
-    def remove_from_page(self, n, exec_id):
+    def remove_from_page(self, n, cs_id):
         page = self.get_page(n)
-        exec_id = int(exec_id)
-        if exec_id in page['slots']:
-            page['slots'].remove(exec_id)
+        cs_id = int(cs_id)
+        if cs_id in page['cuestacks']:
+            page['cuestacks'].remove(cs_id)
+
+    def delete_page(self, n):
+        self.pages.pop(int(n), None)
 
     def all_pages(self):
         return sorted(self.pages.keys())
@@ -5991,7 +5994,7 @@ class GUIEngine:
                 ("LIST FX",               "List all FX presets with waveform/channel"),
                 ("LIST RATE / SIZE / SPREAD / FORM", "List pool presets"),
                 ("FX LIST",               "Show active programmer/executor FX layers"),
-                ("PAGE LIST",             "Show executor pages"),
+                ("PAGE LIST",             "Show all pages and cuestacks on each"),
             ]),
             ("RECORD", [
                 ("REC CUE 5",             "Record current programmer to cue 5"),
@@ -6049,10 +6052,11 @@ class GUIEngine:
                 ("EXEC 1 MODE TOGGLE",    "Set trigger mode: GO/BACK advance (default)"),
                 ("EXEC 1 FLASH ON",       "Fire instantly (0s), works regardless of mode"),
                 ("EXEC 1 FLASH OFF",      "Release a flash — fully stops the executor"),
-                ("PAGE 1 NAME Verses",    "Name page 1 (organizational only)"),
-                ("PAGE 1 ADD EXEC 3",     "Add executor 3 to page 1"),
-                ("PAGE 1 REMOVE EXEC 3",  "Remove executor 3 from page 1"),
-                ("PAGE LIST",             "List all pages and their executors"),
+                ("PAGE 1 NAME Verses",    "Name page 1"),
+                ("PAGE 1 ADD CS 3",       "Add cuestack 3 to page 1"),
+                ("PAGE 1 REMOVE CS 3",    "Remove cuestack 3 from page 1"),
+                ("PAGE 1 DELETE",         "Delete page 1"),
+                ("PAGE LIST",             "List all pages and their cuestacks"),
                 ("PAGES button",          "Same page commands via a GUI table — no typing needed"),
             ]),
             ("programmer", [
@@ -6085,7 +6089,7 @@ class GUIEngine:
                 ("tap button (FX panel)", "Set BPM from tap intervals (auto-resets after 3s)"),
                 ("MIDI button",           "Open MIDI mapping editor"),
                 ("PATCH button",          "Open patch editor"),
-                ("PAGES button",          "Open executor pages viewer/editor"),
+                ("PAGES button",          "Open pages editor (assign cuestacks to pages)"),
             ]),
         ]
 
@@ -6158,104 +6162,164 @@ class GUIEngine:
     # front-end for that same data, same pattern as the MIDI mapping popup.
 
     def _build_pages_popup(self):
-        """Floating executor pages viewer/editor — hidden by default, opened via header button."""
-        with dpg.window(tag="pages_window", label="Executor Pages",
-                        width=560, height=400, show=False,
+        """Floating pages editor — assign cuestacks to named pages."""
+        self._pages_current = 1   # currently viewed page number
+
+        with dpg.window(tag="pages_window", label="pages",
+                        width=520, height=460, show=False,
                         pos=(220, 130), no_collapse=False):
-            dpg.add_text("executor pages", color=_C_ACCENT)
-            dpg.add_text("Organizational only — grouping executors for navigation. Doesn't affect playback.",
-                         color=_C_DIM, wrap=520)
-            dpg.add_separator()
-
-            with dpg.table(tag="pages_table", header_row=True,
-                           borders_innerH=True, borders_outerH=True,
-                           borders_innerV=True, borders_outerV=True,
-                           row_background=True, scrollY=True, height=200):
-                dpg.add_table_column(label="Page",      width_fixed=True, init_width_or_weight=44)
-                dpg.add_table_column(label="Name",      width_fixed=True, init_width_or_weight=140)
-                dpg.add_table_column(label="Executors", width_stretch=True)
-
-            self._refresh_pages_table()
-
-            dpg.add_separator()
-            dpg.add_text("Rename page:", color=_C_DIM)
+            # ── Header row ───────────────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_input_int(tag="page_num", label="", width=46,
-                                  default_value=1, min_value=1, max_value=99,
-                                  step=0, step_fast=0)
                 dpg.add_text("page", color=_C_DIM)
+                dpg.add_input_int(tag="pg_sel_num", label="", width=48,
+                                  default_value=1, min_value=1, max_value=99,
+                                  step=0, callback=self._on_page_sel_change)
                 dpg.add_spacer(width=6)
-                dpg.add_input_text(tag="page_name_input", label="", width=160,
-                                   default_value="")
+                dpg.add_input_text(tag="pg_name_input", label="", width=180,
+                                   hint="page name", default_value="Page 1")
                 dpg.add_button(label="rename", width=70,
                                callback=self._on_page_rename)
+                dpg.add_spacer(width=6)
+                dpg.add_button(label="new page", width=80,
+                               callback=self._on_page_new)
+                dpg.add_spacer(width=4)
+                dpg.add_button(label="del page", width=80,
+                               callback=self._on_page_delete)
 
-            dpg.add_spacer(height=4)
-            dpg.add_text("Add / remove executor:", color=_C_DIM)
+            dpg.add_separator()
+
+            # ── Cuestack list for selected page ──────────────────
+            dpg.add_text("cuestacks on this page:", color=_C_DIM)
+            with dpg.child_window(tag="pg_cs_list", width=-1, height=210,
+                                  border=True, no_scrollbar=False):
+                dpg.add_group(tag="pg_cs_rows")   # rows rebuilt by _refresh_pages_table
+
+            dpg.add_separator()
+
+            # ── Add cuestack row ─────────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_input_int(tag="page_exec_num", label="", width=46,
-                                  default_value=1, min_value=1, max_value=99,
-                                  step=0, step_fast=0)
-                dpg.add_text("exec", color=_C_DIM)
-                dpg.add_spacer(width=6)
+                dpg.add_text("add:", color=_C_DIM)
+                cs_items = self._cs_combo_items()
+                dpg.add_combo(items=cs_items, tag="pg_add_cs_combo",
+                              default_value=cs_items[0] if cs_items else "",
+                              width=290)
                 dpg.add_button(label="add to page", width=110,
-                               callback=self._on_page_add_exec)
-                dpg.add_spacer(width=6)
-                dpg.add_button(label="remove from page", width=140,
-                               callback=self._on_page_remove_exec)
+                               callback=self._on_page_add_cs)
+
+        self._refresh_pages_table()
+
+    def _cs_combo_items(self):
+        """Return list of 'ID — Name' strings for all cuestacks in the pool."""
+        if not self._cuestack_pool:
+            return []
+        items = []
+        for sid in sorted(self._cuestack_pool.stacks.keys()):
+            cs = self._cuestack_pool.stacks[sid]
+            items.append(f"{sid} — {cs.name}")
+        return items
 
     def _refresh_pages_table(self):
-        """Rebuild the pages table rows from current ExecutorPool.pages state."""
+        """Rebuild the cuestack list for the currently selected page."""
         try:
-            dpg.delete_item("pages_table", children_only=True, slot=1)
+            dpg.delete_item("pg_cs_rows", children_only=True)
         except Exception:
             return
         if not self._executor_pool:
             return
-        for n in self._executor_pool.all_pages():
-            page  = self._executor_pool.pages[n]
-            slots = ", ".join(str(s) for s in page['slots']) if page['slots'] else "—"
-            with dpg.table_row(parent="pages_table"):
-                dpg.add_text(str(n))
-                dpg.add_text(page['name'])
-                dpg.add_text(slots)
+
+        n    = self._pages_current
+        page = self._executor_pool.pages.get(n)
+        if not page:
+            dpg.add_text("(page not created yet — add a cuestack to create it)",
+                         parent="pg_cs_rows", color=_C_DIM)
+            return
+
+        cs_ids = page.get('cuestacks', [])
+        if not cs_ids:
+            dpg.add_text("— no cuestacks on this page —",
+                         parent="pg_cs_rows", color=_C_DIM)
+            return
+
+        for cs_id in cs_ids:
+            cs   = self._cuestack_pool.get(cs_id) if self._cuestack_pool else None
+            lbl  = f"{cs_id} — {cs.name}" if cs else f"{cs_id} — (not found)"
+            with dpg.group(horizontal=True, parent="pg_cs_rows"):
+                dpg.add_button(label="×", width=24,
+                               callback=lambda s, a, u: self._on_page_remove_cs(u),
+                               user_data=cs_id)
+                dpg.add_text(lbl)
+
+        # Refresh the page-name field to match loaded data
+        try:
+            dpg.set_value("pg_name_input", page.get('name', f"Page {n}"))
+        except Exception:
+            pass
+
+    def _on_page_sel_change(self):
+        self._pages_current = int(dpg.get_value("pg_sel_num"))
+        page = self._executor_pool.pages.get(self._pages_current) if self._executor_pool else None
+        try:
+            dpg.set_value("pg_name_input",
+                          page['name'] if page else f"Page {self._pages_current}")
+        except Exception:
+            pass
+        self._refresh_pages_table()
 
     def _on_page_rename(self):
-        if not self._cmd:
-            return
-        n    = dpg.get_value("page_num")
-        name = dpg.get_value("page_name_input").strip()
+        n    = self._pages_current
+        name = dpg.get_value("pg_name_input").strip()
         if not name:
             return
-        cmd = f"PAGE {n} NAME {name}"
-        result = self._cmd(cmd)
-        self._log(f"> {cmd}")
-        if result:
-            self._log(result)
+        if self._cmd:
+            self._cmd(f"PAGE {n} NAME {name}")
+        self._log(f"> Page {n} renamed to '{name}'")
+
+    def _on_page_new(self):
+        # Find next unused page number
+        existing = set(self._executor_pool.all_pages()) if self._executor_pool else set()
+        n = 1
+        while n in existing:
+            n += 1
+        if self._executor_pool:
+            self._executor_pool.get_page(n)   # creates it
+            ShowFile.save_executor_pages(self._executor_pool)
+        self._pages_current = n
+        try:
+            dpg.set_value("pg_sel_num", n)
+            dpg.set_value("pg_name_input", f"Page {n}")
+        except Exception:
+            pass
+        self._refresh_pages_table()
+        self._log(f"> Page {n} created")
+
+    def _on_page_delete(self):
+        n = self._pages_current
+        if self._cmd:
+            self._cmd(f"PAGE {n} DELETE")
+        self._log(f"> Page {n} deleted")
         self._refresh_pages_table()
 
-    def _on_page_add_exec(self):
-        if not self._cmd:
+    def _on_page_add_cs(self):
+        raw = dpg.get_value("pg_add_cs_combo")
+        if not raw:
             return
-        n  = dpg.get_value("page_num")
-        ex = dpg.get_value("page_exec_num")
-        cmd = f"PAGE {n} ADD EXEC {ex}"
-        result = self._cmd(cmd)
-        self._log(f"> {cmd}")
-        if result:
-            self._log(result)
+        try:
+            cs_id = int(raw.split("—")[0].strip())
+        except (ValueError, IndexError):
+            return
+        n = self._pages_current
+        if self._cmd:
+            result = self._cmd(f"PAGE {n} ADD CS {cs_id}")
+            if result:
+                self._log(f"  {result}")
         self._refresh_pages_table()
 
-    def _on_page_remove_exec(self):
-        if not self._cmd:
-            return
-        n  = dpg.get_value("page_num")
-        ex = dpg.get_value("page_exec_num")
-        cmd = f"PAGE {n} REMOVE EXEC {ex}"
-        result = self._cmd(cmd)
-        self._log(f"> {cmd}")
-        if result:
-            self._log(result)
+    def _on_page_remove_cs(self, cs_id):
+        n = self._pages_current
+        if self._cmd:
+            result = self._cmd(f"PAGE {n} REMOVE CS {cs_id}")
+            if result:
+                self._log(f"  {result}")
         self._refresh_pages_table()
 
     # ── FX Editor popup ────────────────────────────────────────
@@ -7900,12 +7964,12 @@ class ShowFile:
 
     @staticmethod
     def save_executor_pages(executor_pool):
-        # Pages are organizational only (names + slot membership) — unlike
-        # the rest of executor_pool (cuestack assignments, live state),
-        # which intentionally does NOT persist across restarts.
         doc = {"version": ShowFile.VERSION, "pages": {}}
         for n, page in executor_pool.pages.items():
-            doc["pages"][str(n)] = {"name": page["name"], "slots": list(page["slots"])}
+            doc["pages"][str(n)] = {
+                "name":       page.get("name", f"Page {n}"),
+                "cuestacks":  list(page.get("cuestacks", [])),
+            }
         _write_file(ShowFile.EXEC_PAGES, doc)
         print(f"  Saved exec pages → {len(executor_pool.pages)}")
 
@@ -7916,9 +7980,11 @@ class ShowFile:
             return False
         for n_str, pdata in doc.get("pages", {}).items():
             n = int(n_str)
+            # "slots" was the old key (executor IDs); "cuestacks" is the current key
+            cuestacks = pdata.get("cuestacks", pdata.get("slots", []))
             executor_pool.pages[n] = {
-                "name":  pdata.get("name", f"Page {n}"),
-                "slots": list(pdata.get("slots", [])),
+                "name":      pdata.get("name", f"Page {n}"),
+                "cuestacks": list(cuestacks),
             }
         print(f"  Loaded exec pages — {len(executor_pool.pages)}")
         return True
@@ -9463,9 +9529,7 @@ def run_command(cmd_str):
         else:
             return f"EXEC {ex_n}: unknown verb '{verb}'"
 
-    # ── PAGE <n> NAME ... / ADD EXEC <m> / REMOVE EXEC <m> / LIST ──────
-    # Pages are purely organizational (grouping/naming executor slots for
-    # display) and don't affect playback.
+    # ── PAGE <n> NAME ... / ADD CS <m> / REMOVE CS <m> / DELETE / LIST ─
     if t0 == 'PAGE':
         if len(tokens) >= 2 and tokens[1] == 'LIST':
             if not executor_pool.pages:
@@ -9473,11 +9537,16 @@ def run_command(cmd_str):
             lines = ["Pages:"]
             for n in executor_pool.all_pages():
                 p = executor_pool.get_page(n)
-                lines.append(f"  [{n}] {p['name']} — exec {p['slots']}")
+                cs_ids = p.get('cuestacks', [])
+                cs_names = []
+                for cid in cs_ids:
+                    cs = cuestack_pool.get(cid)
+                    cs_names.append(f"{cid}:{cs.name}" if cs else str(cid))
+                lines.append(f"  [{n}] {p['name']} — {', '.join(cs_names) or '(empty)'}")
             return "\n".join(lines)
 
         if len(tokens) < 2:
-            return "Usage: PAGE <n> [NAME <name>] | PAGE <n> ADD|REMOVE EXEC <m> | PAGE LIST"
+            return "Usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
         try:
             page_n = int(tokens[1])
         except ValueError:
@@ -9485,25 +9554,38 @@ def run_command(cmd_str):
 
         if len(tokens) == 2:
             p = executor_pool.get_page(page_n)
-            return f"[{page_n}] {p['name']} — exec {p['slots']}"
+            cs_ids = p.get('cuestacks', [])
+            cs_names = []
+            for cid in cs_ids:
+                cs = cuestack_pool.get(cid)
+                cs_names.append(f"{cid}:{cs.name}" if cs else str(cid))
+            return f"[{page_n}] {p['name']} — {', '.join(cs_names) or '(empty)'}"
 
         sub2 = tokens[2]
         if sub2 == 'NAME':
             name = " ".join(raw.split()[3:]) if len(tokens) > 3 else f"Page {page_n}"
             executor_pool.set_page_name(page_n, name)
+            ShowFile.save_executor_pages(executor_pool)
             return f"Page {page_n} → '{name}'"
-        if sub2 in ('ADD', 'REMOVE') and len(tokens) >= 5 and tokens[3] == 'EXEC':
+        if sub2 == 'DELETE':
+            executor_pool.delete_page(page_n)
+            ShowFile.save_executor_pages(executor_pool)
+            return f"Page {page_n} deleted"
+        if sub2 in ('ADD', 'REMOVE') and len(tokens) >= 4 and tokens[3] == 'CS':
             try:
-                target_ex = int(tokens[4])
-            except ValueError:
-                return f"PAGE: bad executor number '{tokens[4]}'"
+                target_cs = int(tokens[4]) if len(tokens) > 4 else int(tokens[3])
+            except (ValueError, IndexError):
+                return f"PAGE: bad cuestack number"
+            cs = cuestack_pool.get(target_cs)
             if sub2 == 'ADD':
-                executor_pool.add_to_page(page_n, target_ex)
-                return f"Exec {target_ex} added to page {page_n}"
+                executor_pool.add_to_page(page_n, target_cs)
+                ShowFile.save_executor_pages(executor_pool)
+                return f"CS {target_cs} ({cs.name if cs else '?'}) added to page {page_n}"
             else:
-                executor_pool.remove_from_page(page_n, target_ex)
-                return f"Exec {target_ex} removed from page {page_n}"
-        return "Usage: PAGE <n> [NAME <name>] | PAGE <n> ADD|REMOVE EXEC <m> | PAGE LIST"
+                executor_pool.remove_from_page(page_n, target_cs)
+                ShowFile.save_executor_pages(executor_pool)
+                return f"CS {target_cs} removed from page {page_n}"
+        return "Usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
 
     # ── PROG TIME — programmer time override ──────────────────
     if t0 == 'PROG' and len(tokens) >= 2 and tokens[1] == 'TIME':
@@ -11293,11 +11375,11 @@ if STUDIO_HEADLESS:
         dmx = output_state.get_dmx_for_universe(1)
         _check("DMX output computes without exception", len(dmx) == 512)
 
-        # Executor paging + trigger modes
+        # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
-        run_command("PAGE 1 ADD EXEC 1")
+        run_command("PAGE 1 ADD CS 1")
         r3 = run_command("PAGE LIST")
-        _check("page created and executor added", "Test Page" in r3 and "[1]" in r3)
+        _check("page created and cuestack added", "Test Page" in r3 and "[1]" in r3)
 
         run_command("EXEC 1 MODE FLASH")
         _check("trigger_mode set", executor_pool.get(1).trigger_mode == 'flash')
