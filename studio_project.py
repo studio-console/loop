@@ -7180,6 +7180,15 @@ class GUIEngine:
                 ("OSC FEEDBACK host port", "Broadcast console state at 1 Hz (/studio/...)"),
                 ("OSC FEEDBACK",           "Disable state feedback"),
             ]),
+            ("SPEED MASTERS", [
+                ("SPEED 3 180",         "Set speed master 3 to 180 BPM (saved immediately)"),
+                ("SPEED 3 NAME Strobe", "Rename speed master slot 3"),
+                ("LIST SPEED",          "Show all 16 speed masters with names and current BPM"),
+                ("spd button",          "Open the speed master panel — 16 draggable BPM faders (20–480 BPM)"),
+                ("FX editor SPD col",   "Pin an FX layer to a speed master slot — that master overrides the layer's BPM live"),
+                ("MIDI target",         "'Speed Master 1' … 'Speed Master 16' — assign a CC fader for live control"),
+                ("priority chain",      "Speed master > Rate preset > inline BPM — highest priority wins"),
+            ]),
             ("MIDI CLOCK", [
                 ("MIDI CLOCK ON",  "Lock FX BPM to incoming MIDI beat clock (24 ppqn); shows CLK in header"),
                 ("MIDI CLOCK OFF", "Disable MIDI clock sync; FX BPM returns to manual control"),
@@ -7217,6 +7226,8 @@ class GUIEngine:
                 ("mon button",            "Open the programmer/output monitor popup (per-fixture RGB/dim/FX tables)"),
                 ("ai button",             "Open the AI prompt pool (only shown when ANTHROPIC_API_KEY is set)"),
                 ("log button",            "Open the changelog popup (studio_data/changelog.json)"),
+                ("spd button",            "Open the speed master panel (16 live BPM faders, MA-style)"),
+                ("color button",          "Open the HSV colour wheel for RGB control"),
             ]),
             ("STATUS BAR & QUICK CONTROLS", [
                 ("blind button",          "Click to toggle BLIND — programmer hidden from DMX output; glows red when active"),
@@ -7854,6 +7865,7 @@ class GUIEngine:
         dpg.configure_item("fx_editor_window", show=not vis)
         if not vis:
             self._fxed_refresh_target()
+            self._fxed_refresh_slot_labels()
 
     def _on_cmd_execute(self):
         raw = dpg.get_value("cmd_input").strip()
@@ -8185,7 +8197,7 @@ class GUIEngine:
         with dpg.window(tag="speed_master_window", label="speed masters",
                         width=560, height=340, show=False,
                         pos=(600, 300), no_collapse=False,
-                        on_close=self._save_popup_layout):
+                        on_close=self._on_speed_master_close):
             dpg.add_text("Speed Masters  (20–480 BPM)", color=_C_ACCENT)
             dpg.add_separator()
             # 4 columns × 4 rows of 16 slots
@@ -8218,12 +8230,23 @@ class GUIEngine:
         if self._speed_pool:
             self._speed_pool.set_bpm(sid, value)
 
+    def _on_speed_master_close(self, *_):
+        """Persist BPM values when the panel is dismissed via X."""
+        self._save_popup_layout()
+        if self._speed_pool:
+            try:
+                ShowFile.save_speed_masters(self._speed_pool)
+            except Exception:
+                pass
+
     def _on_speed_master_toggle(self, *_):
         try:
             self._refresh_speed_master_panel()
             vis = dpg.is_item_shown("speed_master_window")
             if vis:
                 dpg.hide_item("speed_master_window")
+                if self._speed_pool:
+                    ShowFile.save_speed_masters(self._speed_pool)
             else:
                 dpg.show_item("speed_master_window")
             self._save_popup_layout()
@@ -14721,6 +14744,24 @@ if STUDIO_HEADLESS:
         run_command("DELETE CUE 96 CS 1")
         _check("DELETE CUE removes from cue_pool",
                _pool_has_96_before and cue_pool.get(96) is None)
+
+        # Speed master: set/get BPM
+        _r_spd = run_command("SPEED 4 200")
+        _check("SPEED command sets BPM", speed_master_pool.get_bpm(4) == 200.0)
+        _r_spd_name = run_command("SPEED 4 NAME StrobeClk")
+        _check("SPEED NAME renames slot", speed_master_pool.get(4).name == "Strobeclk")
+        _r_list_spd = run_command("LIST SPEED")
+        _check("LIST SPEED shows all slots", "Speed Masters" in (_r_list_spd or ""))
+        # FX layer with speed master reference uses master BPM
+        run_command("FX SINE RED BPM 60")
+        _check("FX inline BPM default before speed ref", True)
+        speed_master_pool.set_bpm(4, 333.0)
+        _layer0 = active_fx[0] if active_fx else None
+        if _layer0:
+            _layer0._speed_id = 4
+            _layer0._speed_master_pool = speed_master_pool
+        _check("FX layer rate_bpm uses speed master", (
+            _layer0 is None or abs(_layer0.rate_bpm - 333.0) < 0.1))
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
