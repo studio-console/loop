@@ -7808,7 +7808,9 @@ class GUIEngine:
                                callback=self._on_priority_cycle,
                                user_data=ex.exec_id)
                 dpg.add_button(label="flash", tag=f"flash_btn_{ex.exec_id}",
-                               width=40, height=18)
+                               width=40, height=18,
+                               callback=self._on_exec_flash_btn,
+                               user_data=ex.exec_id)
                 dpg.add_button(label="stop", width=46, height=18,
                                callback=self._on_stop_executor,
                                user_data=ex.exec_id)
@@ -7852,11 +7854,39 @@ class GUIEngine:
                 ex.priority = cycle.get(ex.priority, 0)
         self._last_playbacks_hash = None
 
+    def _on_exec_flash_btn(self, sender, app_data, user_data):
+        exec_id = int(user_data)
+        tag = f"flash_btn_{exec_id}"
+        # Toggle flash state based on current label
+        try:
+            current_label = dpg.get_item_label(tag)
+        except Exception:
+            current_label = "flash"
+        if current_label == "flash":
+            if self._cmd:
+                self._cmd(f"EXEC {exec_id} FLASH ON")
+            try:
+                dpg.configure_item(tag, label="■ off")
+            except Exception:
+                pass
+        else:
+            if self._cmd:
+                self._cmd(f"EXEC {exec_id} FLASH OFF")
+            try:
+                dpg.configure_item(tag, label="flash")
+            except Exception:
+                pass
+
     def _on_stop_executor(self, sender, app_data, user_data):
+        exec_id = int(user_data)
         if self._executor_pool:
-            ex = self._executor_pool.executors.get(int(user_data))
+            ex = self._executor_pool.executors.get(exec_id)
             if ex:
                 ex.stop()
+        try:
+            dpg.configure_item(f"flash_btn_{exec_id}", label="flash")
+        except Exception:
+            pass
         self._last_playbacks_hash = None
 
     def _on_stop_all_executors(self):
