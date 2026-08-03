@@ -4306,7 +4306,14 @@ Rules:
             "Available waveforms: sine, ramp, pulse, square. "
             "Available channels: red, green, blue. "
             "Programmer commands use MA3-style syntax: "
-            "'FIXTURE_ID AT VALUE', 'R 255 G 0 B 0', 'AT FULL', 'AT OUT'.\n\n"
+            "'FIXTURE_ID AT VALUE', 'R 255 G 0 B 0', 'AT FULL', 'AT OUT'.\n"
+            "The console state includes recent_commands — the last few commands the "
+            "operator ran. Use them to resolve pronouns and implicit references: "
+            "if the user says 'them', 'those', 'it', or 'same fixtures', infer "
+            "the target from fixture IDs visible in recent commands or programmer state. "
+            "If the user says 'do it again' or 'same but slower', repeat/modify the "
+            "most recent relevant action. When in doubt, use group_select or prog actions "
+            "that target the fixtures most recently mentioned.\n\n"
             + self.ACTION_SCHEMA
         )
         user_msg = f"Console state:\n{state_json}\n\nRequest: {prompt}"
