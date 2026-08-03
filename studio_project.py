@@ -6261,12 +6261,17 @@ class GUIEngine:
                 dt_s  = f"  delay {cue.delay_time}s" if cue.delay_time else ""
                 fw    = getattr(cue, 'follow_time', 0.0)
                 fw_s  = f"  →{fw:.0f}s" if fw > 0 else ""
-                nfx   = len(cue.data.get('__fx__', [])) if hasattr(cue, 'data') and isinstance(cue.data, dict) else 0
                 nfix  = sum(1 for k in getattr(cue, 'data', {}) if not k.startswith('__') and '.' not in k) if hasattr(cue, 'data') else 0
                 fix_s = f"\n{nfix} fixture(s)" if nfix else ""
+                nfx   = 0
+                if hasattr(cue, 'data') and isinstance(cue.data, dict):
+                    for k, v in cue.data.items():
+                        if not k.startswith('__') and isinstance(v, dict):
+                            nfx += len(v.get('fx', []) or [])
+                fx_s  = f"\n{nfx} FX layer(s)" if nfx else ""
                 note  = getattr(cue, 'note', '')
                 note_s = f"\n📝 {note}" if note else ""
-                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fix_s}{note_s}"
+                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fix_s}{fx_s}{note_s}"
             else:
                 lbl = f"{n}"
                 tip = f"Cue {n} — empty"

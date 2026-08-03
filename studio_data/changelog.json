@@ -3,6 +3,16 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "Fixed: cue tooltip computed FX layer count but never displayed it (dead variable, wrong key)",
+      "details": [
+        "Roadmap check this session: re-read the full established roadmap (GUI polish, manual popup, changelog popup, executor FLASH-to-MIDI, Block 12 AI layer, MIDI mapping GUI, attribute pool GUI panels) against the current code and changelog history — every item is already implemented by prior sessions (MIDI mapping popup has learn/direct-add/reassign/delete; FLASH is wired to real MIDI note on/off via off_callback; attribute pool panels exist for position/gobo/zoom/focus/beam with right-click Record/Apply/Rename/Clear). No functional gap found there, so this session looked for a concrete bug instead.",
+        "Found one via pyflakes ('local variable nfx is assigned to but never used') in the cue-pool tooltip builder (_tick_pools, cue slot loop): `nfx = len(cue.data.get('__fx__', []))` computed a value that was never interpolated into the tooltip string. Worse, the key itself was wrong — grep across the file confirms FX layers are stored per-fixture at `cue.data[fixture_id]['fx']` (see the FX ARCHITECTURE comment near the bottom of the file), never under a top-level '__fx__' key, so `nfx` was always 0 even before the dead-code issue — this line has never worked.",
+        "Fixed by summing `len(v.get('fx', []))` over every per-fixture dict entry in cue.data and appending a '\\nN FX layer(s)' line to the tooltip (same pattern as the existing fixture-count line), so hovering a cue slot in the pool now actually shows how many FX layers that cue will fire on GO, matching what RECORD CUE already captures.",
+        "One-line-scope fix, no schema/data changes, fully backward compatible. Verified with python3 -m py_compile and STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 (8/8 smoke test); confirmed via git status that studio_data/*.json was untouched by the run."
+      ]
+    },
+    {
+      "date": "2026-08-03",
       "summary": "v0.18: pool management improvements \u2014 right-click menus, COPY, DELETE, LIST for all pool types",
       "details": [
         "Attr pools (position/gobo/zoom/focus/beam/control) now have right-click context menus on every slot button: Record Here, Apply, Rename, Clear. RENAME and CLEAR commands added for all 6 attr pool types.",
