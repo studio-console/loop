@@ -8025,27 +8025,9 @@ class GUIEngine:
         self._last_playbacks_hash = None
 
     def _on_exec_flash_btn(self, sender, app_data, user_data):
-        exec_id = int(user_data)
-        tag = f"flash_btn_{exec_id}"
-        # Toggle flash state based on current label
-        try:
-            current_label = dpg.get_item_label(tag)
-        except Exception:
-            current_label = "flash"
-        if current_label == "flash":
-            if self._cmd:
-                self._cmd(f"EXEC {exec_id} FLASH ON")
-            try:
-                dpg.configure_item(tag, label="■ off")
-            except Exception:
-                pass
-        else:
-            if self._cmd:
-                self._cmd(f"EXEC {exec_id} FLASH OFF")
-            try:
-                dpg.configure_item(tag, label="flash")
-            except Exception:
-                pass
+        # FLASH ON/OFF is handled by the tick loop via is_item_active() polling.
+        # This callback is intentionally empty — do not add command calls here.
+        pass
 
     def _on_stop_executor(self, sender, app_data, user_data):
         exec_id = int(user_data)
@@ -8053,10 +8035,6 @@ class GUIEngine:
             ex = self._executor_pool.executors.get(exec_id)
             if ex:
                 ex.stop()
-        try:
-            dpg.configure_item(f"flash_btn_{exec_id}", label="flash")
-        except Exception:
-            pass
         self._last_playbacks_hash = None
 
     def _on_stop_all_executors(self):
@@ -8389,6 +8367,15 @@ class GUIEngine:
                     except Exception:
                         pass
                 self._flash_held[eid] = held
+                # Update flash button visual to show held state
+                try:
+                    dpg.configure_item(f"flash_btn_{eid}",
+                                       label="■ FLASH" if held else "flash")
+                    theme = self._alert_btn_theme if held else self._dim_btn_theme
+                    if theme:
+                        dpg.bind_item_theme(f"flash_btn_{eid}", theme)
+                except Exception:
+                    pass
 
         # Active stack — refresh left column when executor changes
         active_n = self._active_executor[0] if self._active_executor else 1
