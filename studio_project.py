@@ -3596,6 +3596,12 @@ class MIDIEngine:
         self._monitoring = False
         self._learn_hook = None   # (type, callback) set during MIDI learn
         self._learn_type = None   # 'cc' or 'note'
+        # MIDI clock sync
+        self.clock_sync        = False   # enable with MIDI CLOCK ON
+        self.clock_bpm         = None    # current detected BPM or None
+        self.clock_callback    = None    # callable(bpm) fired on each BPM update
+        self._clock_times      = []      # monotonic timestamps of recent clock ticks
+        self._CLOCK_PPQN       = 24      # pulses per quarter note
 
     def start_learn(self, msg_type, callback):
         """
@@ -3743,6 +3749,10 @@ class MIDIEngine:
                     print(f"  {msg.type.upper()}  ch={ch}  note={msg.note}  vel={msg.velocity}")
                 return
 
+            if msg.type == 'clock' and self.clock_sync:
+                self._handle_clock()
+                return
+
             if msg.type == 'control_change':
                 mapping = self.cc_maps.get((ch, msg.control))
                 if mapping:
@@ -3758,6 +3768,31 @@ class MIDIEngine:
                         mapping.off_callback()
         except Exception as e:
             print(f"\n  !! MIDI callback error: {e}")
+
+    def _handle_clock(self):
+        """Process one MIDI clock tick (24 ppqn). Update clock_bpm every quarter note."""
+        now = time.monotonic()
+        self._clock_times.append(now)
+        # Drop ticks older than 4 seconds
+        self._clock_times = [t for t in self._clock_times if now - t < 4.0]
+        # Keep last 25 ticks (one full quarter note + 1 extra for interval calc)
+        if len(self._clock_times) > 25:
+            self._clock_times = self._clock_times[-25:]
+        # Need at least 25 ticks (24 intervals = 1 quarter note) for a stable reading
+        if len(self._clock_times) >= 25:
+            # Average interval across last 24 ticks
+            times_24 = self._clock_times[-25:]
+            intervals = [times_24[i+1] - times_24[i] for i in range(24)]
+            avg = sum(intervals) / 24
+            if avg > 0:
+                bpm = round(60.0 / (avg * 24), 1)
+                bpm = max(20.0, min(300.0, bpm))
+                self.clock_bpm = bpm
+                if self.clock_callback:
+                    try:
+                        self.clock_callback(bpm)
+                    except Exception:
+                        pass
 
     def _handle_cc(self, mapping, physical):
         if mapping.taken_over:
@@ -4648,6 +4683,7 @@ class GUIEngine:
             dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("fx: off", tag="hdr_fx", color=_C_DIM)
             dpg.add_text("   |   ", color=_C_DIM)
+            dpg.add_text("", tag="hdr_clock", color=_C_DIM)
             dpg.add_text("dim: --", tag="hdr_dim", color=_C_TEXT)
             dpg.add_text("   ", color=_C_BORDER)
             dpg.add_button(label="patch", width=60,
@@ -6292,6 +6328,10 @@ class GUIEngine:
                 ("OSC MONITOR",            "Print incoming OSC for 10 s (port 8001)"),
                 ("OSC FEEDBACK host port", "Broadcast console state at 1 Hz (/studio/...)"),
                 ("OSC FEEDBACK",           "Disable state feedback"),
+            ]),
+            ("MIDI CLOCK", [
+                ("MIDI CLOCK ON",  "Lock FX BPM to incoming MIDI beat clock (24 ppqn); shows CLK in header"),
+                ("MIDI CLOCK OFF", "Disable MIDI clock sync; FX BPM returns to manual control"),
             ]),
             ("KEYBOARD", [
                 ("↑  /  ↓",               "Scroll command history (up/down arrows)"),
@@ -8069,6 +8109,34 @@ class GUIEngine:
                 col    = _C_TEXT if m.taken_over else _C_DIM
                 dpg.set_value(tag, status)
                 dpg.configure_item(tag, color=col)
+            except Exception:
+                pass
+
+        # MIDI clock sync — when active, apply detected BPM to all programmer FX layers
+        if self._midi and getattr(self._midi, 'clock_sync', False):
+            clk_bpm = self._midi.clock_bpm
+            try:
+                if clk_bpm is not None:
+                    if not dpg.is_item_active("fx_rate"):
+                        dpg.set_value("fx_rate", clk_bpm)
+                    try:
+                        dpg.set_value("fx_tap_label", f"{clk_bpm:.0f} bpm")
+                    except Exception:
+                        pass
+                    now = time.monotonic()
+                    for layer in self._fx._layers.values():
+                        if layer.fx_id < 10000:
+                            layer.set_rate_smooth(clk_bpm, now)
+                    dpg.set_value("hdr_clock", f"CLK {clk_bpm:.0f}")
+                    dpg.configure_item("hdr_clock", color=_C_ACCENT)
+                else:
+                    dpg.set_value("hdr_clock", "CLK …")
+                    dpg.configure_item("hdr_clock", color=_C_DIM)
+            except Exception:
+                pass
+        else:
+            try:
+                dpg.set_value("hdr_clock", "")
             except Exception:
                 pass
 
@@ -11165,6 +11233,24 @@ def run_command(cmd_str):
             osc.remove_target("_feedback")
             return "OSC feedback disabled"
         return "OSC usage: TARGET name host port | REMOVE name | LIST | FEEDBACK host port | SEND /addr [args]"
+
+    if t0 == 'MIDI' and len(tokens) >= 3 and tokens[1] == 'CLOCK':
+        if tokens[2] == 'ON':
+            midi.clock_sync = True
+            midi._clock_times = []
+            midi.clock_bpm = None
+            def _clock_cb(bpm):
+                # Forward detected BPM to FX engine via run_command on main thread
+                # (just store — the GUI tick reads midi.clock_bpm and updates sliders)
+                pass
+            midi.clock_callback = _clock_cb
+            return "MIDI clock sync ON — BPM will lock to incoming clock when detected"
+        elif tokens[2] == 'OFF':
+            midi.clock_sync = False
+            midi.clock_bpm  = None
+            midi.clock_callback = None
+            return "MIDI clock sync OFF"
+        return "MIDI CLOCK ON | OFF"
 
     # ── Stack info ───────────────────────────────────────────
     if t0 in ('CUES', 'STACK', 'LIST'):
