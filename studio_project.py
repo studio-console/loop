@@ -12857,6 +12857,23 @@ def run_command(cmd_str):
                 cur = f"  ◀ on Cue {cs.current:.0f}" if cs.current is not None else ""
                 lines.append(f"  [{sid}] {cs.name}  ({cue_count} cues){cur}")
             return "\n".join(lines) if len(lines) > 1 else "No cuestacks recorded"
+        _list_attr_map = {
+            'POSITION': position_pool,
+            'GOBO':     gobo_pool,
+            'ZOOM':     zoom_pool,
+            'FOCUS':    focus_pool,
+            'BEAM':     beam_pool,
+            'CONTROL':  control_pool,
+        }
+        if sub in _list_attr_map:
+            pool = _list_attr_map[sub]
+            if not pool.presets:
+                return f"{sub.title()} pool is empty"
+            lines = [f"{sub.title()} Presets:"]
+            for pid in sorted(pool.presets):
+                p = pool.presets[pid]
+                lines.append(f"  {p}")
+            return "\n".join(lines)
 
     # ── Clear — programmer only, never touches cuestacks ────────
     # ── RELEASE — stop executor(s) ───────────────────────────
