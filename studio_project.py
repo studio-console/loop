@@ -4635,6 +4635,26 @@ def _make_dim_btn_theme():
     return t
 
 
+def _make_pool_live_theme():
+    """Slightly brighter pool button theme for occupied (live) slots."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (38, 28, 80, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (90, 64, 170, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (130, 90, 230, 255))
+    return t
+
+
+def _make_pool_empty_theme():
+    """Very dark pool button theme for empty slots."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (14, 10, 32, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (40, 28, 80, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (60, 44, 120, 255))
+    return t
+
+
 _CONSOLE_FONT_CANDIDATES = [
     "/System/Library/Fonts/SFNSMono.ttf",                                   # macOS
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",                  # Debian/Ubuntu
@@ -4664,7 +4684,7 @@ def _load_console_font():
         return None
     try:
         with dpg.font_registry():
-            with dpg.font(font_path, 13) as fid:
+            with dpg.font(font_path, 14) as fid:
                 pass
         dpg.bind_font(fid)
         return fid
@@ -4830,8 +4850,10 @@ class GUIEngine:
         self._go_theme       = _make_go_theme()
         self._back_theme     = _make_back_theme()
         self._fade_bar_theme = _make_fade_bar_theme()
-        self._alert_btn_theme = _make_alert_btn_theme()
-        self._dim_btn_theme   = _make_dim_btn_theme()
+        self._alert_btn_theme     = _make_alert_btn_theme()
+        self._dim_btn_theme       = _make_dim_btn_theme()
+        self._pool_live_theme     = _make_pool_live_theme()
+        self._pool_empty_theme    = _make_pool_empty_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
                             # non-resizable full-height viewport, clipping the bottom
@@ -5616,7 +5638,7 @@ class GUIEngine:
     _PANEL_W    = 634   # panels touch: 3 × 634 = 1902 fits 1920 w/ outer padding
     # BTN_W: (634 - 2×8pad - 2×1border - 5×6gap) / 6 = (616-30)/6 = 97.7 → 97
     _BTN_W      =  97   # exactly fits 6 columns in a 634-wide panel
-    _BTN_H      =  24   # 4 rows × 24 + 3 × 4gap + header = 132px content
+    _BTN_H      =  26   # 4 rows × 26 + 3 × 4gap + header = 140px content
     _POOL_H     = _H_P1
 
     @staticmethod
@@ -6380,6 +6402,9 @@ class GUIEngine:
             lbl = f"{n}:{g.name[:7]}" if g else f"G{n}"
             try:
                 dpg.set_item_label(f"grp_btn_{n}", lbl)
+                _gt = self._pool_live_theme if g else self._pool_empty_theme
+                if _gt:
+                    dpg.bind_item_theme(f"grp_btn_{n}", _gt)
             except Exception:
                 pass
             try:
@@ -6495,7 +6520,12 @@ class GUIEngine:
                 pass
             try:
                 is_active = (n == active and cs is not None)
-                theme = self._go_theme if is_active else (self._dim_btn_theme if not cs else 0)
+                if is_active:
+                    theme = self._go_theme
+                elif cs:
+                    theme = self._pool_live_theme
+                else:
+                    theme = self._pool_empty_theme
                 dpg.bind_item_theme(f"cs_btn_{n}", theme if theme else 0)
             except Exception:
                 pass
@@ -6550,10 +6580,10 @@ class GUIEngine:
             try:
                 if n == current_cue and cue:
                     dpg.bind_item_theme(f"cue_btn_{n}", self._go_theme if self._go_theme else 0)
-                elif not cue:
-                    dpg.bind_item_theme(f"cue_btn_{n}", self._dim_btn_theme if self._dim_btn_theme else 0)
+                elif cue:
+                    dpg.bind_item_theme(f"cue_btn_{n}", self._pool_live_theme if self._pool_live_theme else 0)
                 else:
-                    dpg.bind_item_theme(f"cue_btn_{n}", 0)
+                    dpg.bind_item_theme(f"cue_btn_{n}", self._pool_empty_theme if self._pool_empty_theme else 0)
             except Exception:
                 pass
 
@@ -6563,6 +6593,9 @@ class GUIEngine:
             lbl = f"{n}:{p.name[:6]}" if p else f"FX{n}"
             try:
                 dpg.set_item_label(f"fx_btn_{n}", lbl)
+                _ft = self._pool_live_theme if p else self._pool_empty_theme
+                if _ft:
+                    dpg.bind_item_theme(f"fx_btn_{n}", _ft)
             except Exception:
                 pass
             try:
