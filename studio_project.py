@@ -6504,6 +6504,8 @@ class GUIEngine:
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack copy"),
                 ("DELETE CUE 3",          "Delete cue 3 from active cuestack (saves show)"),
                 ("DELETE CUE 3 CS 2",     "Delete cue 3 from cuestack 2"),
+                ("DELETE CUESTACK 5",     "Delete cuestack 5 and stop its executor"),
+                ("DELETE FORM 7",         "Delete custom form 7 (built-ins 1-4 protected)"),
                 ("CLEAR COLOR 4",         "Delete colour preset 4 from the pool (saves show)"),
                 ("CLEAR DIM 2",           "Delete dim preset 2 from the pool (saves show)"),
                 ("CLEAR GROUP 1",         "Delete group 1 from the pool (saves show)"),
@@ -11067,6 +11069,57 @@ def run_command(cmd_str):
         cs.delete_cue(cue_num)
         save_show()
         return f"Deleted Cue {cue_num} from {cs.name}"
+
+    # ── DELETE GROUP / COLOR / DIM / FX / FORM / CUESTACK ────
+    if t0 == 'DELETE' and len(tokens) >= 3:
+        sub = tokens[1]
+        try:
+            n = int(tokens[2])
+        except ValueError:
+            return f"DELETE {sub}: bad slot number '{tokens[2]}'"
+        if sub == 'GROUP':
+            if not group_pool.get(n):
+                return f"Group {n} is empty"
+            group_pool.delete(n)
+            save_show()
+            return f"Deleted Group {n}"
+        if sub in ('COLOR', 'COLOUR'):
+            if not color_pool.get(n):
+                return f"Color {n} is empty"
+            color_pool.delete(n)
+            save_show()
+            return f"Deleted Color {n}"
+        if sub == 'DIM':
+            if not dim_pool.get(n):
+                return f"Dim {n} is empty"
+            dim_pool.delete(n)
+            save_show()
+            return f"Deleted Dim {n}"
+        if sub == 'FX':
+            if not fx_pool.get(n):
+                return f"FX {n} is empty"
+            fx_pool.delete(n)
+            save_show()
+            return f"Deleted FX {n}"
+        if sub == 'FORM':
+            if n < FormPool.FIRST_CUSTOM_SLOT:
+                return f"Form {n} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be deleted"
+            if not form_pool.get(n):
+                return f"Form {n} is empty"
+            form_pool.delete(n)
+            save_show()
+            return f"Deleted Form {n}"
+        if sub in ('CUESTACK', 'CS'):
+            if not cuestack_pool.get(n):
+                return f"Cuestack {n} is empty"
+            cs_name = cuestack_pool.get(n).name
+            # Stop any executor currently running this cuestack
+            for ex in list(executor_pool.executors.values()):
+                if ex.cuestack and ex.cuestack.stack_id == n:
+                    ex.stop()
+            cuestack_pool.delete(n)
+            save_show()
+            return f"Deleted Cuestack {n}: {cs_name}"
 
     # ── Shared record/update-cue helper ──────────────────────
     def _record_cue_into(cs, cue_num, suffix_tokens, raw_str, merge=False):
