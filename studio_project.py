@@ -13433,7 +13433,7 @@ def run_command(cmd_str):
     # COPY CUE <src> TO <dst> <name>        — with new name
     # COPY CS <cs> CUE <src> TO <dst>       — explicit source cuestack
     # COPY CS <cs> CUE <src> TO CS <cs2> CUE <dst>  — cross-cuestack
-    if t0 == 'COPY':
+    if t0 == 'COPY' and len(tokens) >= 2 and tokens[1] in ('CUE', 'CS', 'CUESTACK'):
         try:
             # Locate TO keyword
             if 'TO' not in tokens:
@@ -13804,6 +13804,14 @@ if STUDIO_HEADLESS:
         ]:
             _r = run_command(_cmd)
             _check(f"{_cmd!r} routes correctly", _kw.lower() in _r.lower())
+
+        # COPY pool preset routing — was broken by overly broad COPY CUE handler
+        run_command("RECORD COLOR 5 CopySource 255 128 0")
+        r_cp_col = run_command("COPY COLOR 5 TO 6 CopiedColor")
+        _check("COPY COLOR routes to pool handler", "Copied Color" in r_cp_col)
+        run_command("RECORD DIM 5 CopySrc 75%")
+        r_cp_dim = run_command("COPY DIM 5 TO 6 CopiedDim")
+        _check("COPY DIM routes to pool handler", "Copied Dim" in r_cp_dim)
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
