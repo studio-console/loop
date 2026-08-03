@@ -4730,7 +4730,7 @@ class GUIEngine:
             dpg.add_spacer(width=20)
             dpg.add_button(label="blind", tag="sb_blind_lbl",
                            width=54, height=16,
-                           callback=lambda: self._cmd("BLIND") if self._cmd else None)
+                           callback=self._on_blind_toggle)
             dpg.add_spacer(width=10)
             dpg.add_button(label="bbo", tag="sb_bbo_lbl",
                            width=44, height=16,
@@ -8278,6 +8278,11 @@ class GUIEngine:
         else:
             if self._cmd:
                 self._cmd(str(fid))
+
+    def _on_blind_toggle(self):
+        """Toggle BLIND mode — suppress programmer from DMX output."""
+        if self._cmd and self._out:
+            self._cmd("LIVE" if self._out.blind else "BLIND")
 
     def _on_pt_toggle(self):
         """Programmer time toggle: click to set 2s fade, click again to turn off."""
