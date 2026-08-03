@@ -7446,6 +7446,31 @@ class GUIEngine:
                 dpg.add_spacer(width=6)
                 dpg.add_button(label="Off",    width=60, height=26,
                                callback=lambda: self._cpick_set(0, 0, 0))
+            # Quick color swatches
+            _QUICK_COLS = [
+                ("Red",     (255,   0,   0)),
+                ("Green",   (  0, 255,   0)),
+                ("Blue",    (  0,   0, 255)),
+                ("Amber",   (255, 140,   0)),
+                ("Cyan",    (  0, 200, 200)),
+                ("Magenta", (255,   0, 200)),
+                ("Warm",    (255, 180,  60)),
+                ("UV",      ( 80,   0, 200)),
+            ]
+            with dpg.group(horizontal=True):
+                for name, (r, g, b) in _QUICK_COLS[:4]:
+                    dpg.add_button(
+                        label=name, width=68, height=20,
+                        callback=lambda s, a, u: self._cpick_set(*u),
+                        user_data=(r, g, b),
+                    )
+            with dpg.group(horizontal=True):
+                for name, (r, g, b) in _QUICK_COLS[4:]:
+                    dpg.add_button(
+                        label=name, width=68, height=20,
+                        callback=lambda s, a, u: self._cpick_set(*u),
+                        user_data=(r, g, b),
+                    )
             dpg.add_text("", tag="cpick_status", color=_C_DIM)
 
     def _on_cpick_change(self, sender, color_val):
