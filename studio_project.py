@@ -3870,10 +3870,13 @@ class OSCEngine:
 
     def start(self, port=8001, host="0.0.0.0"):
         """Start OSC input server on given host:port."""
-        # Allow immediate rebind after Ctrl+C without waiting for OS timeout
         osc_server.ThreadingOSCUDPServer.allow_reuse_address = True
-        self._server = osc_server.ThreadingOSCUDPServer(
-            (host, port), self._dispatch)
+        try:
+            self._server = osc_server.ThreadingOSCUDPServer(
+                (host, port), self._dispatch)
+        except OSError as e:
+            print(f"OSC server: couldn't bind {host}:{port} ({e}) — OSC input disabled")
+            return
         self._thread = threading.Thread(
             target=self._server.serve_forever, daemon=True)
         self._thread.start()
