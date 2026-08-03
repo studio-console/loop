@@ -2371,6 +2371,10 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
 
     executor._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=fx_outfade)
 
+    # Auto-follow: arm timer so _tick() fires GO after follow_time seconds
+    follow = getattr(cue, 'follow_time', 0.0)
+    executor._follow_at = (time.monotonic() + follow) if follow > 0 else None
+
     fade_engine.fire(cue, executor, data_to=resolved,
                      override_fade=ov_fade, override_delay=ov_delay)
     return f"GO → {cue.name}"
@@ -4437,13 +4441,14 @@ class GUIEngine:
         # Reassign flow: stores {'type','ch','num','label'} when user clicks ► on a row
         self._reassign_pending = None
         self._ai_history       = []   # list of {ts, prompt, summary, actions}
+        self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
 
     # ── Popup layout persistence ─────────────────────────────
 
     _POPUP_TAGS = [
         "patch_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
-        "ai_history_window", "attr_window",
+        "ai_history_window", "attr_window", "ai_prompts_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -4537,6 +4542,7 @@ class GUIEngine:
         self._build_attr_popup()
         self._build_monitors_popup()
         self._build_ai_history_popup()
+        self._build_ai_prompts_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -4632,6 +4638,10 @@ class GUIEngine:
             dpg.add_button(label="mon", width=50,
                            callback=self._on_monitors_toggle)
             dpg.add_spacer(width=4)
+            if self._ai:
+                dpg.add_spacer(width=4)
+                dpg.add_button(label="ai", width=36,
+                               callback=self._on_ai_prompts_toggle)
             dpg.add_button(label="save show", width=90,
                            callback=self._on_save)
             dpg.add_text("", tag="hdr_save_status", color=_C_DIM)
@@ -4712,6 +4722,10 @@ class GUIEngine:
                                default_value=0.0, min_value=0.0, max_value=30.0,
                                speed=0.05, format="%.2f", width=_tw,
                                callback=self._on_cue_delay_edit)
+            dpg.add_drag_float(tag="cue_follow_input", label="Auto→s",
+                               default_value=0.0, min_value=0.0, max_value=300.0,
+                               speed=0.05, format="%.2f", width=_tw,
+                               callback=self._on_cue_follow_edit)
 
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
@@ -6952,6 +6966,107 @@ class GUIEngine:
                                   border=False):
                 dpg.add_text("", tag="ai_hist_text", wrap=680, color=_C_TEXT)
 
+    def _build_ai_prompts_popup(self):
+        """Floating AI prompt pool — user-saved prompt presets, clicked to run immediately."""
+        # Seed from built-in chips if no file saved yet
+        defaults = [{"name": n, "prompt": p} for n, p in self._AI_CHIPS]
+        self._ai_prompts = ShowFile.load_ai_prompts(defaults)
+        with dpg.window(tag="ai_prompts_window", label="ai prompts",
+                        width=640, height=480, show=False, pos=(260, 160)):
+            with dpg.group(horizontal=True):
+                dpg.add_text("ai prompt pool", color=_C_ACCENT)
+                dpg.add_spacer(width=8)
+                dpg.add_text("click to run · del to remove", color=_C_DIM)
+            dpg.add_separator()
+            with dpg.child_window(tag="ai_prompts_scroll", width=-1, height=300,
+                                  border=False):
+                dpg.add_group(tag="ai_prompts_grid")
+            self._refresh_ai_prompts_grid()
+            dpg.add_separator()
+            dpg.add_text("add prompt:", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                dpg.add_input_text(tag="ai_prompt_name_input", hint="label (short)",
+                                   width=140)
+            dpg.add_input_text(tag="ai_prompt_text_input",
+                               hint="full AI prompt text...",
+                               width=-1, height=60, multiline=True)
+            dpg.add_button(label="save prompt", width=130,
+                           callback=self._on_ai_prompt_save)
+
+    def _refresh_ai_prompts_grid(self):
+        """Rebuild the button grid from self._ai_prompts."""
+        try:
+            dpg.delete_item("ai_prompts_grid", children_only=True)
+        except Exception:
+            return
+        if not self._ai_prompts:
+            dpg.add_text("(no prompts saved)", color=_C_DIM, parent="ai_prompts_grid")
+            return
+        _BTN_W = 180
+        _DEL_W = 28
+        _PER_ROW = 3
+        row_group = None
+        for i, entry in enumerate(self._ai_prompts):
+            if i % _PER_ROW == 0:
+                row_group = dpg.add_group(horizontal=True, parent="ai_prompts_grid")
+            name   = entry.get("name", f"prompt {i+1}")
+            prompt = entry.get("prompt", "")
+            with dpg.group(horizontal=True, parent=row_group):
+                dpg.add_button(
+                    label=name[:22], width=_BTN_W, height=28,
+                    callback=self._on_ai_prompt_run,
+                    user_data=prompt,
+                )
+                dpg.add_button(
+                    label="×", width=_DEL_W, height=28,
+                    callback=self._on_ai_prompt_delete,
+                    user_data=i,
+                )
+
+    def _on_ai_prompt_run(self, sender, app_data, user_data):
+        """Send a saved prompt to the AI engine."""
+        prompt = user_data
+        if not prompt:
+            return
+        try:
+            dpg.set_value("ai_input", prompt)
+        except Exception:
+            pass
+        self._on_ai_send()
+
+    def _on_ai_prompt_delete(self, sender, app_data, user_data):
+        idx = user_data
+        if 0 <= idx < len(self._ai_prompts):
+            del self._ai_prompts[idx]
+            ShowFile.save_ai_prompts(self._ai_prompts)
+            self._refresh_ai_prompts_grid()
+
+    def _on_ai_prompt_save(self):
+        try:
+            name   = dpg.get_value("ai_prompt_name_input").strip()
+            prompt = dpg.get_value("ai_prompt_text_input").strip()
+        except Exception:
+            return
+        if not name or not prompt:
+            return
+        self._ai_prompts.append({"name": name, "prompt": prompt})
+        ShowFile.save_ai_prompts(self._ai_prompts)
+        self._refresh_ai_prompts_grid()
+        try:
+            dpg.set_value("ai_prompt_name_input", "")
+            dpg.set_value("ai_prompt_text_input", "")
+        except Exception:
+            pass
+
+    def _on_ai_prompts_toggle(self):
+        try:
+            if dpg.is_item_shown("ai_prompts_window"):
+                dpg.hide_item("ai_prompts_window")
+            else:
+                dpg.show_item("ai_prompts_window")
+        except Exception:
+            pass
+
     def _build_monitors_popup(self):
         """Floating programmer/output monitor popup — no inner boxes, just tables."""
         with dpg.window(tag="monitors_window", label="monitors",
@@ -7448,8 +7563,10 @@ class GUIEngine:
         for num in stack._sorted_cue_numbers():
             cue   = stack.cues[num]
             tag   = f"cue_row_{sid}_{num}"
-            ft    = f" {cue.fade_time:.1f}s" if cue.fade_time else ""
-            label = f"  [{num:.0f}]  {cue.name}{ft}"
+            ft     = f" {cue.fade_time:.1f}s" if cue.fade_time else ""
+            fw     = getattr(cue, 'follow_time', 0.0)
+            follow = f" →{fw:.0f}s" if fw > 0 else ""
+            label  = f"  [{num:.0f}]  {cue.name}{ft}{follow}"
             with dpg.group(parent="cue_list_group", horizontal=True):
                 dpg.add_selectable(label=label, tag=tag,
                                    callback=lambda *_, u=num: self._goto(u),
@@ -7609,6 +7726,11 @@ class GUIEngine:
         if cue and self._cmd:
             self._cmd(f"CUE {cue.cue_number} DELAY {value:.2f}")
 
+    def _on_cue_follow_edit(self, _sender, value, _user_data):
+        _, cue = self._cue_timing_target()
+        if cue and self._cmd:
+            self._cmd(f"CUE {cue.cue_number} FOLLOW {value:.2f}")
+
     _tick_first = True   # sync one-shot values on first tick
 
     def _tick(self):
@@ -7767,6 +7889,18 @@ class GUIEngine:
                 except Exception:
                     pass
 
+        # Auto-follow: fire GO on executors whose follow timer has elapsed
+        if self._executor_pool and self._cmd:
+            _now = time.monotonic()
+            for ex in self._executor_pool.executors.values():
+                fa = getattr(ex, '_follow_at', None)
+                if fa and _now >= fa:
+                    ex._follow_at = None
+                    try:
+                        self._cmd(f"EXEC {ex.exec_id} GO")
+                    except Exception:
+                        pass
+
         # FLASH button hold detection — poll is_item_active per active executor
         if self._executor_pool and self._cmd:
             active_eids = {
@@ -7847,6 +7981,8 @@ class GUIEngine:
                     dpg.set_value("cue_fade_input", cue_t.fade_time)
                 if not dpg.is_item_active("cue_delay_input"):
                     dpg.set_value("cue_delay_input", cue_t.delay_time)
+                if not dpg.is_item_active("cue_follow_input"):
+                    dpg.set_value("cue_follow_input", getattr(cue_t, 'follow_time', 0.0))
             else:
                 dpg.set_value("cue_timing_label", "—")
         except Exception:
@@ -8198,6 +8334,7 @@ class ShowFile:
     EXEC_PAGES   = os.path.join(DATA_DIR, "executor_pages.json")
     EXECUTORS    = os.path.join(DATA_DIR, "executors.json")
     CHANGELOG    = os.path.join(DATA_DIR, "changelog.json")
+    AI_PROMPTS   = os.path.join(DATA_DIR, "ai_prompts.json")
 
     # ── Save ────────────────────────────────────────────────
 
@@ -8239,6 +8376,8 @@ class ShowFile:
                     entry["fade_times"]  = cue.fade_times
                 if cue.delay_times:
                     entry["delay_times"] = cue.delay_times
+                if getattr(cue, 'follow_time', 0.0) > 0:
+                    entry["follow_time"] = cue.follow_time
                 cues_out[str(num)] = entry
             doc["cuestacks"][str(sid)] = {
                 "name":            stack.name,
@@ -8446,7 +8585,8 @@ class ShowFile:
                                cdata.get("fade_time", 2.0),
                                cdata.get("delay_time", 0.0),
                                cdata.get("fade_times"),
-                               cdata.get("delay_times"))
+                               cdata.get("delay_times"),
+                               cdata.get("follow_time", 0.0))
                 cue.data = copy.deepcopy(cdata["data"])
                 if needs_migration:
                     ShowFile._migrate_fx_scale(cue.data)
@@ -8790,6 +8930,19 @@ class ShowFile:
     @staticmethod
     def load_control_pool(pool):
         return ShowFile.load_attribute_pool(pool, ShowFile.CONTROL)
+
+    @staticmethod
+    def save_ai_prompts(prompts):
+        """Save list of {name, prompt} dicts to ai_prompts.json."""
+        _write_file(ShowFile.AI_PROMPTS, {"version": 1, "prompts": prompts})
+
+    @staticmethod
+    def load_ai_prompts(default_prompts=None):
+        """Load AI prompt list from file; return defaults if file missing."""
+        doc = _read_file(ShowFile.AI_PROMPTS)
+        if doc and "prompts" in doc:
+            return list(doc["prompts"])
+        return list(default_prompts) if default_prompts else []
 
     # ── Legacy migration ─────────────────────────────────────
 
