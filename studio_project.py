@@ -4565,6 +4565,7 @@ class GUIEngine:
                                       callback=self._on_hist_up)
             dpg.add_key_press_handler(dpg.mvKey_Down,
                                       callback=self._on_hist_down)
+            dpg.add_mouse_click_handler(callback=self._on_global_mouse_click)
 
         # Apply per-item themes after widgets are built
         try:
@@ -4802,6 +4803,57 @@ class GUIEngine:
                    dpg.is_key_down(dpg.mvKey_RSuper))
         if is_ctrl:
             self._on_save()
+
+    def _on_global_mouse_click(self, sender, app_data):
+        """Handle left-click on the stage canvas to select/deselect fixtures."""
+        if app_data != 0:   # 0 = left button
+            return
+        try:
+            if not dpg.is_item_hovered("stage_canvas"):
+                return
+        except Exception:
+            return
+        try:
+            canvas_min = dpg.get_item_rect_min("stage_canvas")
+            canvas_sz  = dpg.get_item_rect_size("stage_canvas")
+            mouse      = dpg.get_mouse_pos(local=False)
+            rel_x = mouse[0] - canvas_min[0]
+            w     = canvas_sz[0]
+            if w < 1:
+                return
+            fixtures = list(self._patch.all_fixtures())
+            n = len(fixtures)
+            if not n:
+                return
+            gap = 10
+            tw  = (w - gap * (n + 1)) / n
+            # Which fixture column was clicked?
+            clicked_idx = None
+            for i in range(n):
+                x0 = gap + i * (tw + gap)
+                x1 = x0 + tw
+                if x0 <= rel_x <= x1:
+                    clicked_idx = i
+                    break
+            if clicked_idx is None:
+                return
+            master = fixtures[clicked_idx]
+            # Shift-click: toggle fixture in/out of selection
+            shift = dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift)
+            if shift:
+                cur_masters = [f for f in self._prog.selection if isinstance(f, MasterFixture)]
+                if master in cur_masters:
+                    cur_masters.remove(master)
+                else:
+                    cur_masters.append(master)
+                self._prog.select(cur_masters)
+                sel_str = " ".join(str(m.fixture_id) for m in cur_masters) or "none"
+                self._log(f"> SELECT {sel_str}")
+            else:
+                self._prog.select([master])
+                self._log(f"> SELECT {master.fixture_id}")
+        except Exception:
+            pass
 
     def _on_global_char(self, sender, app_data, user_data):
         """Route printable keys to cmd_input when no other text widget is active."""
@@ -5177,8 +5229,12 @@ class GUIEngine:
                     g = max(0, min(255, int(g * dim * gm)))
                     b = max(0, min(255, int(b * dim * gm)))
             fill = (r, g, b, 255) if (r or g or b) else (8, 6, 18, 255)
+            sel_masters = {f.fixture_id for f in self._prog.selection
+                           if isinstance(f, MasterFixture)}
+            border_col = (162, 115, 255, 255) if master.fixture_id in sel_masters else (38, 26, 78, 255)
             try:
-                dpg.configure_item(f"stage_rect_{i}", pmin=(x0, gap), pmax=(x1, gap + mh), fill=fill)
+                dpg.configure_item(f"stage_rect_{i}", pmin=(x0, gap), pmax=(x1, gap + mh),
+                                   fill=fill, color=border_col, thickness=2)
                 dpg.configure_item(f"stage_lbl_{i}",  pos=(x0 + 4, gap + 14), text=master.name[:10])
             except Exception:
                 pass
