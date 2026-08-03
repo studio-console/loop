@@ -1999,79 +1999,6 @@ import random
 # OutputState
 # ------------------------------------------------------------
 
-class OutputState:
-    """
-    The final resolved DMX state for every sub-fixture.
-
-    Two layers (lowest → highest priority):
-      cue_layer        — values coming from cue playback / fades
-      programmer_layer — live programmer.data (always wins)
-
-    get_dmx_for_universe() merges both and returns a 512-slot
-    tuple ready to hand straight to the sACN sender.
-    """
-    def __init__(self, patch):
-        self.patch            = patch
-        self.cue_layer        = {}   # { fid_str: { channel: value } }
-        self.programmer_layer = {}   # linked to programmer.data by reference
-        self._lock            = threading.Lock()
-
-    def link_programmer(self, programmer):
-        """Call once after creating both objects."""
-        self.programmer_layer = programmer.data
-
-    def set_cue(self, fid, channel, value):
-        """Called by FadeEngine every tick during a crossfade."""
-        with self._lock:
-            if fid not in self.cue_layer:
-                self.cue_layer[fid] = {}
-            self.cue_layer[fid][channel] = value
-
-    def snapshot_cue_layer(self):
-        """Deep copy of current cue layer — used as fade start state."""
-        with self._lock:
-            return {fid: dict(vals) for fid, vals in self.cue_layer.items()}
-
-    def get_dmx_for_universe(self, universe):
-        """
-        Builds the 512-slot DMX array for one universe.
-        Programmer overrides cue. Master dimmer applied last.
-        Returns a tuple of 512 ints (0-255).
-        """
-        dmx = [0] * 512
-
-        with self._lock:
-            for master in self.patch.all_fixtures():
-                master_fid  = str(master.fixture_id)
-                prog_master = self.programmer_layer.get(master_fid, {})
-                cue_master  = self.cue_layer.get(master_fid, {})
-                master_dim  = prog_master.get('dim',
-                              cue_master.get('dim', master.virtual_dimmer))
-
-                for sub in master.all_subs():
-                    fid       = str(sub.fixture_id)
-                    prog_vals = self.programmer_layer.get(fid, {})
-                    cue_vals  = self.cue_layer.get(fid, {})
-
-                    r = prog_vals.get('red',   cue_vals.get('red',   0))
-                    g = prog_vals.get('green', cue_vals.get('green', 0))
-                    b = prog_vals.get('blue',  cue_vals.get('blue',  0))
-
-                    final_r = max(0, min(255, int(r * master_dim)))
-                    final_g = max(0, min(255, int(g * master_dim)))
-                    final_b = max(0, min(255, int(b * master_dim)))
-
-                    for output in sub.outputs:
-                        if output['universe'] == universe:
-                            addr = output['address'] - 1  # sACN is 0-indexed
-                            if addr + 2 <= 511:
-                                dmx[addr]     = final_r
-                                dmx[addr + 1] = final_g
-                                dmx[addr + 2] = final_b
-
-        return tuple(dmx)
-
-
 # ------------------------------------------------------------
 # Fade
 # ------------------------------------------------------------
@@ -3160,64 +3087,6 @@ def _expand_group_fx(fx_defs_by_fid, patch, group_pool):
 # Replaces Block 7 version (Python uses last definition)
 # ------------------------------------------------------------
 
-class OutputState:
-    def __init__(self, patch):
-        self.patch            = patch
-        self.cue_layer        = {}
-        self.programmer_layer = {}
-        self.fx_layer         = {}
-        self._lock            = threading.Lock()
-
-    def link_programmer(self, programmer):
-        self.programmer_layer = programmer.data
-
-    def set_cue(self, fid, channel, value):
-        with self._lock:
-            if fid not in self.cue_layer:
-                self.cue_layer[fid] = {}
-            self.cue_layer[fid][channel] = value
-
-    def snapshot_cue_layer(self):
-        with self._lock:
-            return {fid: dict(vals) for fid, vals in self.cue_layer.items()}
-
-    def get_dmx_for_universe(self, universe):
-        dmx = [0] * 512
-        with self._lock:
-            for master in self.patch.all_fixtures():
-                master_fid  = str(master.fixture_id)
-                prog_master = self.programmer_layer.get(master_fid, {})
-                cue_master  = self.cue_layer.get(master_fid, {})
-                master_dim  = prog_master.get('dim',
-                              cue_master.get('dim', master.virtual_dimmer))
-
-                for sub in master.all_subs():
-                    fid       = str(sub.fixture_id)
-                    prog_vals = self.programmer_layer.get(fid, {})
-                    cue_vals  = self.cue_layer.get(fid, {})
-                    fx_vals   = self.fx_layer.get(fid, {})
-
-                    r = prog_vals.get('red',
-                        min(255, cue_vals.get('red',   0) + fx_vals.get('red',   0)))
-                    g = prog_vals.get('green',
-                        min(255, cue_vals.get('green', 0) + fx_vals.get('green', 0)))
-                    b = prog_vals.get('blue',
-                        min(255, cue_vals.get('blue',  0) + fx_vals.get('blue',  0)))
-
-                    final_r = max(0, min(255, int(r * master_dim)))
-                    final_g = max(0, min(255, int(g * master_dim)))
-                    final_b = max(0, min(255, int(b * master_dim)))
-
-                    for output in sub.outputs:
-                        if output['universe'] == universe:
-                            addr = output['address'] - 1
-                            if addr + 2 <= 511:
-                                dmx[addr]     = final_r
-                                dmx[addr + 1] = final_g
-                                dmx[addr + 2] = final_b
-        return tuple(dmx)
-
-
 # ============================================================
 # STUDIO CONSOLE - Block 9: Audio Engine
 # Real-time audio analysis: level + 3-band EQ (low/mid/high)
@@ -3407,6 +3276,16 @@ class AudioMapper:
 # ------------------------------------------------------------
 
 class OutputState:
+    """
+    The final resolved DMX state for every sub-fixture.
+
+    Layers merged in priority order (lowest → highest):
+      cue (via executor_pool LTP merge) → audio_layer → programmer_layer → fx_layer
+    Master fader and per-fixture dim are applied last.
+
+    get_dmx_for_universe() builds a 512-slot tuple ready to hand
+    straight to the sACN sender.
+    """
     def __init__(self, patch):
         self.patch            = patch
         self.programmer_layer = {}
@@ -4019,8 +3898,6 @@ class OSCEngine:
 # ============================================================
 
 import anthropic
-import json
-import os
 
 
 class AIEngine:

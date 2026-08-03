@@ -2,6 +2,17 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-08-03",
+      "summary": "Cleanup: removed two dead/shadowed OutputState class definitions (~120 lines)",
+      "details": [
+        "pyflakes flagged 'redefinition of unused OutputState' three times — the class was defined once in Block 7 (cue_layer/programmer_layer only, no FX), redefined in Block 8 (added fx_layer, additive-only FX), and redefined again after Block 9 (the real, currently-used version: LTP executor merge, audio_layer, master_level, blind, FX-replaces-base priority model). Only the last definition was ever reachable — output_state = OutputState(patch) at module bottom always bound to the final class. The first two were 100% dead code, never instantiated, and risked misleading future reads (including AI-assisted ones) about how output merging actually works.",
+        "Deleted the two superseded definitions, restored a docstring on the surviving class describing the real (four-layer + LTP) merge order, and removed a redundant 'import json' / 'import os' inside the Block 12 AI Engine section that shadowed the top-of-file imports for no reason.",
+        "Roadmap review: re-checked the file against the established roadmap list. Manual/glossary popup, changelog popup, MIDI mapping GUI (learn/reassign/delete), executor FLASH wired to real MIDI note-on/note-off (not just commands), and attribute pools (position/gobo/zoom/focus/beam — all have pool classes + GUI + persistence, just 0 presets recorded so far since the rig is RGB-only pixel tubes with no moving-light attributes) all turned out to already be implemented in prior sessions — no code changes needed there.",
+        "GUI sizing/clipping polish remains genuinely unverified: this environment can only run STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 (no display), so whether the 1920x1040 layout still clips on a real screen can't be checked from here. Left as-is per the hard rule against any other verification method — needs a human with a real display to confirm.",
+        "Environment note: this session's container had none of the project's dependencies installed (sacn, mido, python-rtmidi, python-osc, sounddevice, numpy, anthropic, dearpygui, plus the libportaudio2 system library) — had to pip/apt install all of them before the smoke test would even import. Not a code issue, just flagging in case future automated sessions hit the same cold-start."
+      ]
+    },
+    {
       "date": "2026-08-02",
       "summary": "FX engine: block/random/reverse/bounce distribution + pixel vs fixture scope",
       "details": [
