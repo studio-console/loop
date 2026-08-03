@@ -12693,10 +12693,9 @@ def run_command(cmd_str):
         save_show()
         return "Show saved."
 
-    if t0 in ('LOAD',) and len(tokens) >= 3 and tokens[1] in ('SHOW', 'CS'):
-        if tokens[1] == 'SHOW':
-            name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
-            return load_show_from(name)
+    if t0 == 'LOAD' and len(tokens) >= 3 and tokens[1] == 'SHOW':
+        name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
+        return load_show_from(name)
 
     if t0 == 'LIST' and len(tokens) >= 2 and tokens[1] == 'SHOWS':
         return list_shows()
@@ -12802,6 +12801,17 @@ def run_command(cmd_str):
                 kind = "note" if entry[2] else "cc"
                 lines.append(f"  {name}  [{kind}]")
             return "\n".join(lines)
+        if t1 in ('CC', 'NOTE'):
+            return (f"Usage: MIDI {t1} <ch 1-16> <number 0-127> <target name>\n"
+                    "  e.g. MIDI CC 1 7 Grandmaster Dim\n"
+                    "  Use MIDI TARGETS to list available target names")
+        if t1 == 'REMOVE':
+            return "Usage: MIDI REMOVE CC|NOTE <ch> <number>"
+        if t1 == 'CLOCK':
+            pass  # handled below
+        else:
+            return ("MIDI: unknown subcommand — use CC, NOTE, REMOVE, TARGETS, CLOCK ON/OFF, "
+                    "or LIST MIDI to see current mappings")
 
     if t0 == 'MIDI' and len(tokens) >= 3 and tokens[1] == 'CLOCK':
         if tokens[2] == 'ON':
