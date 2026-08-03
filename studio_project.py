@@ -8580,11 +8580,17 @@ class GUIEngine:
             (eid, ex.priority, ex.cuestack.current if ex.cuestack else None,
              ex.time_override_on, ex.time_override_fade)
             for eid, ex in sorted(self._executor_pool.executors.items())
-            if ex.is_active and ex.cuestack
+            if ex.cuestack
         )
 
     def _rebuild_playbacks(self):
-        """Rebuild the active-playbacks list inside the left column."""
+        """
+        Rebuild the executor-slot list inside the left column. Lists every
+        executor with a cuestack assigned, not just ones currently playing
+        a cue — an idle executor (assigned but never GO'd, or stopped via
+        FLASH OFF) still needs its flash/stop/priority buttons reachable
+        by mouse, since those are the only way to trigger it without MIDI.
+        """
         try:
             dpg.delete_item("playbacks_list", children_only=True)
         except Exception:
@@ -8592,10 +8598,13 @@ class GUIEngine:
 
         active = []
         if self._executor_pool:
-            for eid in reversed(self._executor_pool._fire_order):
-                ex = self._executor_pool.executors.get(eid)
-                if ex and ex.is_active and ex.cuestack:
-                    active.append(ex)
+            assigned_eids = {eid for eid in self._executor_pool.executors
+                              if self._executor_pool.executors[eid].cuestack}
+            ordered = [eid for eid in reversed(self._executor_pool._fire_order)
+                       if eid in assigned_eids]
+            ordered += sorted(assigned_eids - set(ordered))
+            for eid in ordered:
+                active.append(self._executor_pool.executors[eid])
 
         if not active:
             dpg.add_text("— none running", tag="playbacks_empty",
@@ -9041,11 +9050,13 @@ class GUIEngine:
                     except Exception:
                         pass
 
-        # FLASH button hold detection — poll is_item_active per active executor
+        # FLASH button hold detection — poll is_item_active per executor
+        # slot that has a flash_btn_{eid} widget (any assigned executor,
+        # active or idle — see _rebuild_playbacks).
         if self._executor_pool and self._cmd:
             active_eids = {
                 eid for eid, ex in self._executor_pool.executors.items()
-                if ex.is_active and ex.cuestack
+                if ex.cuestack
             }
             for eid in list(self._flash_held):
                 if eid not in active_eids:
