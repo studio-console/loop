@@ -3,6 +3,17 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "MIDI-learn GO/BACK for any executor; LOAD SHOW now reloads OSC targets and FX defaults",
+      "details": [
+        "Audited the roadmap first -- GUI polish, manual/changelog popups, MIDI-held FLASH, Block 12 AI layer, MIDI mapping GUI, attribute pool panels all already landed by direct code inspection. Ran a background research pass hunting for asymmetric sibling code paths (the pattern behind most real bugs found in recent sessions) across areas not yet deep-audited: OSC engine vs MIDI engine action parity, and ShowFile save/load symmetry.",
+        "Gap found: the OSC bridge lets any control surface GO/BACK an arbitrary executor via /gma3/key/<page>/<exec>/go|back (added in an earlier session specifically so a surface like TouchOSC isn't limited to executor 1). The MIDI-learn panel had no equivalent -- only a fixed GO/BACK target (always acts on whichever executor is CUESTACK-active), a 'jump to cue N' learn, and a FLASH-while-held learn. Added _start_exec_gb_learn() + a new 'GO/BACK a specific executor via note' row in the MIDI panel, mirroring the existing _start_exec_flash_learn pattern, so a MIDI pad can now step any executor's cuestack forward/back the same way OSC already could.",
+        "Bug found: load_show_from() (the LOAD SHOW <name> command) reloads cuestacks/groups/colors/dims/fx_pool/forms/rate/size/spread/speed-masters/attribute-pools/executor-pages/executors/state, but never called ShowFile.load_osc_targets() or ShowFile.load_fx() even though both are called at startup and both loader functions already existed. Concretely: SAVE AS 'ShowA' with an OSC TARGET configured, then LOAD SHOW 'ShowB' -- the on-disk osc_targets.json file is correctly overwritten, but the live OSCEngine._clients dict kept ShowA's stale target, so cues kept firing OSC to the wrong host with zero warning. Same staleness for the global FX rate/size/spread/infade/outfade defaults. Neither has a hardware/thread-reinit reason to be excluded the way patch/MIDI legitimately are (that exclusion is correctly flagged in the return message; this silent one wasn't). Fixed by clearing osc._clients and calling load_osc_targets()/load_fx() at the end of load_show_from().",
+        "Added 3 smoke-test checks for the OSC/FX reload fix, exercising the underlying ShowFile primitives directly so the test stays inside the isolated DATA_DIR and never touches the real studio_saves/ directory (SAVES_DIR itself is not redirected under STUDIO_HEADLESS, unlike DATA_DIR -- noted here as a real but out-of-scope gap for a future session, not something this one guessed on). No new test for _start_exec_gb_learn itself: gui.build() is never called in headless mode, so its dpg tags don't exist -- consistent with the existing untested state of the sibling _start_exec_flash_learn/_start_go_cue_learn methods.",
+        "No data model or schema changes. python3 -m py_compile and STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 both pass, 118/118 (was 115/115)."
+      ]
+    },
+    {
+      "date": "2026-08-03",
       "summary": "Sync changelog.json",
       "details": []
     },

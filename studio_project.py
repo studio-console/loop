@@ -6965,6 +6965,20 @@ class GUIEngine:
                                callback=self._start_exec_flash_learn)
                 dpg.add_text("", tag="flash_learn_status", color=_C_ACCENT)
 
+            dpg.add_separator()
+            dpg.add_text("GO/BACK a specific executor via note:", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                dpg.add_text("exec", color=_C_DIM)
+                dpg.add_input_int(tag="midi_exec_gb_num", label="", width=46,
+                                  default_value=1, min_value=1, max_value=99,
+                                  step=0, step_fast=0)
+                dpg.add_radio_button(items=["GO", "BACK"],
+                                     tag="midi_exec_gb_type",
+                                     default_value="GO", horizontal=True)
+                dpg.add_button(label="learn note", width=100,
+                               callback=self._start_exec_gb_learn)
+                dpg.add_text("", tag="midi_exec_gb_status", color=_C_ACCENT)
+
     def _build_patch_popup(self):
         """Floating patch editor — hidden by default, opened via header PATCH button."""
         profiles = list(self._library.profiles.keys()) if self._library else ["SGM_RGB_54"]
@@ -8916,6 +8930,31 @@ class GUIEngine:
         self._learn_armed_type = 'note'
         self._midi.start_learn('note', self._on_learn_captured)
         dpg.set_value("flash_learn_status", f"waiting for note → {name}...")
+
+    def _start_exec_gb_learn(self):
+        """
+        Learn a note for 'Exec <n> GO' or 'Exec <n> BACK' — steps that
+        specific executor's cuestack forward/back on press. Unlike the
+        fixed "GO"/"BACK" targets in target_registry (which always act on
+        whichever executor is currently active via CUESTACK <n>), and unlike
+        _start_go_cue_learn (which jumps straight to one cue number), this
+        drives an arbitrary executor's normal GO/BACK — the MIDI-side
+        equivalent of what /gma3/key/<page>/<exec>/go already does over OSC.
+        """
+        try:
+            ex_n = int(dpg.get_value("midi_exec_gb_num"))
+        except Exception:
+            return
+        verb = dpg.get_value("midi_exec_gb_type")  # 'GO' or 'BACK'
+        name = f"Exec {ex_n} {verb}"
+        cmd  = f"EXEC {ex_n} {verb}"
+        cb   = (lambda c=cmd: self._cmd(c)) if self._cmd else (lambda: None)
+        GUIEngine.target_registry[name] = (cb, False, True)
+        self._learn_target     = name
+        self._learn_armed      = True
+        self._learn_armed_type = 'note'
+        self._midi.start_learn('note', self._on_learn_captured)
+        dpg.set_value("midi_exec_gb_status", f"waiting for note → {name}...")
 
     def _on_go_cue_captured(self, ch, number):
         """MIDI-thread callback for GO CS+CUE note learn."""
@@ -11875,6 +11914,13 @@ def load_show_from(name):
     ShowFile.load_executors(executor_pool, cuestack_pool)
     ShowFile.load_state(output_state, executor_pool, cuestack_pool,
                         active_executor, prog_time=_prog_time, fader_dim=_fader_dim)
+    # OSC targets and global FX rate/size/spread/fade defaults are saved every
+    # SAVE (ShowFile.save_osc_targets / save_fx) and loaded at startup, but were
+    # missing here — unlike patch/MIDI (which need a real restart to re-init
+    # hardware/threads), neither has a reason to stay stale after a LOAD SHOW.
+    osc._clients.clear()
+    ShowFile.load_osc_targets(osc)
+    ShowFile.load_fx(_fx_params)
     return f"Show '{name}' loaded — restart may be needed for patch/MIDI changes"
 
 
@@ -15731,6 +15777,28 @@ if STUDIO_HEADLESS:
         r_rate_btn = run_command("EXEC 2 BTN C RATE+")
         _check("EXEC 2 BTN C RATE+ sets btn_c to RATE+", _rate_ex.btn_c == 'RATE+')
         run_command("EXEC 2 BTN C STOP")  # restore
+
+        # LOAD SHOW must reload OSC targets and FX defaults, not just leave
+        # the previous show's live values in place — same primitives
+        # load_show_from() now calls (osc._clients.clear() + load_osc_targets,
+        # load_fx), exercised directly here so the test stays within the
+        # isolated DATA_DIR and never touches the real studio_saves/ dir.
+        osc.add_target("smoketest_stale", "10.0.0.1", 9000)
+        ShowFile.save_osc_targets(osc)
+        osc.add_target("smoketest_extra", "10.0.0.2", 9001)  # never persisted
+        osc._clients.clear()
+        ShowFile.load_osc_targets(osc)
+        _check("LOAD SHOW-style OSC reload restores saved targets",
+               "smoketest_stale" in osc._clients)
+        _check("LOAD SHOW-style OSC reload drops targets not in the saved show",
+               "smoketest_extra" not in osc._clients)
+
+        _fx_params['rate_bpm'] = 60.0
+        ShowFile.save_fx(_fx_params)
+        _fx_params['rate_bpm'] = 999.0  # simulate a live value from a different show
+        ShowFile.load_fx(_fx_params)
+        _check("LOAD SHOW-style FX reload restores saved fx_params",
+               _fx_params['rate_bpm'] == 60.0)
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
