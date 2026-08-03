@@ -386,6 +386,19 @@
         "New verification step beyond the usual smoke test: this container actually has Xvfb, so \u2014 unlike prior sessions, which flagged gui.build() as unverifiable without a real display \u2014 ran a one-off patched copy of the script under `xvfb-run` with STUDIO_DRY_RUN=1 (build() only, no blocking event loop) to confirm the new popup's widget tree constructs without exception. Confirmed clean (no traceback) and confirmed via git status that studio_data/*.json was untouched by that run. No pixel-level layout verification (can't screenshot), but this is a step past pure code review.",
         "No schema or data-model changes \u2014 pure GUI addition over existing, already-persisted pool data. Backward compatible: old popup_layout.json files without an 'attr_window' key just fall back to the popup's built-in default position/size."
       ]
+    },
+    {
+      "date": "2026-08-03",
+      "summary": "Fix OSC fader/key handlers silently dropping every executor except Page 1 Exec 1",
+      "details": [
+        "Re-audited the established roadmap first (GUI polish, manual popup, changelog popup, MIDI-held FLASH, Block 12 AI layer, MIDI mapping GUI, attribute pool panels) -- all confirmed already landed by prior sessions via direct code inspection, not just trusting the changelog. Ran a background research pass over the whole file (dead code, manual-vs-parser mismatches, MIDI/OSC symmetry, attribute pool CRUD parity) looking for the next real gap rather than re-doing finished work.",
+        "Found one: _osc_fader and _osc_key (the /gma3/fader/PAGE/EXEC and /gma3/key/PAGE/EXEC/TYPE MA3-style OSC input handlers) parsed page and exec_num out of the incoming OSC address correctly, but then gated all actual behavior on 'if page == 1 and exec_num == 1' -- a placeholder from when the console only had one executor wired up ('We map Page 1 Exec 1 -> grandmaster dim for now'). Every other executor was parsed, logged to console, and silently dropped, despite the console fully supporting many executors via the existing EXEC <n> GO/BACK/LEVEL command family that MIDI targets already use freely.",
+        "_osc_fader now keeps the legacy Page 1 Exec 1 -> grandmaster-dim mapping (so existing OSC templates don't change behavior) but routes any other page/exec straight to that executor's own .level field -- the same field the GUI executor sliders write via _on_exec_fader, and written directly (no save_show() call) so a fast fader sweep doesn't hammer disk I/O on every OSC message, matching how the GUI slider already behaves.",
+        "_osc_key keeps Page 1 Exec 1 Go/Back mapped to the active executor (cue_go()/cue_back(), unchanged) but routes any other page/exec through run_command('EXEC <n> GO') or 'EXEC <n> BACK' -- the identical command path the text command line and MIDI note targets use, so a TouchOSC/Chataigne page can now drive any executor, not just the first one.",
+        "This console does not have grandMA3-style paging of executor numbers (PAGE here organizes cuestacks for display only, per ExecutorPool.pages -- confirmed while investigating, does not affect playback), so 'page' in the OSC address is accepted for compatibility with MA3-shaped OSC templates but otherwise ignored; exec_num alone selects the executor.",
+        "Smoke test extended: dispatches real /gma3/fader/1/3 and /gma3/key/1/3/go packets through osc._dispatch.call_handlers_for_packet() (not just calling the handler functions directly) and confirms executor 3 -- which is wired to cuestack 3 by the default 1:1 startup assignment -- receives its own level and actually GOes, while leaving the existing Page 1 Exec 1 grandmaster-dim test untouched. 61/61 passing (59 previous + 2 new). Verified studio_data/*.json untouched via git status.",
+        "No schema or persisted-data changes -- pure bugfix in existing OSC dispatch code, fully backward compatible."
+      ]
     }
   ]
 }

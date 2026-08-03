@@ -11001,7 +11001,11 @@ def _osc_fader(address, *args):
     """
     /gma3/fader/PAGE/EXEC  float(0.0-1.0)
     Fader on page PAGE, executor EXEC.
-    We map Page 1 Exec 1 → grandmaster dim for now.
+    Page 1 Exec 1 stays mapped to the grandmaster dim (legacy behavior,
+    kept for existing OSC templates). Any other page/exec routes straight
+    to that executor's own level fader — same field the GUI executor
+    sliders write via _on_exec_fader — so a surface like TouchOSC can
+    drive every executor, not just the first one.
     """
     if not args:
         return
@@ -11013,26 +11017,36 @@ def _osc_fader(address, *args):
     print(f"\n  OSC fader P{page}/E{exec_num} → {val:.0%}")
     if page == 1 and exec_num == 1:
         set_all_dim(val)
+    else:
+        executor_pool.get(exec_num).level = max(0.0, min(1.0, val))
 
 def _osc_key(address, *args):
     """
     /gma3/key/PAGE/EXEC/TYPE  int(0/1)
     Key press on an executor.  1=press, 0=release.
-    We map Page 1 Exec 1 Go key → cue_go().
+    Page 1 Exec 1 Go/Back stay mapped to the active executor (legacy
+    behavior, kept for existing OSC templates). Any other page/exec fires
+    GO/BACK on that specific executor via the same "EXEC <n> GO|BACK"
+    command MIDI and the command line already use.
     """
     if not args:
         return
     pressed = int(args[0]) == 1
+    if not pressed:
+        return
     parts = address.strip('/').split('/')
     page     = int(parts[2]) if len(parts) > 2 else 1
     exec_num = int(parts[3]) if len(parts) > 3 else 1
     key_type = parts[4] if len(parts) > 4 else "go"
-    print(f"\n  OSC key P{page}/E{exec_num}/{key_type} {'▼' if pressed else '▲'}")
-    if pressed and page == 1 and exec_num == 1:
-        if key_type.lower() in ('go', 'go+'):
-            cue_go()
-        elif key_type.lower() in ('back', 'go-'):
-            cue_back()
+    print(f"\n  OSC key P{page}/E{exec_num}/{key_type} ▼")
+    is_go   = key_type.lower() in ('go', 'go+')
+    is_back = key_type.lower() in ('back', 'go-')
+    if not (is_go or is_back):
+        return
+    if page == 1 and exec_num == 1:
+        cue_go() if is_go else cue_back()
+    else:
+        run_command(f"EXEC {exec_num} {'GO' if is_go else 'BACK'}")
 
 # Register MA3-style OSC handlers
 osc.map("/gma3/cmd",         _osc_cmd)
@@ -14583,6 +14597,30 @@ if STUDIO_HEADLESS:
         _check("OSC /gma3/fader/1/1 reaches _osc_fader and sets grandmaster dim",
                abs(_fader_dim[0] - 0.42) < 1e-6)
         _fader_dim[0] = _prev_fader_dim
+
+        # OSC page/exec addressing used to hard-gate all fader/key behavior
+        # on "page == 1 and exec_num == 1" — any other executor was parsed
+        # and logged but silently dropped. Exercise exec 3 (arbitrary, not
+        # exec 1) through the real dispatcher to confirm it now reaches
+        # that executor's own level/GO/BACK, same as "EXEC 3 LEVEL ..." /
+        # "EXEC 3 GO" typed on the command line.
+        _osc_ex = executor_pool.get(3)
+        _prev_osc_ex_level = _osc_ex.level
+        _fader3_msg = _OscMsgBuilder(address="/gma3/fader/1/3")
+        _fader3_msg.add_arg(0.65)
+        osc._dispatch.call_handlers_for_packet(_fader3_msg.build().dgram, ("127.0.0.1", 0))
+        _check("OSC /gma3/fader/1/3 sets executor 3's own level (not grandmaster)",
+               abs(_osc_ex.level - 0.65) < 1e-6)
+        _osc_ex.level = _prev_osc_ex_level
+
+        # Cuestack 3 is wired to executor 3 by default at startup (every
+        # loaded cuestack assigns 1:1 into the matching executor slot), so
+        # a real GO on exec 3 should activate it.
+        _key3_msg = _OscMsgBuilder(address="/gma3/key/1/3/go")
+        _key3_msg.add_arg(1)
+        osc._dispatch.call_handlers_for_packet(_key3_msg.build().dgram, ("127.0.0.1", 0))
+        _check("OSC /gma3/key/1/3/go GOes executor 3 (routes through EXEC 3 GO)",
+               _osc_ex.is_active)
 
         # AudioEngine (Block 9) is not wired into any command/GUI path yet,
         # but its import used to be unconditional -- a missing sounddevice
