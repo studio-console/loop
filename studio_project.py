@@ -5343,14 +5343,27 @@ class GUIEngine:
                 br   = ps.get('red',   cs.get('red',   0))
                 bg2  = ps.get('green', cs.get('green', 0))
                 bb   = ps.get('blue',  cs.get('blue',  0))
-                sr   = int(fs['red'])   if 'red'   in fs else int(br)
-                sg   = int(fs['green']) if 'green' in fs else int(bg2)
-                sb2  = int(fs['blue'])  if 'blue'  in fs else int(bb)
+                # Envelope-blended merge (matches get_dmx_for_universe)
+                if 'red' in fs:
+                    env_r = fs.get('_env_red', 1.0)
+                    sr = max(0, min(255, int(int(br) * (1.0 - env_r) + fs['red'])))
+                else:
+                    sr = int(br)
+                if 'green' in fs:
+                    env_g = fs.get('_env_green', 1.0)
+                    sg = max(0, min(255, int(int(bg2) * (1.0 - env_g) + fs['green'])))
+                else:
+                    sg = int(bg2)
+                if 'blue' in fs:
+                    env_b = fs.get('_env_blue', 1.0)
+                    sb2 = max(0, min(255, int(int(bb) * (1.0 - env_b) + fs['blue'])))
+                else:
+                    sb2 = int(bb)
                 mp   = self._out.programmer_layer.get(fid, {})
                 mc   = cue_merged.get(fid, {})
                 fxm  = self._out.fx_layer.get(fid, {})
                 fdr  = fxm.get('dim')
-                ron  = bool('red' in fs or 'green' in fs or 'blue' in fs)
+                ron  = any(fs.get(f'_env_{c}', 0.0) > 0.001 for c in ('red', 'green', 'blue'))
                 if fdr is not None:
                     sdim = max(0.0, min(1.0, mp.get('dim', mc.get('dim', master.virtual_dimmer)) * (fdr / 255.0)))
                 elif ron:
