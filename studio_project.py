@@ -7114,6 +7114,15 @@ class GUIEngine:
                 ("MIDI CLOCK ON",  "Lock FX BPM to incoming MIDI beat clock (24 ppqn); shows CLK in header"),
                 ("MIDI CLOCK OFF", "Disable MIDI clock sync; FX BPM returns to manual control"),
             ]),
+            ("AUDIO REACTIVE", [
+                ("AUDIO DEVICES",   "List available audio input devices"),
+                ("AUDIO START [n]", "Begin capturing input device n (or system default)"),
+                ("AUDIO STOP",      "Stop capturing"),
+                ("AUDIO ON",        "Enable reactive layer: bass=red, mid=green, high=blue, level=dim"),
+                ("AUDIO OFF",       "Disable reactive layer (capture keeps running if started)"),
+                ("AUDIO STATUS",    "Show capture/mapping state and current band levels"),
+                ("AUDIO GAIN 3.0",  "Adjust input sensitivity (default 3.0)"),
+            ]),
             ("AI CONTROL", [
                 ("ai prompt box",         "Type a look in plain English (\"slow blue fade\", \"make it eerie\") and hit Enter/send"),
                 ("chip buttons",          "One-click built-in prompts (warm wash, strobe, blackout, rgb chase, ...)"),
@@ -10459,6 +10468,14 @@ osc.start(port=8001)
 
 osc.list_targets()
 
+# Audio engine (Block 9) — reactive audio→light mapping. Unlike MIDI (control
+# surface hardware the console expects on every launch) or OSC (a passive
+# network listener), microphone capture is opt-in: the engine and mapper
+# construct safely with no input device present and sit idle until an
+# operator runs AUDIO START / AUDIO ON.
+audio_engine = AudioEngine()
+audio_mapper = AudioMapper(audio_engine, output_state, patch)
+
 all_subs = [sub for master in patch.all_fixtures() for sub in master.all_subs()]
 
 # ----------------------------------------------------------
@@ -12900,6 +12917,54 @@ def run_command(cmd_str):
             return "OSC feedback disabled"
         return "OSC usage: TARGET name host port | REMOVE name | LIST | FEEDBACK host port | SEND /addr [args]"
 
+    # AUDIO DEVICES | START [device] | STOP | ON | OFF | STATUS | GAIN <n>
+    # Block 9 audio-reactive layer: capture (START/STOP) is independent from
+    # the mapping toggle (ON/OFF) so an operator can leave a mic plugged in
+    # and running while flipping the reactive layer on/off for cue timing.
+    if t0 == 'AUDIO':
+        t1 = tokens[1] if len(tokens) > 1 else ''
+        if t1 == 'DEVICES':
+            if not _AUDIO_AVAILABLE:
+                return f"Audio unavailable: {_AUDIO_IMPORT_ERROR}"
+            devs = [f"  [{i}] {d['name']}" for i, d in enumerate(sd.query_devices())
+                    if d['max_input_channels'] > 0]
+            return "Audio input devices:\n" + ("\n".join(devs) if devs else "  (none found)")
+        if t1 == 'START':
+            device = None
+            if len(tokens) > 2:
+                try:
+                    device = int(tokens[2])
+                except ValueError:
+                    return f"AUDIO START: bad device index '{tokens[2]}'"
+            try:
+                audio_engine.start(device=device)
+            except RuntimeError as e:
+                return f"AUDIO START failed: {e}"
+            return "Audio capture started."
+        if t1 == 'STOP':
+            audio_engine.stop()
+            return "Audio capture stopped."
+        if t1 == 'ON':
+            audio_mapper.enable()
+            return "AUDIO ON — bass=red, mid=green, high=blue, level=dim"
+        if t1 == 'OFF':
+            audio_mapper.disable()
+            return "AUDIO OFF"
+        if t1 == 'STATUS':
+            state   = "capturing" if audio_engine._running else "stopped"
+            mapping = "ON" if audio_mapper.enabled else "OFF"
+            return (f"Audio: {state}, mapping {mapping}  "
+                    f"lvl={audio_engine.level:.2f} lo={audio_engine.low:.2f} "
+                    f"mid={audio_engine.mid:.2f} hi={audio_engine.high:.2f}")
+        if t1 == 'GAIN' and len(tokens) > 2:
+            try:
+                g = float(tokens[2])
+            except ValueError:
+                return f"AUDIO GAIN: bad value '{tokens[2]}'"
+            audio_engine.gain = g
+            return f"Audio gain → {g}"
+        return "AUDIO usage: DEVICES | START [device] | STOP | ON | OFF | STATUS | GAIN <n>"
+
     # MIDI CC <ch> <cc> <target name>        — add CC mapping
     # MIDI NOTE <ch> <note> <target name>    — add note mapping
     # MIDI REMOVE CC <ch> <cc>              — delete CC mapping
@@ -14192,6 +14257,33 @@ if STUDIO_HEADLESS:
             except Exception as _ae:
                 _check(f"AudioEngine.start() raised wrong exception "
                        f"({type(_ae).__name__}) when unavailable", False)
+
+            # AUDIO command wiring — the engine/mapper above were dead code
+            # with zero command/GUI surface until this session; exercise the
+            # run_command() path itself (not just the classes directly) the
+            # same way the OSC dispatcher check above does. ON/OFF/STATUS/GAIN
+            # don't touch real hardware so they're safe with a real audio
+            # stack installed too; START/DEVICES are only exercised in the
+            # forced-unavailable branch to avoid opening a real mic stream.
+            run_command("AUDIO OFF")
+            _check("AUDIO OFF works pre-start", not audio_mapper.enabled)
+            run_command("AUDIO ON")
+            _check("AUDIO ON enables mapper", audio_mapper.enabled)
+            r_audio_status = run_command("AUDIO STATUS")
+            _check("AUDIO STATUS reports mapping ON", "mapping ON" in r_audio_status)
+            run_command("AUDIO OFF")
+            _check("AUDIO OFF disables mapper", not audio_mapper.enabled)
+            _prev_gain = audio_engine.gain
+            run_command("AUDIO GAIN 5")
+            _check("AUDIO GAIN sets engine gain", audio_engine.gain == 5.0)
+            audio_engine.gain = _prev_gain
+
+            r_devices = run_command("AUDIO DEVICES")
+            _check("AUDIO DEVICES reports unavailable cleanly",
+                   "unavailable" in r_devices.lower())
+            r_start = run_command("AUDIO START")
+            _check("AUDIO START reports failure cleanly (no crash)",
+                   "failed" in r_start.lower())
         finally:
             _AUDIO_AVAILABLE = _prev_audio_avail
 
@@ -14223,6 +14315,8 @@ if STUDIO_HEADLESS:
     osc.stop()
     fx_engine.stop()
     fade_engine.stop()
+    audio_mapper.stop()
+    audio_engine.stop()
     _sys.exit(0 if ok else 1)
 else:
     gui.build()   # build all widgets (main thread)
@@ -14232,6 +14326,8 @@ midi.stop()
 network.stop()
 fade_engine.stop()
 fx_engine.stop()
+audio_mapper.stop()
+audio_engine.stop()
 
 
 # =============================================================================
