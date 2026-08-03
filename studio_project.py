@@ -7240,9 +7240,9 @@ class GUIEngine:
             ("programmer", [
                 ("CLEAR",                 "Clear selection (tap 1) then programmer (tap 2)"),
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references (selection-scoped when active)"),
-                ("CLEAR COLOUR / COLOR",  "Remove R/G/B/W/A from programmer (selection-scoped when active)"),
-                ("CLEAR DIM",             "Remove dimmer from programmer (selection-scoped when active)"),
-                ("CLEAR RGB",             "Remove R/G/B only (no white/amber channels)"),
+                ("CLEAR COLOUR / COLOR",  "Zero R/G/B/W/A in programmer — recordable into cues (selection-scoped when active)"),
+                ("CLEAR DIM",             "Zero dimmer in programmer — recordable into cues (selection-scoped when active)"),
+                ("CLEAR RGB",             "Zero R/G/B only (no white/amber channels) — recordable into cues"),
                 ("MASTER 75",             "Set grandmaster to 75% directly (same as sliding the master fader)"),
                 ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
@@ -14594,24 +14594,27 @@ def run_command(cmd_str):
     if t0 == 'CLEAR' and len(tokens) == 2 and tokens[1] == 'FX':
         _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
         _targets  = _sel_fids or set(prog.data.keys())
-        cleared = 0
+        n_masters = 0
         for fid in _targets:
-            vals = prog.data.get(fid)
-            if vals:
-                if 'fx' in vals:
-                    del vals['fx']
-                    cleared += 1
-                vals.pop('fx_kill', None)
+            if '.' in fid:
+                continue  # fx_kill and fx live in master keys only
+            n_masters += 1
+            if fid not in prog.data:
+                prog.data[fid] = {}
+            vals = prog.data[fid]
+            vals.pop('fx', None)
+            vals['fx_kill'] = True  # explicit kill state — recordable into cues with fx_outfade
         if _sel_fids:
             _prog_fx_rebuild()  # keep FX on unselected fixtures alive
         else:
             _prog_fx_stop()
             _fx_params.pop('pending_form_id', None)
         _scope = f" ({len(_sel_fids)} fixture(s))" if _sel_fids else ""
-        return f"FX cleared from {cleared} fixture(s){_scope} — colour/dim preserved"
+        return f"FX kill written for {n_masters} fixture(s){_scope} — record into a cue to store"
 
     # CLEAR COLOUR / CLEAR COLOR / CLEAR DIM / CLEAR RGB
-    # Remove specific parameter groups from programmer. Selection-scoped when active.
+    # Write explicit zeros into programmer so the operation is recordable into cues with fade times.
+    # dim lives in master fixture keys (no '.'), colour channels in sub-fixture keys ('.' in fid).
     if t0 == 'CLEAR' and len(tokens) == 2:
         _pclear = tokens[1].upper()
         _colour_chs = {'red', 'green', 'blue', 'white', 'amber', 'warm_white', 'cool_white'}
@@ -14623,19 +14626,24 @@ def run_command(cmd_str):
         }
         if _pclear in _param_map:
             _chs = _param_map[_pclear]
+            _is_dim = _pclear == 'DIM'
             _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
             _targets  = _sel_fids or set(prog.data.keys())
-            _n_cleared = 0
+            _n_written = 0
             for fid in _targets:
-                vals = prog.data.get(fid)
-                if vals is None:
+                # Colour channels live in sub-fixture keys; dim in master keys
+                if _is_dim and '.' in fid:
                     continue
+                if not _is_dim and '.' not in fid:
+                    continue
+                if fid not in prog.data:
+                    prog.data[fid] = {}
+                vals = prog.data[fid]
                 for ch in _chs:
-                    if ch in vals:
-                        del vals[ch]
-                        _n_cleared += 1
-            _scope = f" ({len(_targets)} fixture(s))" if _sel_fids else ""
-            return f"{_pclear.title()} cleared from programmer{_scope}"
+                    vals[ch] = 0.0 if _is_dim else 0
+                    _n_written += 1
+            _scope = f" ({len(_sel_fids)} fixture(s))" if _sel_fids else ""
+            return f"{_pclear.title()} zeroed in programmer{_scope} — record into a cue to store"
 
     # CLEAR COLOR/DIM/GROUP/FX <n> — clear a specific pool slot
     if t0 == 'CLEAR' and len(tokens) == 3:
@@ -15285,8 +15293,8 @@ if STUDIO_HEADLESS:
         run_command("CLEAR COLOUR")
         _post_rgb = prog.data.get(_sub1, {}).get('red') if _sub1 else None
         _post_dim = prog.data.get("1", {}).get('dim')
-        _check("CLEAR COLOUR removes RGB and leaves dim intact",
-               _post_rgb is None and _post_dim == _pre_dim)
+        _check("CLEAR COLOUR zeroes RGB and leaves dim intact",
+               _post_rgb == 0 and _post_dim == _pre_dim)
 
         # CLEAR DIM removes only dimmer, leaves RGB intact
         # RGB lives in sub-fixture keys ("1.1"), dim in master key ("1")
@@ -15298,8 +15306,8 @@ if STUDIO_HEADLESS:
         _post_dim2 = prog.data.get("1", {}).get('dim')
         _first_sub = next((k for k in prog.data if k.startswith("1.")), None)
         _post_red2 = prog.data.get(_first_sub, {}).get('red') if _first_sub else None
-        _check("CLEAR DIM removes dim, leaves RGB intact",
-               _post_dim2 is None and _post_red2 == 200)
+        _check("CLEAR DIM zeroes dim, leaves RGB intact",
+               _post_dim2 == 0.0 and _post_red2 == 200)
 
         # UNDO must not desync output_state.programmer_layer from prog.data --
         # link_programmer() aliases them to the *same* dict object, so undo()
