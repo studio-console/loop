@@ -7507,6 +7507,7 @@ class GUIEngine:
         if self._save:
             self._save()
             dpg.set_value("hdr_save_status", "  saved ✓")
+            GUIEngine._save_status_clear_at = time.monotonic() + 3.0
         else:
             dpg.set_value("hdr_save_status", "  no save_fn")
 
@@ -8108,9 +8109,10 @@ class GUIEngine:
             if self._save:
                 self._save()
 
-    _tick_first    = True    # sync one-shot values on first tick
-    _auto_save_t   = 0.0    # monotonic time of last auto-save
-    _AUTO_SAVE_INT = 300.0  # seconds between auto-saves (5 min)
+    _tick_first           = True    # sync one-shot values on first tick
+    _auto_save_t          = 0.0    # monotonic time of last auto-save
+    _AUTO_SAVE_INT        = 300.0  # seconds between auto-saves (5 min)
+    _save_status_clear_at = 0.0   # monotonic time to clear the save status label
 
     def _tick(self):
         # One-shot sync on first tick — apply loaded values to GUI widgets
@@ -8639,8 +8641,17 @@ class GUIEngine:
             if self._osc and self._out and self._patch:
                 self._osc.broadcast_state(self._out, self._executor_pool, self._patch)
 
-        # Auto-save every _AUTO_SAVE_INT seconds (default 5 min)
+        # Clear save status after delay
         _now_as = time.monotonic()
+        if (GUIEngine._save_status_clear_at > 0.0 and
+                _now_as >= GUIEngine._save_status_clear_at):
+            GUIEngine._save_status_clear_at = 0.0
+            try:
+                dpg.set_value("hdr_save_status", "")
+            except Exception:
+                pass
+
+        # Auto-save every _AUTO_SAVE_INT seconds (default 5 min)
         if (GUIEngine._auto_save_t > 0.0 and
                 _now_as - GUIEngine._auto_save_t >= GUIEngine._AUTO_SAVE_INT):
             if self._save:
@@ -8650,6 +8661,7 @@ class GUIEngine:
                     try:
                         dpg.set_value("hdr_save_status", "auto-saved")
                         dpg.configure_item("hdr_save_status", color=_C_DIM)
+                        GUIEngine._save_status_clear_at = time.monotonic() + 3.0
                     except Exception:
                         pass
                 except Exception:
