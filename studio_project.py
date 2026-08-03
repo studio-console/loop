@@ -3081,8 +3081,7 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
         if not master:
             continue
         for ld in defs:
-            scope = ld.get('target_scope') or (
-                'fixture' if ld.get('channel') == 'dim' else 'pixel')
+            scope = ld.get('target_scope') or 'pixel'
             key = (ld.get('waveform', 'sine'), ld.get('channel'),
                    round(ld.get('bpm',    60.0), 3),
                    round(ld.get('size',  100.0), 2),
@@ -7468,27 +7467,20 @@ class GUIEngine:
             dpg.add_text("Layers:", color=_C_DIM)
             with dpg.child_window(tag="fxed_layers_win",
                                   width=-1, height=270, border=True):
-                # column headers
-                with dpg.group(horizontal=True):
-                    dpg.add_text("Waveform",    color=_C_ACCENT, indent=4)
-                    dpg.add_spacer(width=66)
-                    dpg.add_text("Channel",     color=_C_ACCENT)
-                    dpg.add_spacer(width=48)
-                    dpg.add_text("bpm",         color=_C_ACCENT)
-                    dpg.add_spacer(width=38)
-                    dpg.add_text("Size",        color=_C_ACCENT)
-                    dpg.add_spacer(width=30)
-                    dpg.add_text("Spread",      color=_C_ACCENT)
-                    dpg.add_spacer(width=25)
-                    dpg.add_text("Phase(0-1)",  color=_C_ACCENT)
-                    dpg.add_spacer(width=18)
-                    dpg.add_text("Grp",         color=_C_ACCENT)
-                    dpg.add_spacer(width=30)
-                    dpg.add_text("Col",         color=_C_ACCENT)
-                    dpg.add_spacer(width=30)
-                    dpg.add_text("Dim",         color=_C_ACCENT)
-                dpg.add_separator()
-                dpg.add_group(tag="fxed_layer_rows")
+                with dpg.table(tag="fxed_layer_table", header_row=True,
+                               borders_innerV=False, borders_outerV=False,
+                               borders_innerH=False, borders_outerH=False,
+                               policy=dpg.mvTable_SizingFixedFit):
+                    dpg.add_table_column(label="Waveform", width_fixed=True, init_width_or_weight=94)
+                    dpg.add_table_column(label="Channel",  width_fixed=True, init_width_or_weight=74)
+                    dpg.add_table_column(label="BPM",      width_fixed=True, init_width_or_weight=64)
+                    dpg.add_table_column(label="Size",     width_fixed=True, init_width_or_weight=64)
+                    dpg.add_table_column(label="Spread",   width_fixed=True, init_width_or_weight=59)
+                    dpg.add_table_column(label="Phase",    width_fixed=True, init_width_or_weight=59)
+                    dpg.add_table_column(label="Grp",      width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="Col",      width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="Dim",      width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="",         width_fixed=True, init_width_or_weight=30)
 
             dpg.add_separator()
 
@@ -7599,16 +7591,23 @@ class GUIEngine:
         self._fxed_rebuild_rows()
 
     def _fxed_rebuild_rows(self):
-        try:
-            dpg.delete_item("fxed_layer_rows", children_only=True)
-        except Exception:
-            return
+        for row_id in getattr(self, '_fxed_row_ids', []):
+            try:
+                dpg.delete_item(row_id)
+            except Exception:
+                pass
+        self._fxed_row_ids = []
+
         for i, ld in enumerate(self._fx_ed_layers):
-            # DPG quirk: add_input_float/add_combo set the visual display via
-            # default_value, but get_value() returns 0/'' until the widget is
-            # explicitly touched by the user. We call set_value() right after
-            # creation so _fxed_sync_rows() always reads the correct values.
-            with dpg.group(horizontal=True, parent="fxed_layer_rows"):
+            _ref_items = ["—"] + [str(n) for n in range(1, self._POOL_SLOTS + 1)]
+            _gid = ld.get('group_id')
+            _cid = ld.get('color_id')
+            _did = ld.get('dim_id')
+
+            # DPG quirk: set_value() is called right after each widget so that
+            # _fxed_sync_rows() reads the correct value even if the user never
+            # touched the widget (default_value alone isn't returned by get_value).
+            with dpg.table_row(parent="fxed_layer_table") as row_id:
                 dpg.add_combo(tag=f"fxed_r{i}_wave", label="", width=90,
                               items=self._FX_WAVEFORMS,
                               default_value=ld.get('waveform', 'sine'))
@@ -7643,10 +7642,6 @@ class GUIEngine:
                                     step=0, format="%.3f")
                 dpg.set_value(f"fxed_r{i}_phase", ld.get('phase_offset', 0.0))
 
-                _ref_items = ["—"] + [str(n) for n in range(1, self._POOL_SLOTS + 1)]
-                _gid = ld.get('group_id')
-                _cid = ld.get('color_id')
-                _did = ld.get('dim_id')
                 dpg.add_combo(tag=f"fxed_r{i}_grp", label="", width=46,
                               items=_ref_items,
                               default_value="—" if _gid is None else str(_gid))
@@ -7663,6 +7658,7 @@ class GUIEngine:
                 dpg.add_button(label="X", width=24, height=20,
                                callback=self._fxed_remove_layer,
                                user_data=i)
+            self._fxed_row_ids.append(row_id)
 
     def _fxed_add_layer(self, *_):
         self._fxed_sync_rows()   # save any edits in existing rows first
