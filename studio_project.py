@@ -6483,27 +6483,30 @@ class GUIEngine:
         self._fx_ed_slot   = None   # currently selected preset slot (int)
         self._fx_ed_layers = []     # working copy: list of layer dicts
 
+        _FXED_COLS   = 8
+        _FXED_BTN_W  = 108   # 8 × 108 + 7 × 6 spacing ≈ 906, fits in 940px window
+        _FXED_BTN_H  = 28
         with dpg.window(tag="fx_editor_window", label="fx editor",
-                        width=940, height=540, show=False,
+                        width=940, height=580, show=False,
                         pos=(120, 100), no_collapse=False):
 
             # ── Preset selector row ───────────────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("preset", color=_C_ACCENT)
                 dpg.add_spacer(width=6)
-            # Pool slots: _POOL_SLOTS in rows of 12
-            for _fxed_row in range(self._POOL_SLOTS // 12):
+            # Pool slots: _POOL_SLOTS in rows of _FXED_COLS
+            for _fxed_row in range(self._POOL_SLOTS // _FXED_COLS):
                 with dpg.group(horizontal=True):
-                    for _fxed_col in range(12):
-                        n = _fxed_row * 12 + _fxed_col + 1
+                    for _fxed_col in range(_FXED_COLS):
+                        n = _fxed_row * _FXED_COLS + _fxed_col + 1
                         dpg.add_button(tag=f"fxed_slot_{n}", label=str(n),
-                                       width=36, height=22,
+                                       width=_FXED_BTN_W, height=_FXED_BTN_H,
                                        callback=self._fxed_select_slot,
                                        user_data=n)
             with dpg.group(horizontal=True):
-                dpg.add_button(label="new preset", width=100, height=22,
+                dpg.add_button(label="new preset", width=120, height=_FXED_BTN_H,
                                callback=self._fxed_new_preset)
-                dpg.add_button(label="delete", width=70, height=22,
+                dpg.add_button(label="delete", width=80, height=_FXED_BTN_H,
                                callback=self._fxed_delete_preset)
 
             dpg.add_separator()
@@ -6606,7 +6609,7 @@ class GUIEngine:
     def _fxed_refresh_slot_labels(self):
         for n in range(1, self._POOL_SLOTS + 1):
             p = self._fx_pool.get(n) if self._fx_pool else None
-            label = p.name[:5] if p else str(n)
+            label = p.name[:10] if p else str(n)
             is_selected = (n == self._fx_ed_slot)
             try:
                 dpg.set_item_label(f"fxed_slot_{n}", label)
