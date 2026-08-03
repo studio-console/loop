@@ -4188,16 +4188,16 @@ except ImportError:
 
 # Colour palette — near-black / violet accent
 _C_BG        = (3,   2,   8, 255)   # near pure black with faint violet
-_C_PANEL     = (8,   6,  18, 255)   # very dark indigo panel
-_C_BORDER    = (38,  26,  78, 255)  # subtle violet divider
-_C_TEXT      = (228, 222, 255, 255) # clean white with violet cast
-_C_DIM       = (72,  56, 115, 255)  # dimmed — readable but recessed
-_C_ACCENT    = (139,  92, 246, 255) # violet #8b5cf6
-_C_HOT       = (188, 118, 255, 255) # bright violet-pink for live status
-_C_BTN       = (15,  10,  36, 255)  # near-black resting button
-_C_BTN_H     = (52,  34, 106, 255)  # hover — visible
-_C_BTN_A     = (98,  64, 182, 255)  # active — punchy violet
-_C_CUE_ACT   = (32,  22,  70, 255)  # selected cue row
+_C_PANEL     = (13,  10,  28, 255)  # dark indigo panel (was 8,6,18)
+_C_BORDER    = (60,  42, 115, 255)  # violet divider — more visible (was 38,26,78)
+_C_TEXT      = (232, 226, 255, 255) # clean white with violet cast
+_C_DIM       = (95,  74, 148, 255)  # dimmed — readable but recessed (was 72,56,115)
+_C_ACCENT    = (162, 115, 255, 255) # violet #a273ff — slightly brighter (was 139,92,246)
+_C_HOT       = (212, 152, 255, 255) # bright violet-pink for live status
+_C_BTN       = (28,  20,  64, 255)  # resting button — more visible (was 15,10,36)
+_C_BTN_H     = (80,  56, 155, 255)  # hover — punchy (was 52,34,106)
+_C_BTN_A     = (122,  84, 215, 255) # active — bright violet (was 98,64,182)
+_C_CUE_ACT   = (46,  32,  95, 255)  # selected cue row (was 32,22,70)
 _C_SLIDER_G  = _C_ACCENT
 
 # Pool panel header colours — violet family, varied lightness/hue for readability
@@ -4226,26 +4226,26 @@ def _apply_theme():
             dpg.add_theme_color(dpg.mvThemeCol_Button,         _C_BTN)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,  _C_BTN_H)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,   _C_BTN_A)
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (8,  6,  20, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (22, 16,  52, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (52, 34, 110, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (20, 14,  46, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (40, 28,  90, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (68, 48, 145, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,     ( 0,  0,   0,   0))
-            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (18, 12,  42,  55))
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (26, 18,  56,  70))
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,     _C_SLIDER_G)
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, _C_ACCENT)
             dpg.add_theme_color(dpg.mvThemeCol_Header,         _C_CUE_ACT)
             dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered,  _C_BTN_H)
             dpg.add_theme_color(dpg.mvThemeCol_HeaderActive,   _C_BTN_A)
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive,  (18, 12,  50, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive,  (35, 24,  80, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TitleBg,        _C_PANEL)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg,    _C_BG)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab,  _C_BORDER)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, _C_BTN_H)
-            dpg.add_theme_color(dpg.mvThemeCol_PopupBg,        (6,  4,  16, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_PopupBg,        (12,  8,  28, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TableBorderLight, _C_BORDER)
-            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg,  (14, 10,  38, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg,  (28, 20,  65, 255))
             dpg.add_theme_color(dpg.mvThemeCol_CheckMark,      _C_ACCENT)
-            dpg.add_theme_color(dpg.mvThemeCol_Separator,      (28, 18,  62, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Separator,      (50, 34,  98, 255))
             # Input cursor and selection highlight
             dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, (80, 50, 160, 140))
             dpg.add_theme_color(dpg.mvThemeCol_NavHighlight,   _C_ACCENT)
@@ -4384,6 +4384,48 @@ class GUIEngine:
         self._map_rows = {}
         # Reassign flow: stores {'type','ch','num','label'} when user clicks ► on a row
         self._reassign_pending = None
+
+    # ── Popup layout persistence ─────────────────────────────
+
+    _POPUP_TAGS = [
+        "patch_window", "midi_window", "fx_editor_window",
+        "keys_window", "changelog_window", "pages_window", "monitors_window",
+    ]
+    _POPUP_LAYOUT_FILE = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
+    )
+
+    def _save_popup_layout(self):
+        layout = {}
+        for tag in self._POPUP_TAGS:
+            try:
+                cfg = dpg.get_item_configuration(tag)
+                layout[tag] = {
+                    "pos":    list(cfg.get("pos",    [100, 100])),
+                    "width":  int(cfg.get("width",   700)),
+                    "height": int(cfg.get("height",  400)),
+                }
+            except Exception:
+                pass
+        try:
+            os.makedirs(os.path.dirname(self._POPUP_LAYOUT_FILE), exist_ok=True)
+            with open(self._POPUP_LAYOUT_FILE, "w") as f:
+                json.dump(layout, f, indent=2)
+        except Exception:
+            pass
+
+    def _load_popup_layout(self):
+        try:
+            with open(self._POPUP_LAYOUT_FILE) as f:
+                layout = json.load(f)
+            for tag, cfg in layout.items():
+                try:
+                    dpg.configure_item(tag, pos=cfg["pos"],
+                                       width=cfg["width"], height=cfg["height"])
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # ── Build ────────────────────────────────────────────────
 
@@ -4740,6 +4782,7 @@ class GUIEngine:
     def _on_keys_toggle(self):
         try:
             if dpg.is_item_shown("keys_window"):
+                self._save_popup_layout()
                 dpg.hide_item("keys_window")
             else:
                 dpg.show_item("keys_window")
@@ -4749,6 +4792,7 @@ class GUIEngine:
     def _on_changelog_toggle(self):
         try:
             if dpg.is_item_shown("changelog_window"):
+                self._save_popup_layout()
                 dpg.hide_item("changelog_window")
             else:
                 self._refresh_changelog_popup()
@@ -4759,6 +4803,7 @@ class GUIEngine:
     def _on_patch_toggle(self):
         try:
             if dpg.is_item_shown("patch_window"):
+                self._save_popup_layout()
                 dpg.hide_item("patch_window")
             else:
                 self._refresh_patch_table()
@@ -4768,8 +4813,8 @@ class GUIEngine:
 
     def _on_midi_toggle(self):
         try:
-            vis = dpg.is_item_shown("midi_window")
-            if vis:
+            if dpg.is_item_shown("midi_window"):
+                self._save_popup_layout()
                 dpg.hide_item("midi_window")
             else:
                 dpg.show_item("midi_window")
@@ -4779,6 +4824,7 @@ class GUIEngine:
     def _on_pages_toggle(self):
         try:
             if dpg.is_item_shown("pages_window"):
+                self._save_popup_layout()
                 dpg.hide_item("pages_window")
             else:
                 self._refresh_pages_table()
@@ -4789,6 +4835,7 @@ class GUIEngine:
     def _on_monitors_toggle(self):
         try:
             if dpg.is_item_shown("monitors_window"):
+                self._save_popup_layout()
                 dpg.hide_item("monitors_window")
             else:
                 dpg.show_item("monitors_window")
@@ -4918,7 +4965,7 @@ class GUIEngine:
     # Section heights — sized to fit 1040px viewport with no scroll (no-AI case).
     # Budget: 1040px viewport - 12px WindowPadding - 10×4px ItemSpacing gaps = 988px for content.
     # Header~36 + 3-col~420 + sep~2 + P1~150 + P2~150 + Forms~56 + Attr×2~164 = 978px ✓
-    _H_MAIN     = 500   # main 3-col area — tall enough for all left-col FX controls
+    _H_MAIN     = 480   # main 3-col area — tall enough for all left-col FX controls
     _H_P1       = 170   # pool row 1: 4×24btn + 3×4gap + 26header + 12WP = 146 content, 170 total
     _H_P2       = 170   # pool row 2
     _H_FORMS    =  56   # forms single row (unused — _build_forms_panel computes own height)
@@ -6569,6 +6616,8 @@ class GUIEngine:
 
     def _on_fx_editor_toggle(self, *_):
         vis = dpg.get_item_configuration("fx_editor_window").get("show", False)
+        if vis:
+            self._save_popup_layout()
         dpg.configure_item("fx_editor_window", show=not vis)
         if not vis:
             self._fxed_refresh_target()
@@ -7674,10 +7723,12 @@ class GUIEngine:
                 pass
             return
         self.start_update_loop()
+        self._load_popup_layout()   # restore saved popup positions/sizes
         dpg.focus_item("cmd_input")
         dpg.start_dearpygui()
         self._running = False   # signal update thread before destroying context
         time.sleep(0.1)         # give thread one tick to see the flag
+        self._save_popup_layout()   # persist popup positions on clean exit
         try:
             save_show()
         except Exception:
