@@ -568,8 +568,16 @@ class Programmer:
         if not self._undo_stack:
             return "Nothing to undo"
         snap = self._undo_stack.pop()
-        self.data     = snap['data']
-        self.disabled = snap['disabled']
+        # Mutate self.data/self.disabled in place (clear + update) rather than
+        # rebinding them to new dict objects. OutputState.link_programmer()
+        # aliases output_state.programmer_layer directly to this same dict, so
+        # a rebind here would silently desync live DMX output (and the output
+        # monitor GUI) from the programmer for the rest of the session --
+        # they'd keep reading the old, now-abandoned dict object forever.
+        self.data.clear()
+        self.data.update(snap['data'])
+        self.disabled.clear()
+        self.disabled.update(snap['disabled'])
         # Restore selection by fixture ID
         sel_ids = set(snap['selection'])
         restored = []
@@ -15292,6 +15300,29 @@ if STUDIO_HEADLESS:
         _post_red2 = prog.data.get(_first_sub, {}).get('red') if _first_sub else None
         _check("CLEAR DIM removes dim, leaves RGB intact",
                _post_dim2 is None and _post_red2 == 200)
+
+        # UNDO must not desync output_state.programmer_layer from prog.data --
+        # link_programmer() aliases them to the *same* dict object, so undo()
+        # rebinding self.data to a new object (instead of clearing+updating in
+        # place) would silently freeze live DMX output on stale data forever.
+        # Each single-channel "R n" call pushes its own undo snapshot, so one
+        # UNDO after one single-channel edit fully reverts it.
+        prog.clear_programmer()
+        run_command("1 THRU 3")
+        run_command("1 THRU 3 R 10")
+        run_command("1 THRU 3 R 250")
+        _check("UNDO pre-check: post-undo-marker red was set",
+               prog.data.get(_sub1, {}).get('red') == 250)
+        run_command("UNDO")
+        _check("UNDO restores prior programmer values",
+               prog.data.get(_sub1, {}).get('red') == 10)
+        _check("UNDO keeps output_state.programmer_layer aliased to prog.data "
+               "(same object identity, not a stale copy)",
+               output_state.programmer_layer is prog.data)
+        run_command("1 THRU 3 R 77")
+        _check("UNDO: post-undo edits are visible through the aliased "
+               "programmer_layer used by real DMX output",
+               output_state.programmer_layer.get(_sub1, {}).get('red') == 77)
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
