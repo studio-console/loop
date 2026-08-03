@@ -1337,13 +1337,14 @@ class Cue:
     delay_times — per-attribute-group delay overrides
     """
     def __init__(self, cue_number, name="", fade_time=0.0, delay_time=0.0,
-                 fade_times=None, delay_times=None):
+                 fade_times=None, delay_times=None, follow_time=0.0):
         self.cue_number  = float(cue_number)
         self.name        = name if name else f"Cue {cue_number}"
         self.fade_time   = float(fade_time)
         self.delay_time  = float(delay_time)
         self.fade_times  = dict(fade_times)  if fade_times  else {}
         self.delay_times = dict(delay_times) if delay_times else {}
+        self.follow_time = float(follow_time)  # >0 = auto-GO after N seconds
 
         # Delta snapshot: { fixture_id_string: { channel: value } }
         # Only contains what was active in the programmer at record time
@@ -1645,6 +1646,7 @@ class Executor:
         self.time_override_fade  = None   # float seconds or None
         self.time_override_delay = None   # float seconds or None
         self.time_override_on    = False  # master enable for this executor's override
+        self._follow_at          = None   # monotonic time to auto-GO (None = manual)
 
     def assign(self, cuestack):
         self.cuestack = cuestack
@@ -2351,9 +2353,21 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
 
     # Effective fade time — used as default FX infade so FX ramps match DMX fades
     eff_fade = ov_fade if ov_fade is not None else cue.fade_time
-    # FX outfade: snap to 0 when fx_kill is present; otherwise cap at 1s so old
-    # FX doesn't override the new cue's base values for the full crossfade duration.
-    fx_outfade = 0.0 if new_cue_has_fx_kill else min(eff_fade, 1.0)
+
+    # FX outfade strategy:
+    #  - fx_kill cue or non-FX cue → snap old FX off so the DMX crossfade runs
+    #    without FX overriding the new cue's base values.
+    #  - FX→FX transition → keep a short (≤1s) tail so waveforms crossfade
+    #    rather than cutting between them abruptly.
+    new_cue_has_fx = any(
+        isinstance(vals, dict) and vals.get('fx')
+        for fk, vals in cue.data.items()
+        if '.' not in str(fk)
+    )
+    if new_cue_has_fx_kill or not new_cue_has_fx:
+        fx_outfade = 0.0   # snap: static or kill cue — let DMX carry the crossfade
+    else:
+        fx_outfade = min(eff_fade, 1.0)   # FX→FX: brief tail
 
     executor._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=fx_outfade)
 
@@ -9834,6 +9848,10 @@ def _apply_timing_edit(cue, raw_str):
     if v is not None:
         cue.delay_time = v
 
+    v = _get('FOLLOW')
+    if v is not None:
+        cue.follow_time = v
+
     for grp, kw_f, kw_d in [
         ('colour', ('CFADE', 'CINFADE'), ('CDELAY',)),
         ('dim',    ('DFADE', 'DINFADE'), ('DDELAY',)),
@@ -11484,7 +11502,7 @@ def run_command(cmd_str):
     # CUE <n> FADE/INFADE/OUTFADE <t> [DELAY <t>] [CFADE <t>] [DFADE <t>]
     # CS <n> CUE <m> FADE <t> [...]
     # RECORD CUE <n> FADE <t>  also works when programmer is empty (updates existing cue)
-    _TIMING_KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY',
+    _TIMING_KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY', 'FOLLOW',
                   'CFADE', 'CINFADE', 'DFADE', 'DINFADE', 'CDELAY', 'DDELAY'}
     _has_timing = bool(_TIMING_KW & set(tokens))
 
