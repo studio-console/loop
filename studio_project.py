@@ -5531,6 +5531,22 @@ class GUIEngine:
                             callback=self._on_group_click, user_data=n)
                         with dpg.tooltip(f"grp_btn_{n}"):
                             dpg.add_text(f"Group {n}", tag=f"grp_tip_{n}")
+                        with dpg.popup(f"grp_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"Group {n}", color=_C_P_GROUPS)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Record Group Here",
+                                callback=self._ctx_prefill,
+                                user_data=f"RECORD GROUP {n} ")
+                            dpg.add_menu_item(label="Recall Group",
+                                callback=self._ctx_exec,
+                                user_data=f"GROUP {n}")
+                            dpg.add_menu_item(label="Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME GROUP {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Clear Group",
+                                callback=self._ctx_exec,
+                                user_data=f"CLEAR GROUP {n}")
 
     def _build_color_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -5547,6 +5563,22 @@ class GUIEngine:
                             tag=f"col_btn_{n}", label=f"C{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_color_click, user_data=n)
+                        with dpg.popup(f"col_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"Color {n}", color=_C_P_COLORS)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Record Color Here",
+                                callback=self._ctx_prefill,
+                                user_data=f"RECORD COLOR {n} ")
+                            dpg.add_menu_item(label="Apply Color",
+                                callback=self._ctx_exec,
+                                user_data=f"COLOR {n}")
+                            dpg.add_menu_item(label="Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME COLOR {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Clear Color",
+                                callback=self._ctx_exec,
+                                user_data=f"CLEAR COLOR {n}")
 
     def _build_dim_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -5565,9 +5597,43 @@ class GUIEngine:
                             callback=self._on_dim_click, user_data=n)
                         with dpg.tooltip(f"dim_btn_{n}"):
                             dpg.add_text(f"Dim {n}", tag=f"dim_tip_{n}")
+                        with dpg.popup(f"dim_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"Dim {n}", color=_C_P_DIMS)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Record Dim Here",
+                                callback=self._ctx_prefill,
+                                user_data=f"RECORD DIM {n} ")
+                            dpg.add_menu_item(label="Apply Dim",
+                                callback=self._ctx_exec,
+                                user_data=f"DIM {n}")
+                            dpg.add_menu_item(label="Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME DIM {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Clear Dim",
+                                callback=self._ctx_exec,
+                                user_data=f"CLEAR DIM {n}")
 
     def _focus_cmd(self):
         pass  # key routing via global handlers; no focus transfer needed
+
+    # ── Pool right-click context menu callbacks ──────────────────────────
+    def _ctx_exec(self, _s, _a, cmd):
+        """Execute cmd immediately and log result."""
+        if not self._cmd:
+            return
+        result = self._cmd(cmd)
+        self._log(f"> {cmd}")
+        if result:
+            for line in str(result).splitlines():
+                self._log(f"  {line}")
+
+    def _ctx_prefill(self, _s, _a, text):
+        """Pre-fill command line and focus it."""
+        try:
+            dpg.set_value("cmd_input", text)
+        except Exception:
+            pass
 
     def _on_group_click(self, _sender, _app_data, user_data):
         n = user_data
@@ -5625,6 +5691,22 @@ class GUIEngine:
                             tag=f"cs_btn_{n}", label=f"CS{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_cuestack_click, user_data=n)
+                        with dpg.popup(f"cs_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"Cuestack {n}", color=_C_P_CS)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Select / Activate",
+                                callback=self._on_cuestack_click,
+                                user_data=n)
+                            dpg.add_menu_item(label="Create / Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RECORD CUESTACK {n} ")
+                            dpg.add_menu_item(label="Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME CUESTACK {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Delete Cuestack",
+                                callback=self._ctx_exec,
+                                user_data=f"DELETE CUESTACK {n}")
 
     def _build_cue_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -5643,6 +5725,25 @@ class GUIEngine:
                             callback=self._on_cue_click, user_data=n)
                         with dpg.tooltip(f"cue_btn_{n}"):
                             dpg.add_text(f"Cue {n}", tag=f"cue_tip_{n}")
+                        with dpg.popup(f"cue_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"Cue {n}", color=_C_P_CUES)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="GO to Cue",
+                                callback=self._on_cue_click,
+                                user_data=n)
+                            dpg.add_menu_item(label="Record Cue Here",
+                                callback=self._ctx_prefill,
+                                user_data=f"RECORD CUE {n} ")
+                            dpg.add_menu_item(label="Update Cue",
+                                callback=self._ctx_exec,
+                                user_data=f"UPDATE CUE {n}")
+                            dpg.add_menu_item(label="Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME CUE {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Delete Cue",
+                                callback=self._ctx_exec,
+                                user_data=f"DELETE CUE {n}")
 
     def _on_cuestack_click(self, _sender, _app_data, user_data):
         n = user_data
@@ -5694,6 +5795,22 @@ class GUIEngine:
                             tag=f"fx_btn_{n}", label=f"FX{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_fx_click, user_data=n)
+                        with dpg.popup(f"fx_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"FX Preset {n}", color=_C_P_FX)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Fire FX",
+                                callback=self._ctx_exec,
+                                user_data=f"FIRE FX {n}")
+                            dpg.add_menu_item(label="Record FX Here",
+                                callback=self._ctx_prefill,
+                                user_data=f"RECORD FX {n} ")
+                            dpg.add_menu_item(label="Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME FX {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="Clear FX Preset",
+                                callback=self._ctx_exec,
+                                user_data=f"CLEAR FX {n}")
 
     def _build_attr_pool_panel(self, attr_name, color, tag_prefix, slot_count=12):
         """Compact 2-row attribute pool panel (12 slots = 2 rows × 6 cols)."""
