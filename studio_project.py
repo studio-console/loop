@@ -6889,6 +6889,7 @@ class GUIEngine:
                 ("REC FX 2 My FX",        "Record programmer FX to FX pool slot 2"),
                 ("REC GROUP 3 Name",      "Record current selection as group 3"),
                 ("RECORD COLOR 4 Red",    "Record programmer colour as preset 4"),
+                ("RECORD COLOR 5 Amber 255 140 0", "Record explicit RGB (no programmer needed)"),
                 ("RECORD DIM 2 Half",     "Record programmer dim as preset 2"),
                 ("RECORD FORM 6 Wave 0,0 0.5,1 1,0",  "Record custom waveform"),
                 ("RECORD RATE 3 Name 120","Record 120 BPM to rate pool slot 3"),
@@ -12743,6 +12744,20 @@ def run_command(cmd_str):
             pid = int(tokens[2])
         except ValueError:
             return f"RECORD COLOR: bad slot number '{tokens[2]}'"
+        # RECORD COLOR <n> <R> <G> <B> [name]  — explicit RGB values
+        _raw_num = [t for t in tokens[3:] if t.lstrip('-').replace('.','',1).isdigit()]
+        if len(_raw_num) >= 3:
+            try:
+                er, eg, eb = int(_raw_num[0]), int(_raw_num[1]), int(_raw_num[2])
+            except ValueError:
+                return "RECORD COLOR: bad R/G/B values"
+            _non_num = [t for t in tokens[3:] if not t.lstrip('-').replace('.','',1).isdigit()]
+            name = " ".join(_non_num).title() or f"Color {pid}"
+            p = ColorPreset(pid, name)
+            p.red, p.green, p.blue = float(er), float(eg), float(eb)
+            color_pool.presets[pid] = p
+            save_show()
+            return f"Recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"Color {pid}"
         p = color_pool.record(pid, prog, name=name)
         if p and p.data:
