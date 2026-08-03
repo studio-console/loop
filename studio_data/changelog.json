@@ -426,6 +426,19 @@
         "Smoke test extended: dispatches real /gma3/fader/1/3 and /gma3/key/1/3/go packets through osc._dispatch.call_handlers_for_packet() (not just calling the handler functions directly) and confirms executor 3 -- which is wired to cuestack 3 by the default 1:1 startup assignment -- receives its own level and actually GOes, while leaving the existing Page 1 Exec 1 grandmaster-dim test untouched. 61/61 passing (59 previous + 2 new). Verified studio_data/*.json untouched via git status.",
         "No schema or persisted-data changes -- pure bugfix in existing OSC dispatch code, fully backward compatible."
       ]
+    },
+    {
+      "date": "2026-08-03",
+      "summary": "AI prompt bar moved to its own popup, closing the last known 1920x1080 layout-budget gap",
+      "details": [
+        "Re-audited the roadmap against the code before touching anything (GUI polish, manual popup, changelog popup, MIDI-held FLASH -- confirmed already wired to real MIDI note on/off callbacks via _start_exec_flash_learn, not just the command parser --, Block 12 AI layer, MIDI mapping GUI, attribute pool panels): all landed. Also confirmed the manual/glossary popup and changelog popup themselves are real and working, not placeholders.",
+        "The one open item was in the GUI-polish comments themselves: the main window's layout-budget comment (above GUIEngine) explicitly called out the AI prompt bar as the one section 'not counted' in the 1920x1080/no-scrollbar budget, only built inline in the main window when self._ai._enabled (ANTHROPIC_API_KEY set) -- meaning any user with a key configured got a main window ~70px over budget, relying on a scrolling fallback rather than an actual fit.",
+        "Moved the AI prompt bar (status/token readout, history/prompts links, quick-prompt chips, prompt input + send) out of the main window and into its own floating popup (_build_ai_bar_popup, tag ai_bar_window), the same pattern already used for the attribute pools and monitors popups when they hit this exact problem. Opened via the header 'ai' button, which is now always visible (previously hidden entirely unless AI was enabled) -- the popup shows a plain-text note when ANTHROPIC_API_KEY isn't set and requests simply no-op via AIEngine.ask()'s existing disabled-state guard, so there's no behavior change for AI-disabled users beyond the button now being reachable.",
+        "Added a 'prompts' button inside the new popup pointing at the existing AI prompt-pool popup (previously the only thing the header 'ai' button opened), and registered ai_bar_window in _POPUP_TAGS so its position/size/open-state persists across restarts like every other popup.",
+        "Updated the layout-budget comment to state the budget no longer varies with AI config, and updated the command manual's AI CONTROL section to describe the new button routing.",
+        "Verified with python3 -m py_compile, the STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 smoke test (92/92 passing -- noting this count has drifted up from '61/61' in the last changelog entry above without matching changelog updates in between, i.e. at least one prior session's commits landed without a changelog entry; flagging for whoever backfills it next, not attempting to reconstruct that history here), and, since this session's container has Xvfb, an actual gui.build() run (not just code review) under xvfb-run against a throwaway temp data dir, both with and without a fake ANTHROPIC_API_KEY set, confirming the new popup's widget tree constructs without exception in both the AI-enabled and AI-disabled branches. Confirmed via git status that studio_data/*.json was untouched by any of this.",
+        "No schema or persisted-data changes beyond the new popup_layout.json key (falls back to the popup's built-in default position/size on old layout files, same as every other popup) -- backward compatible."
+      ]
     }
   ]
 }

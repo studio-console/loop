@@ -4724,7 +4724,7 @@ class GUIEngine:
     _POPUP_TAGS = [
         "patch_window", "osc_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
-        "ai_history_window", "attr_window", "ai_prompts_window",
+        "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
         "color_picker_window", "speed_master_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
@@ -4811,8 +4811,6 @@ class GUIEngine:
                 self._build_right_column()
                 self._build_stage_panel()
             self._build_pools_row()
-            if self._ai and self._ai._enabled:
-                self._build_ai_bar()
         self._build_osc_popup()
         self._build_midi_popup()
         self._build_patch_popup()
@@ -4822,6 +4820,7 @@ class GUIEngine:
         self._build_pages_popup()
         self._build_attr_popup()
         self._build_monitors_popup()
+        self._build_ai_bar_popup()
         self._build_ai_history_popup()
         self._build_ai_prompts_popup()
         self._build_color_picker_popup()
@@ -4890,7 +4889,7 @@ class GUIEngine:
 
     def _build_header(self):
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.18", color=_C_ACCENT)
+            dpg.add_text("studio console  v0.19", color=_C_ACCENT)
             dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
             dpg.add_text("   |   ", color=_C_DIM)
@@ -4932,10 +4931,8 @@ class GUIEngine:
             dpg.add_button(label="spd", width=46,
                            callback=self._on_speed_master_toggle)
             dpg.add_spacer(width=4)
-            if self._ai and self._ai._enabled:
-                dpg.add_spacer(width=4)
-                dpg.add_button(label="ai", width=36,
-                               callback=self._on_ai_prompts_toggle)
+            dpg.add_button(label="ai", width=36,
+                           callback=self._on_ai_bar_toggle)
             dpg.add_button(label="save show", width=90,
                            callback=self._on_save)
             dpg.add_text("", tag="hdr_save_status", color=_C_DIM)
@@ -5544,18 +5541,19 @@ class GUIEngine:
     # ── Layout budget: 1920 × 1080, no scrollbars anywhere ──────
     _W          = 1920
     _H          = 1080
-    # Section heights — sized to fit 1040px viewport with no scroll (no-AI case).
+    # Section heights — sized to fit 1040px viewport with no scroll.
     # Budget: 1040px viewport - 12px WindowPadding - gaps ≈ 988px for content.
-    # Header~70 + 3-col row~480 + sep~2 + P1~170 + P2~170 + Forms~88 = 980px ✓ (no AI bar)
-    # Attribute pools (position/gobo/zoom/focus/beam) live in a separate popup
-    # (_build_attr_popup), not stacked in the main window — see _build_pools_row.
-    # AI bar (~70px, only when self._ai._enabled — i.e. ANTHROPIC_API_KEY is set;
-    # previously gated on `if self._ai:`, which is always truthy since `ai` is
-    # always an AIEngine instance, so the bar and header "ai" button used to be
-    # built unconditionally, permanently busting this budget for every user,
-    # not just AI-enabled ones — fixed this session) is the one section not
-    # counted above; the main window keeps scrolling enabled as a fallback for that case
-    # since it can't be verified pixel-exact without a real display.
+    # Header~70 + 3-col row~480 + sep~2 + P1~170 + P2~170 + Forms~88 = 980px ✓
+    # This budget no longer varies with AI config: the AI prompt bar (chips +
+    # input, formerly inlined into the main window only when
+    # self._ai._enabled, which busted this budget by ~70px for any user with
+    # ANTHROPIC_API_KEY set) now lives in its own popup (_build_ai_bar_popup,
+    # "ai" header button), same pattern as attribute pools and monitors.
+    # Attribute pools (position/gobo/zoom/focus/beam) also live in a separate
+    # popup (_build_attr_popup), not stacked in the main window — see
+    # _build_pools_row. The main window keeps scrolling enabled as a fallback
+    # regardless, since exact pixel behavior can't be verified without a real
+    # display.
     _H_MAIN     = 480   # main 3-col area — tall enough for all left-col FX controls
     _H_P1       = 170   # pool row 1: 4×24btn + 3×4gap + 26header + 12WP = 146 content, 170 total
     _H_P2       = 170   # pool row 2
@@ -7268,12 +7266,13 @@ class GUIEngine:
                 ("AUDIO GAIN 3.0",  "Adjust input sensitivity (default 3.0)"),
             ]),
             ("AI CONTROL", [
+                ("ai button (header)",    "Open the floating AI prompt bar (prompt box, chip buttons, history/prompts links)"),
                 ("ai prompt box",         "Type a look in plain English (\"slow blue fade\", \"make it eerie\") and hit Enter/send"),
                 ("chip buttons",          "One-click built-in prompts (warm wash, strobe, blackout, rgb chase, ...)"),
-                ("ai button (header)",    "Open the AI prompt pool — save/run/delete your own reusable prompts"),
+                ("prompts button",        "Open the AI prompt pool — save/run/delete your own reusable prompts"),
                 ("history button",        "Open the AI history popup — recent prompts and the actions they fired"),
                 ("token readout",         "Shows input/output token counts from the last request, next to the status line"),
-                ("ANTHROPIC_API_KEY",     "Required env var — AI bar/buttons are hidden entirely if it isn't set"),
+                ("ANTHROPIC_API_KEY",     "Required env var — the AI bar is always reachable, but requests no-op with a status note until this is set"),
             ]),
             ("KEYBOARD", [
                 ("↑  /  ↓",               "Scroll command history (up/down arrows)"),
@@ -8107,6 +8106,16 @@ class GUIEngine:
         except Exception:
             pass
 
+    def _on_ai_bar_toggle(self):
+        try:
+            if dpg.is_item_shown("ai_bar_window"):
+                self._save_popup_layout()
+                dpg.hide_item("ai_bar_window")
+            else:
+                dpg.show_item("ai_bar_window")
+        except Exception:
+            pass
+
     def _on_color_picker_toggle(self):
         try:
             if dpg.is_item_shown("color_picker_window"):
@@ -8407,32 +8416,47 @@ class GUIEngine:
         ("disco",        "fast random colourful disco effect"),
     ]
 
-    def _build_ai_bar(self):
-        dpg.add_separator()
-        # Header + chips merged into one row — keeps total bar height to 2 rows
-        # so the input never falls under the macOS dock on 1080p displays.
-        with dpg.group(horizontal=True):
-            dpg.add_text("ai prompt", color=_C_ACCENT)
-            dpg.add_spacer(width=8)
-            dpg.add_text("", tag="ai_status", color=_C_DIM)
-            dpg.add_spacer(width=8)
-            dpg.add_text("", tag="ai_tokens", color=_C_DIM)
-            dpg.add_spacer(width=8)
-            dpg.add_button(label="history", width=70,
-                           callback=lambda: dpg.configure_item(
-                               "ai_history_window",
-                               show=not dpg.is_item_shown("ai_history_window")))
-            dpg.add_spacer(width=16)
-            for label, prompt in self._AI_CHIPS:
-                dpg.add_button(label=label, width=98,
-                               callback=self._on_ai_chip,
-                               user_data=prompt)
-        with dpg.group(horizontal=True):
-            dpg.add_input_text(tag="ai_input", hint="describe the look...",
-                               width=-120, on_enter=True,
+    def _build_ai_bar_popup(self):
+        """Floating AI prompt bar — moved out of the main window (was inline,
+        ~70px, and only counted against the 1920x1080 layout budget when
+        ANTHROPIC_API_KEY was unset; with a key set it silently busted the
+        no-scrollbar budget). Always built now, like the attr/monitors popups,
+        so the main window's layout is deterministic regardless of AI config.
+        """
+        with dpg.window(tag="ai_bar_window", label="ai prompt",
+                        width=760, height=230, show=False, pos=(240, 100)):
+            with dpg.group(horizontal=True):
+                dpg.add_text("ai prompt", color=_C_ACCENT)
+                dpg.add_spacer(width=8)
+                dpg.add_text("", tag="ai_status", color=_C_DIM)
+                dpg.add_spacer(width=8)
+                dpg.add_text("", tag="ai_tokens", color=_C_DIM)
+                dpg.add_spacer(width=8)
+                dpg.add_button(label="history", width=70,
+                               callback=lambda: dpg.configure_item(
+                                   "ai_history_window",
+                                   show=not dpg.is_item_shown("ai_history_window")))
+                dpg.add_spacer(width=4)
+                dpg.add_button(label="prompts", width=70,
+                               callback=self._on_ai_prompts_toggle)
+            if not (self._ai and self._ai._enabled):
+                dpg.add_text("ANTHROPIC_API_KEY not set — requests will no-op",
+                             color=_C_DIM)
+            dpg.add_separator()
+            with dpg.group():
+                for row_start in range(0, len(self._AI_CHIPS), 5):
+                    with dpg.group(horizontal=True):
+                        for label, prompt in self._AI_CHIPS[row_start:row_start + 5]:
+                            dpg.add_button(label=label, width=140,
+                                           callback=self._on_ai_chip,
+                                           user_data=prompt)
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_input_text(tag="ai_input", hint="describe the look...",
+                                   width=-120, on_enter=True,
+                                   callback=self._on_ai_send)
+                dpg.add_button(label="send", width=110,
                                callback=self._on_ai_send)
-            dpg.add_button(label="send", width=110,
-                           callback=self._on_ai_send)
 
     # ── Callbacks ────────────────────────────────────────────
 
