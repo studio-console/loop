@@ -1697,6 +1697,10 @@ class Executor:
         self.time_override_delay = None   # float seconds or None
         self.time_override_on    = False  # master enable for this executor's override
         self._follow_at          = None   # monotonic time to auto-GO (None = manual)
+        # Three assignable action buttons per fader slot
+        self.btn_a = 'GO'    # GO / BACK / STOP / FLASH
+        self.btn_b = 'BACK'
+        self.btn_c = 'STOP'
 
     def assign(self, cuestack):
         self.cuestack = cuestack
@@ -7243,6 +7247,7 @@ class GUIEngine:
                 ("EXEC 1 MODE TOGGLE",    "Set trigger mode: GO/BACK advance (default)"),
                 ("EXEC 1 FLASH ON",       "Fire instantly (0s), works regardless of mode"),
                 ("EXEC 1 FLASH OFF",      "Release a flash — fully stops the executor"),
+                ("EXEC 1 BTN A GO",       "Set executor 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH)"),
                 ("PAGE 1 NAME Verses",    "Name page 1"),
                 ("PAGE 1 ADD CS 3",       "Add cuestack 3 to page 1"),
                 ("PAGE 1 REMOVE CS 3",    "Remove cuestack 3 from page 1"),
@@ -9049,13 +9054,12 @@ class GUIEngine:
                 dpg.add_button(label=pri_label, width=40, height=18,
                                callback=self._on_priority_cycle,
                                user_data=ex.exec_id)
-                dpg.add_button(label="flash", tag=f"flash_btn_{ex.exec_id}",
-                               width=40, height=18,
-                               callback=self._on_exec_flash_btn,
-                               user_data=ex.exec_id)
-                dpg.add_button(label="stop", width=46, height=18,
-                               callback=self._on_stop_executor,
-                               user_data=ex.exec_id)
+                for _slot, _fn in (('a', ex.btn_a), ('b', ex.btn_b), ('c', ex.btn_c)):
+                    _tag = f"ebtn_{_slot}_{ex.exec_id}"
+                    dpg.add_button(label=_fn.lower(), tag=_tag,
+                                   width=40, height=18,
+                                   callback=self._on_exec_slot_btn,
+                                   user_data=(ex.exec_id, _slot))
             # Fader level row
             dpg.add_slider_float(
                 tag=f"exec_fader_{ex.exec_id}",
@@ -9098,8 +9102,17 @@ class GUIEngine:
 
     def _on_exec_flash_btn(self, sender, app_data, user_data):
         # FLASH ON/OFF is handled by the tick loop via is_item_active() polling.
-        # This callback is intentionally empty — do not add command calls here.
         pass
+
+    def _on_exec_slot_btn(self, sender, app_data, user_data):
+        eid, slot = user_data
+        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        if not ex or not self._cmd:
+            return
+        fn = getattr(ex, f'btn_{slot}', 'GO')
+        if fn == 'FLASH':
+            return  # hold behavior — tick loop handles via is_item_active()
+        self._cmd(f"EXEC {eid} {fn}")
 
     def _on_stop_executor(self, sender, app_data, user_data):
         exec_id = int(user_data)
@@ -9474,9 +9487,8 @@ class GUIEngine:
                     except Exception:
                         pass
 
-        # FLASH button hold detection — poll is_item_active per executor
-        # slot that has a flash_btn_{eid} widget (any assigned executor,
-        # active or idle — see _rebuild_playbacks).
+        # FLASH button hold detection — poll is_item_active on any ebtn_* slot
+        # whose configured function is FLASH (any assigned executor).
         if self._executor_pool and self._cmd:
             active_eids = {
                 eid for eid, ex in self._executor_pool.executors.items()
@@ -9490,10 +9502,19 @@ class GUIEngine:
                         except Exception:
                             pass
             for eid in active_eids:
-                try:
-                    held = dpg.is_item_active(f"flash_btn_{eid}")
-                except Exception:
-                    held = False
+                ex = self._executor_pool.executors[eid]
+                # Find which slots are configured as FLASH
+                flash_tags = [f"ebtn_{s}_{eid}"
+                              for s in ('a', 'b', 'c')
+                              if getattr(ex, f'btn_{s}', '') == 'FLASH']
+                held = False
+                for _ftag in flash_tags:
+                    try:
+                        if dpg.is_item_active(_ftag):
+                            held = True
+                            break
+                    except Exception:
+                        pass
                 was_held = self._flash_held.get(eid, False)
                 if held and not was_held:
                     try:
@@ -9506,15 +9527,15 @@ class GUIEngine:
                     except Exception:
                         pass
                 self._flash_held[eid] = held
-                # Update flash button visual to show held state
-                try:
-                    dpg.configure_item(f"flash_btn_{eid}",
-                                       label="■ FLASH" if held else "flash")
-                    theme = self._alert_btn_theme if held else self._dim_btn_theme
-                    if theme:
-                        dpg.bind_item_theme(f"flash_btn_{eid}", theme)
-                except Exception:
-                    pass
+                # Update FLASH button visuals
+                for _ftag in flash_tags:
+                    try:
+                        dpg.configure_item(_ftag, label="■ flash" if held else "flash")
+                        theme = self._alert_btn_theme if held else self._dim_btn_theme
+                        if theme:
+                            dpg.bind_item_theme(_ftag, theme)
+                    except Exception:
+                        pass
 
         # Active stack — refresh left column when executor changes
         active_n = self._active_executor[0] if self._active_executor else 1
@@ -10119,6 +10140,9 @@ class ShowFile:
                 "level":        ex.level,
                 "priority":     ex.priority,
                 "trigger_mode": ex.trigger_mode,
+                "btn_a":        ex.btn_a,
+                "btn_b":        ex.btn_b,
+                "btn_c":        ex.btn_c,
             }
         _write_file(ShowFile.EXECUTORS, doc)
         print(f"  Saved executors  → {len(doc['executors'])} slot(s)")
@@ -10142,6 +10166,10 @@ class ShowFile:
             ex.level        = float(edata.get("level",  1.0))
             ex.priority     = int(edata.get("priority", 0))
             ex.trigger_mode = edata.get("trigger_mode", "toggle")
+            _valid_fns      = {'GO', 'BACK', 'STOP', 'FLASH'}
+            ex.btn_a        = edata.get("btn_a", "GO")  if edata.get("btn_a", "GO")   in _valid_fns else "GO"
+            ex.btn_b        = edata.get("btn_b", "BACK") if edata.get("btn_b", "BACK") in _valid_fns else "BACK"
+            ex.btn_c        = edata.get("btn_c", "STOP") if edata.get("btn_c", "STOP") in _valid_fns else "STOP"
         print(f"  Loaded executors — {count} assignment(s)")
         return True
 
@@ -12090,6 +12118,20 @@ def run_command(cmd_str):
                 return "Usage: EXEC <n> MODE TOGGLE | FLASH"
             ex.trigger_mode = tokens[3].lower()
             return f"Exec {ex_n} trigger_mode → {ex.trigger_mode}"
+        elif verb == 'BTN':
+            # EXEC <n> BTN A|B|C GO|BACK|STOP|FLASH — assign action button function
+            if len(tokens) < 4:
+                return (f"Exec {ex_n} buttons: A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}\n"
+                        f"  Usage: EXEC {ex_n} BTN A|B|C GO|BACK|STOP|FLASH")
+            slot = tokens[2].upper()
+            if slot not in ('A', 'B', 'C'):
+                return "BTN: slot must be A, B, or C"
+            fn = tokens[3].upper() if len(tokens) > 3 else ''
+            if fn not in ('GO', 'BACK', 'STOP', 'FLASH'):
+                return "BTN: function must be GO, BACK, STOP, or FLASH"
+            setattr(ex, f'btn_{slot.lower()}', fn)
+            save_show()
+            return f"Exec {ex_n} button {slot} → {fn}"
         elif verb == 'LEVEL':
             # EXEC <n> LEVEL <0-100>  — set master fader (0 = blackout, 100 = full)
             if len(tokens) < 4:
