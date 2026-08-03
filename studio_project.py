@@ -4991,7 +4991,7 @@ class GUIEngine:
         self._last_playbacks_hash = None
         _W = self._W_LEFT
         with dpg.child_window(tag="left_col", width=_W, height=self._H_MAIN,
-                              border=True, no_scrollbar=True, no_scroll_with_mouse=True):
+                              border=True, no_scrollbar=False, no_scroll_with_mouse=False):
             # ── Cue list ─────────────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("cuestack", color=_C_ACCENT)
@@ -5048,6 +5048,10 @@ class GUIEngine:
             dpg.add_input_text(tag="cue_note_input", label="Note",
                                hint="production note...", width=_tw,
                                callback=self._on_cue_note_edit)
+            dpg.add_drag_float(tag="cue_fxoutfade_input", label="FXOut s",
+                               default_value=0.0, min_value=0.0, max_value=30.0,
+                               speed=0.05, format="%.2f", width=_tw,
+                               callback=self._on_cue_fxoutfade_edit)
 
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
@@ -7104,8 +7108,9 @@ class GUIEngine:
                 ("FIRE FX 3",             "Load FX preset 3 into programmer"),
                 ("FIRE FX 3 GROUP 2",     "Fire preset 3, override target to group 2"),
                 ("FX LIST",               "Show all programmer FX defs + pool contents"),
-                ("FX CLEAR RED",          "Clear red-channel FX from programmer"),
-                ("CLEAR FX",             "Clear all FX from programmer (keep colour/dim)"),
+                ("FX CLEAR RED",          "Clear red-channel FX from programmer (scoped to selection when active)"),
+                ("FX CLEAR",              "Clear all FX (programmer + executors); selection-scoped when fixtures are selected"),
+                ("CLEAR FX",             "Clear FX from programmer only, keep colour/dim; selection-scoped when active"),
                 ("KILL FX",               "Stop all running FX immediately"),
                 ("STROBE 120",           "Shorthand: pulse dim FX at 120 BPM (fixture scope)"),
                 ("STROBE SLOW/MEDIUM/FAST", "60 / 120 / 240 BPM strobe presets"),
@@ -7138,6 +7143,7 @@ class GUIEngine:
             ("RECORD", [
                 ("REC CUE 5",             "Record current programmer to cue 5"),
                 ("REC CUE 5 My Cue",      "Record with a name"),
+                ("REC CUE 5 FADE 2 FXOUTFADE 1.5", "Record with timing — FXOut overrides how long old FX fades out"),
                 ("REC FX 2 My FX",        "Record programmer FX to FX pool slot 2"),
                 ("REC GROUP 3 Name",      "Record current selection as group 3"),
                 ("RECORD COLOR 4 Red",    "Record programmer colour as preset 4"),
@@ -7179,6 +7185,7 @@ class GUIEngine:
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
                 ("CUE 5 FADE 2 DELAY 1",  "Set fade + delay"),
                 ("CUE 5 FADE 2 DFADE 5",  "Global fade + dim-only fade override"),
+                ("CUE 5 FXOUTFADE 2.5",   "FX outfade time when cue 5 fires (0 = auto)"),
                 ("CS 2 CUE 5 FADE 3",     "Set timing on cue 5 in cuestack 2"),
             ]),
             ("PLAYBACK", [
@@ -7222,7 +7229,10 @@ class GUIEngine:
             ]),
             ("programmer", [
                 ("CLEAR",                 "Clear selection (tap 1) then programmer (tap 2)"),
-                ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
+                ("CLEAR FX",              "Clear only FX, keep colour/dim references (selection-scoped when active)"),
+                ("CLEAR COLOUR / COLOR",  "Remove R/G/B/W/A from programmer (selection-scoped when active)"),
+                ("CLEAR DIM",             "Remove dimmer from programmer (selection-scoped when active)"),
+                ("CLEAR RGB",             "Remove R/G/B only (no white/amber channels)"),
                 ("MASTER 75",             "Set grandmaster to 75% directly (same as sliding the master fader)"),
                 ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
@@ -9178,6 +9188,11 @@ class GUIEngine:
             if self._save:
                 self._save()
 
+    def _on_cue_fxoutfade_edit(self, _sender, value, _user_data):
+        _, cue = self._cue_timing_target()
+        if cue and self._cmd:
+            self._cmd(f"CUE {cue.cue_number} FXOUTFADE {value:.2f}")
+
     _tick_first           = True    # sync one-shot values on first tick
     _auto_save_t          = 0.0    # monotonic time of last auto-save
     _AUTO_SAVE_INT        = 300.0  # seconds between auto-saves (5 min)
@@ -9504,6 +9519,9 @@ class GUIEngine:
                     dpg.set_value("cue_follow_input", getattr(cue_t, 'follow_time', 0.0))
                 if not dpg.is_item_active("cue_note_input"):
                     dpg.set_value("cue_note_input", getattr(cue_t, 'note', ''))
+                if not dpg.is_item_active("cue_fxoutfade_input"):
+                    dpg.set_value("cue_fxoutfade_input",
+                                  getattr(cue_t, 'fx_outfade', None) or 0.0)
             else:
                 dpg.set_value("cue_timing_label", "—")
         except Exception:
@@ -11824,7 +11842,7 @@ def _apply_timing_edit(cue, raw_str):
     # FX outfade override: how long old FX layers take to fade out when this cue fires
     v = _get('FXOUTFADE')
     if v is not None:
-        cue.fx_outfade = v
+        cue.fx_outfade = None if v == 0.0 else v  # 0 resets to auto
 
     for grp, kw_f, kw_d in [
         ('colour', ('CFADE', 'CINFADE'), ('CDELAY',)),
