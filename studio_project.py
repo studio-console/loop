@@ -6830,6 +6830,7 @@ class GUIEngine:
                 ("KILL FX",               "Stop all running FX immediately"),
             ]),
             ("LIST / INSPECT", [
+                ("STATUS",                "Console overview: GM, selection, active executors, FX"),
                 ("CUES / STACK / LIST",   "Show all cues in active cuestack with fade times"),
                 ("LIST CUESTACKS",        "List all recorded cuestacks and cue counts"),
                 ("LIST COLOR",            "List all color presets with RGB sample"),
@@ -12610,6 +12611,41 @@ def run_command(cmd_str):
             midi.clock_callback = None
             return "MIDI clock sync OFF"
         return "MIDI CLOCK ON | OFF"
+
+    # ── STATUS overview ──────────────────────────────────────
+    if t0 in ('STATUS', 'STATE'):
+        lines = ["=== Console Status ==="]
+        gm = output_state.master_level if output_state else 1.0
+        blind = output_state.blind if output_state else False
+        bbo   = (gm == 0.0)
+        lines.append(f"  Grand Master: {gm*100:.0f}%"
+                     + ("  [BBO]" if bbo else "")
+                     + ("  [BLIND]" if blind else ""))
+        # Selection + programmer
+        sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
+        if sel_masters:
+            lines.append(f"  Selection: {len(sel_masters)} fixture(s) "
+                         f"({', '.join(str(m.fixture_id) for m in sel_masters)})")
+        else:
+            lines.append("  Selection: none")
+        prog_active = any(v for v in prog.data.values() if v)
+        lines.append("  Programmer: " + ("DIRTY" if prog_active else "clear"))
+        # Active executors
+        active_exs = [ex for ex in executor_pool.executors.values()
+                      if ex.is_active and ex.cuestack] if executor_pool else []
+        if active_exs:
+            lines.append(f"  Active executors ({len(active_exs)}):")
+            for ex in active_exs:
+                cs = ex.cuestack
+                cur = f"cue {cs.current:.0f}" if cs.current is not None else "—"
+                lines.append(f"    [{ex.exec_id}] {cs.name[:14]}  {cur}  "
+                             f"lv={ex.level*100:.0f}%")
+        else:
+            lines.append("  Active executors: none")
+        # FX
+        n_fx = len(fx_engine._layers) if fx_engine else 0
+        lines.append(f"  FX layers: {n_fx} active")
+        return "\n".join(lines)
 
     # ── Stack info ───────────────────────────────────────────
     if t0 in ('CUES', 'STACK', 'LIST'):
