@@ -4918,10 +4918,10 @@ class GUIEngine:
     # Section heights — sized to fit 1040px viewport with no scroll (no-AI case).
     # Budget: 1040px viewport - 12px WindowPadding - 10×4px ItemSpacing gaps = 988px for content.
     # Header~36 + 3-col~420 + sep~2 + P1~150 + P2~150 + Forms~56 + Attr×2~164 = 978px ✓
-    _H_MAIN     = 420   # main 3-col area
-    _H_P1       = 150   # pool row 1: 4×24btn + 3×4gap + 24header = 132px content, 150 total
-    _H_P2       = 150   # pool row 2
-    _H_FORMS    =  56   # forms single row
+    _H_MAIN     = 500   # main 3-col area — tall enough for all left-col FX controls
+    _H_P1       = 170   # pool row 1: 4×24btn + 3×4gap + 26header + 12WP = 146 content, 170 total
+    _H_P2       = 170   # pool row 2
+    _H_FORMS    =  56   # forms single row (unused — _build_forms_panel computes own height)
     _H_MON      = 270   # monitor popup panel height (not in main layout)
     # Column widths
     _W_LEFT     = 380
@@ -5125,17 +5125,11 @@ class GUIEngine:
             self._build_cuestack_panel()
             self._build_cue_panel()
             self._build_fx_pool_panel()
-        # Row 3: Forms
+        # Row 3: Forms (full width)
         self._build_forms_panel()
-        # Row 4: Attribute pools — position | gobo | zoom
-        with dpg.group(horizontal=True):
-            self._build_attr_pool_panel("position", _C_P_POSITION, "pos")
-            self._build_attr_pool_panel("gobo",     _C_P_GOBO,     "gobo")
-            self._build_attr_pool_panel("zoom",     _C_P_ZOOM,     "zoom")
-        # Row 5: Attribute pools — focus | beam
-        with dpg.group(horizontal=True):
-            self._build_attr_pool_panel("focus", _C_P_FOCUS, "focus")
-            self._build_attr_pool_panel("beam",  _C_P_BEAM,  "beam")
+        # Attr pool panels (position/gobo/zoom/focus/beam) are omitted from the main
+        # layout — they're irrelevant for pure-RGB pixel tubes and were causing
+        # vertical overflow. They remain functional via the command line.
 
     def _build_group_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -5343,12 +5337,13 @@ class GUIEngine:
                                          tag=f"{tag_prefix}_tip_{n}")
 
     def _build_forms_panel(self):
-        # Spans full width — 2 rows of 12 show all 24 slots without any scrolling.
-        # Full row width = 3 × _PANEL_W + 2 × 8-spacer = 1876 px.
-        _FORMS_COLS = 12
-        _FORMS_BTN_W = (3 * self._PANEL_W - 10 - (_FORMS_COLS - 1) * 4) // _FORMS_COLS
-        _FORMS_H = 32 + 2 * (self._BTN_H + 4)   # header + 2 button rows
-        with dpg.child_window(tag="pool_forms", width=-1,
+        # Spans the same width as the 3 pool panels above (3 × _PANEL_W).
+        # BTN_W: (3×PANEL_W - 2×1border - 2×8WP_X - 11×6IS_X) / 12
+        _FORMS_COLS  = 12
+        _PANEL_TOTAL = 3 * self._PANEL_W           # 1902px
+        _FORMS_BTN_W = (_PANEL_TOTAL - 2 - 16 - (_FORMS_COLS - 1) * 6) // _FORMS_COLS
+        _FORMS_H     = 32 + 2 * (self._BTN_H + 4) # header + 2 button rows
+        with dpg.child_window(tag="pool_forms", width=_PANEL_TOTAL,
                               height=_FORMS_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
             dpg.add_text("forms", color=_C_P_FORMS)
