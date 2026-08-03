@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "AI: explicit pronoun resolution from recent_commands context",
+      "details": []
+    },
+    {
+      "date": "2026-08-03",
       "summary": "Fixed a real safety bug: after the first UNDO, live DMX output silently froze on stale programmer data for the rest of the session",
       "details": [
         "Re-audited the roadmap first (GUI polish, manual popup, changelog popup, MIDI-held FLASH, Block 12 AI layer, MIDI mapping GUI, attribute pool panels) -- all confirmed already landed by direct code inspection. Since a surface audit found nothing new, ran a background research pass looking for asymmetric sibling code paths (the pattern that has produced most real bugs in recent sessions) across areas not yet deep-audited: undo/redo, the manual popup vs run_command() parity, ShowFile round-trips, and pool CRUD symmetry.",
