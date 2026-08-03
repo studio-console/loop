@@ -5149,7 +5149,7 @@ class GUIEngine:
                     ("REC CUE", "RECORD CUE "), ("UPD CUE", "UPDATE CUE "),
                     ("cue",     "CUE "),         ("rec fx",  "RECORD FX "),
                     ("fx",      "FX "),           ("rec grp", "RECORD GROUP "),
-                    ("group",   "GROUP "),
+                    ("group",   "GROUP "),        ("snap",    "SNAPSHOT "),
                 ]:
                     dpg.add_button(label=label, height=_BH,
                                    callback=self._numpad_append, user_data=ud)
