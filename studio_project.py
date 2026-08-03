@@ -6337,6 +6337,12 @@ class GUIEngine:
 
         # FX pool programmer summary
         self._tick_fx_prog_summary()
+        # Keep FX editor slot labels current when the editor is open
+        try:
+            if dpg.is_item_shown("fx_editor_window"):
+                self._fxed_refresh_slot_labels()
+        except Exception:
+            pass
 
     def _tick_fx_prog_summary(self):
         """Update the programmer FX summary text in the FX pool panel."""
