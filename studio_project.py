@@ -6097,16 +6097,30 @@ class GUIEngine:
                 lbl = f"{n}:{cue.name[:5]}" + (" ◀" if n == current_cue else "")
                 ft_s  = f"  fade {cue.fade_time}s" if cue.fade_time  else ""
                 dt_s  = f"  delay {cue.delay_time}s" if cue.delay_time else ""
+                fw    = getattr(cue, 'follow_time', 0.0)
+                fw_s  = f"  →{fw:.0f}s" if fw > 0 else ""
                 nfx   = len(cue.data.get('__fx__', [])) if hasattr(cue, 'data') and isinstance(cue.data, dict) else 0
                 nfix  = sum(1 for k in getattr(cue, 'data', {}) if not k.startswith('__') and '.' not in k) if hasattr(cue, 'data') else 0
                 fix_s = f"\n{nfix} fixture(s)" if nfix else ""
-                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fix_s}"
+                note  = getattr(cue, 'note', '')
+                note_s = f"\n📝 {note}" if note else ""
+                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fix_s}{note_s}"
             else:
                 lbl = f"{n}"
                 tip = f"Cue {n} — empty"
             try:
                 dpg.set_item_label(f"cue_btn_{n}", lbl)
                 dpg.configure_item(f"cue_tip_{n}", default_value=tip)
+            except Exception:
+                pass
+            # Highlight active cue green, dim empty slots, default for occupied-inactive
+            try:
+                if n == current_cue and cue:
+                    dpg.bind_item_theme(f"cue_btn_{n}", self._go_theme if self._go_theme else 0)
+                elif not cue:
+                    dpg.bind_item_theme(f"cue_btn_{n}", self._dim_btn_theme if self._dim_btn_theme else 0)
+                else:
+                    dpg.bind_item_theme(f"cue_btn_{n}", 0)
             except Exception:
                 pass
 
