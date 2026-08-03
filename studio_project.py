@@ -3499,9 +3499,12 @@ class OutputState:
 
                     gm      = self.master_level
                     if self.highlight_mode and master.fixture_id in self.highlight_fids:
-                        final_r = 255
-                        final_g = 255
-                        final_b = 255
+                        # Highlight bypasses per-fixture dim (always full open white)
+                        # but must still respect the grandmaster fader — otherwise
+                        # BLACKOUT (master_level=0) fails to cut highlighted fixtures.
+                        final_r = int(255 * gm)
+                        final_g = int(255 * gm)
+                        final_b = int(255 * gm)
                     else:
                         final_r = max(0, min(255, int(r * sub_dim * gm)))
                         final_g = max(0, min(255, int(g * sub_dim * gm)))
@@ -14011,6 +14014,16 @@ if STUDIO_HEADLESS:
         _check("MIDI REMOVE CC removes mapping", "Removed" in _r_midi_rm)
         _r_targets = run_command("MIDI TARGETS")
         _check("MIDI TARGETS lists targets", "GO" in _r_targets)
+
+        # HIGHLIGHT must not survive BLACKOUT — real output computation,
+        # not just the flag, since BLACKOUT is the show-stopping safety cutoff.
+        run_command("ALL")
+        run_command("HIGHLIGHT")
+        run_command("BLACKOUT")
+        _dmx_bbo = output_state.get_dmx_for_universe(1)
+        _check("BLACKOUT overrides HIGHLIGHT in DMX output", max(_dmx_bbo) == 0)
+        run_command("BLACKOUT OFF")
+        run_command("HIGHLIGHT OFF")
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 

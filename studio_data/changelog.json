@@ -3,6 +3,18 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "Fixed a real safety bug: BLACKOUT did not cut output for HIGHLIGHTed fixtures",
+      "details": [
+        "Roadmap re-audit again found nothing new (all documented items already landed in prior sessions), so did a deep read of Block 7 (OutputState.get_dmx_for_universe) — the core DMX merge/output path — since it hadn't had a dedicated deep-dive changelog entry the way Block 12 (AI engine) got last session.",
+        "Found: the HIGHLIGHT branch in get_dmx_for_universe() set final_r/g/b = 255 unconditionally for highlighted fixtures, completely bypassing the grandmaster fader (gm = self.master_level). Every other output path (the non-highlight else branch) correctly multiplies by gm. Consequence: HIGHLIGHT ON followed by BLACKOUT (which just sets master_level = 0.0) left highlighted fixtures transmitting full white (255,255,255) on the real DMX/sACN line — BLACKOUT is documented and relied on as 'Cut all DMX output instantly', an absolute safety cutoff, and this silently violated that for any fixture still marked highlighted.",
+        "Fixed: highlighted fixtures now compute final_r/g/b = int(255 * gm) — full open white *relative to* the grandmaster position, matching how a real desk's highlight function behaves (it can never exceed where the master fader physically sits). Per-fixture dim is still bypassed by design (that's the point of highlight), only the grandmaster relationship was wrong.",
+        "Added a smoke-test check: ALL → HIGHLIGHT → BLACKOUT → assert max(dmx) == 0 on the real get_dmx_for_universe() output, not just the flags, so a future regression here is caught the same way it was found.",
+        "No schema or persisted-data changes — pure output-computation fix, fully backward compatible with existing shows.",
+        "Verification: python3 -m py_compile passes; STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 smoke test passes 28/28 (27 previous + 1 new)."
+      ]
+    },
+    {
+      "date": "2026-08-03",
       "summary": "Fixed 4 real bugs in the Block 12 AI engine: frozen cuestack snapshot, wrong stack->executor resolution, dead fade_time action, destructive fx_clear",
       "details": [
         "Roadmap re-audit found nothing new (same as every recent session — all 7 items already landed), so did a deep read of Block 12 specifically, since it's the area every prior session's audit checked only at a surface level ('AI actions dispatcher exists and looks complete') rather than tracing each action handler against the rest of the codebase. Found four real bugs, all previously undetected:",
