@@ -4785,7 +4785,7 @@ class GUIEngine:
         "patch_window", "osc_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
-        "color_picker_window", "speed_master_window",
+        "color_picker_window", "speed_master_window", "fader_page_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -4887,6 +4887,7 @@ class GUIEngine:
         self._build_ai_prompts_popup()
         self._build_color_picker_popup()
         self._build_speed_master_popup()
+        self._build_fader_page_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -4992,6 +4993,9 @@ class GUIEngine:
             dpg.add_spacer(width=4)
             dpg.add_button(label="spd", width=46,
                            callback=self._on_speed_master_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="fdrs", width=50,
+                           callback=self._on_fader_page_toggle)
             dpg.add_spacer(width=4)
             dpg.add_button(label="ai", width=36,
                            callback=self._on_ai_bar_toggle)
@@ -8477,6 +8481,128 @@ class GUIEngine:
             except Exception:
                 pass
 
+    # ── Fader page popup ─────────────────────────────────────────────────────
+
+    _FPG_SLOTS  = 15
+    _FPG_SLOT_W = 78     # per-slot child_window width (includes borders)
+    _FPG_SLOT_H = 215    # per-slot child_window height
+    _FPG_FADER_H= 80     # vertical slider track length
+    _FPG_FADER_W= 64     # vertical slider lateral width
+    _FPG_BTN_W  = 66     # button width inside slot
+    _FPG_BTN_H  = 22     # button height
+
+    def _build_fader_page_popup(self):
+        """15-slot MA-style fader page — floating, hidden by default."""
+        _win_w = self._FPG_SLOTS * (self._FPG_SLOT_W + 4) + 22
+        _win_h = self._FPG_SLOT_H + 50
+
+        with dpg.window(tag="fader_page_window", label="fader page  [page 1]",
+                        width=_win_w, height=_win_h, show=False,
+                        pos=(100, 100), no_collapse=False):
+            with dpg.group(horizontal=True):
+                for n in range(1, self._FPG_SLOTS + 1):
+                    with dpg.child_window(
+                            tag=f"fpg_slot_{n}",
+                            width=self._FPG_SLOT_W, height=self._FPG_SLOT_H,
+                            border=True, no_scrollbar=True, no_scroll_with_mouse=True):
+                        dpg.add_text(f"{n}", color=_C_DIM)
+                        dpg.add_text("—", tag=f"fpg_name_{n}", color=_C_TEXT,   wrap=self._FPG_SLOT_W - 8)
+                        dpg.add_text("—", tag=f"fpg_cue_{n}",  color=_C_ACCENT, wrap=self._FPG_SLOT_W - 8)
+                        dpg.add_slider_float(
+                            tag=f"fpg_fader_{n}",
+                            vertical=True,
+                            width=self._FPG_FADER_W, height=self._FPG_FADER_H,
+                            min_value=0.0, max_value=1.0,
+                            default_value=1.0, format="%.0f%%",
+                            no_input=True,
+                            callback=self._on_fpg_fader, user_data=n)
+                        dpg.add_button(tag=f"fpg_btna_{n}", label="go",
+                                       width=self._FPG_BTN_W, height=self._FPG_BTN_H,
+                                       callback=self._on_fpg_btn, user_data=(n, 'a'))
+                        dpg.add_button(tag=f"fpg_btnb_{n}", label="back",
+                                       width=self._FPG_BTN_W, height=self._FPG_BTN_H,
+                                       callback=self._on_fpg_btn, user_data=(n, 'b'))
+                        dpg.add_button(tag=f"fpg_btnc_{n}", label="stop",
+                                       width=self._FPG_BTN_W, height=self._FPG_BTN_H,
+                                       callback=self._on_fpg_btn, user_data=(n, 'c'))
+
+    def _on_fader_page_toggle(self, *_):
+        try:
+            vis = dpg.is_item_shown("fader_page_window")
+            if vis:
+                dpg.hide_item("fader_page_window")
+            else:
+                self._fpg_refresh_all()
+                dpg.show_item("fader_page_window")
+            self._save_popup_layout()
+        except Exception:
+            pass
+
+    def _fpg_refresh_all(self):
+        """Sync all fader page slot labels and fader positions from executor pool."""
+        if not self._executor_pool:
+            return
+        for n in range(1, self._FPG_SLOTS + 1):
+            ex = self._executor_pool.executors.get(n)
+            if not ex:
+                continue
+            try:
+                if ex.cuestack:
+                    dpg.set_value(f"fpg_name_{n}", ex.cuestack.name[:9])
+                else:
+                    dpg.set_value(f"fpg_name_{n}", "—")
+                dpg.set_value(f"fpg_fader_{n}", ex.level)
+            except Exception:
+                pass
+
+    def _on_fpg_fader(self, _sender, value, user_data):
+        n = int(user_data)
+        if self._executor_pool:
+            ex = self._executor_pool.executors.get(n)
+            if ex:
+                ex.level = max(0.0, min(1.0, float(value)))
+
+    def _on_fpg_btn(self, _sender, _app_data, user_data):
+        n, slot = user_data
+        ex = self._executor_pool.executors.get(n) if self._executor_pool else None
+        if not ex or not self._cmd:
+            return
+        fn = getattr(ex, f'btn_{slot}', 'GO')
+        if fn == 'FLASH':
+            return  # hold polling handled by tick loop
+        self._cmd(f"EXEC {n} {fn}")
+
+    def _tick_fader_page(self):
+        """Update fader page slot labels + FLASH polling (called from _tick)."""
+        if not dpg.is_item_shown("fader_page_window"):
+            return
+        if not self._executor_pool:
+            return
+        for n in range(1, self._FPG_SLOTS + 1):
+            ex = self._executor_pool.executors.get(n)
+            if not ex:
+                continue
+            try:
+                # Name and cue labels
+                name = ex.cuestack.name[:9] if ex.cuestack else "—"
+                dpg.set_value(f"fpg_name_{n}", name)
+                if ex.cuestack and ex.cuestack.current is not None:
+                    cur = ex.cuestack.current
+                    cue = ex.cuestack.cues.get(cur)
+                    cue_lbl = f"▶{cur:.0f}" + (f":{cue.name[:4]}" if cue else "")
+                else:
+                    cue_lbl = "—"
+                dpg.set_value(f"fpg_cue_{n}", cue_lbl)
+                # Sync fader only when not actively dragged
+                if not dpg.is_item_active(f"fpg_fader_{n}"):
+                    dpg.set_value(f"fpg_fader_{n}", ex.level)
+                # Button labels from configurable function
+                for _s, _tag in (('a', f"fpg_btna_{n}"), ('b', f"fpg_btnb_{n}"), ('c', f"fpg_btnc_{n}")):
+                    fn = getattr(ex, f'btn_{_s}', 'GO')
+                    dpg.set_item_label(_tag, fn.lower())
+            except Exception:
+                pass
+
     def _build_monitors_popup(self):
         """Floating programmer/output monitor popup — no inner boxes, just tables."""
         with dpg.window(tag="monitors_window", label="monitors",
@@ -9371,6 +9497,7 @@ class GUIEngine:
 
         self._tick_pools()
         self._tick_stage()
+        self._tick_fader_page()
 
         # ── Status bar: programmer + selection ──────────────────
         prog_data   = self._prog.data if self._prog else {}
@@ -9566,10 +9693,14 @@ class GUIEngine:
                             pass
             for eid in active_eids:
                 ex = self._executor_pool.executors[eid]
-                # Find which slots are configured as FLASH
-                flash_tags = [f"ebtn_{s}_{eid}"
-                              for s in ('a', 'b', 'c')
-                              if getattr(ex, f'btn_{s}', '') == 'FLASH']
+                # Find which slots are configured as FLASH — check both playbacks panel and fader page
+                _fpg_map = {'a': 'a', 'b': 'b', 'c': 'c'}
+                flash_tags = []
+                for _s in ('a', 'b', 'c'):
+                    if getattr(ex, f'btn_{_s}', '') == 'FLASH':
+                        flash_tags.append(f"ebtn_{_s}_{eid}")
+                        if 1 <= eid <= self._FPG_SLOTS:
+                            flash_tags.append(f"fpg_btn{_s}_{eid}")
                 held = False
                 for _ftag in flash_tags:
                     try:
@@ -12186,10 +12317,10 @@ def run_command(cmd_str):
             if len(tokens) < 4:
                 return (f"Exec {ex_n} buttons: A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}\n"
                         f"  Usage: EXEC {ex_n} BTN A|B|C GO|BACK|STOP|FLASH")
-            slot = tokens[2].upper()
+            slot = tokens[3].upper()
             if slot not in ('A', 'B', 'C'):
                 return "BTN: slot must be A, B, or C"
-            fn = tokens[3].upper() if len(tokens) > 3 else ''
+            fn = tokens[4].upper() if len(tokens) > 4 else ''
             if fn not in ('GO', 'BACK', 'STOP', 'FLASH'):
                 return "BTN: function must be GO, BACK, STOP, or FLASH"
             setattr(ex, f'btn_{slot.lower()}', fn)
@@ -15551,6 +15682,16 @@ if STUDIO_HEADLESS:
         _check("UNDO: post-undo edits are visible through the aliased "
                "programmer_layer used by real DMX output",
                output_state.programmer_layer.get(_sub1, {}).get('red') == 77)
+
+        # Fader page button assignment round-trip
+        _fpg_ex = executor_pool.get(1)
+        _fpg_ex.btn_a, _fpg_ex.btn_b, _fpg_ex.btn_c = 'GO', 'BACK', 'STOP'
+        r_btn = run_command("EXEC 1 BTN A FLASH")
+        _check("EXEC 1 BTN A FLASH sets btn_a to FLASH", _fpg_ex.btn_a == 'FLASH')
+        r_btn2 = run_command("EXEC 1 BTN A GO")
+        _check("EXEC 1 BTN A GO restores btn_a to GO",   _fpg_ex.btn_a == 'GO')
+        r_btn3 = run_command("EXEC 1 BTN")  # missing slot → usage hint
+        _check("EXEC 1 BTN without slot returns current state", "btn" in r_btn3.lower() or "usage" in r_btn3.lower() or "A=" in r_btn3)
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
