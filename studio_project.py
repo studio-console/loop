@@ -5869,6 +5869,22 @@ class GUIEngine:
                         with dpg.tooltip(f"{tag_prefix}_btn_{n}"):
                             dpg.add_text(f"{attr_name.title()} {n}",
                                          tag=f"{tag_prefix}_tip_{n}")
+                        with dpg.popup(f"{tag_prefix}_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"{attr_name.title()} {n}", color=color)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label=f"Record {attr_name.title()} Here",
+                                callback=self._ctx_prefill,
+                                user_data=f"RECORD {attr_name.upper()} {n} ")
+                            dpg.add_menu_item(label=f"Apply {attr_name.title()}",
+                                callback=self._ctx_exec,
+                                user_data=f"{attr_name.upper()} {n}")
+                            dpg.add_menu_item(label="Rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME {attr_name.upper()} {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label=f"Clear {attr_name.title()}",
+                                callback=self._ctx_exec,
+                                user_data=f"CLEAR {attr_name.upper()} {n}")
 
     # ── Attribute pools popup ────────────────────────────────
     # Position/gobo/zoom/focus/beam panels used to live in the main pools
@@ -13023,10 +13039,16 @@ def run_command(cmd_str):
 
         # RENAME RATE / SIZEP / SPREADP / FORM <n> <name>
         _rename_pool_map = {
-            'RATE':    rate_pool.presets,
-            'SIZEP':   size_pool.presets,
-            'SPREADP': spread_pool.presets,
-            'FORM':    form_pool.forms,
+            'RATE':     rate_pool.presets,
+            'SIZEP':    size_pool.presets,
+            'SPREADP':  spread_pool.presets,
+            'FORM':     form_pool.forms,
+            'POSITION': position_pool.presets,
+            'GOBO':     gobo_pool.presets,
+            'ZOOM':     zoom_pool.presets,
+            'FOCUS':    focus_pool.presets,
+            'BEAM':     beam_pool.presets,
+            'CONTROL':  control_pool.presets,
         }
         if sub in _rename_pool_map:
             try:
@@ -13044,7 +13066,8 @@ def run_command(cmd_str):
             save_show()
             return f"{sub} {n} → \"{new_name}\""
 
-        return f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, RATE, SIZEP, SPREADP, FORM"
+        return (f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, "
+                "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL")
 
     # ── COPY CUE ──────────────────────────────────────────────────────────────
     # COPY CUE <src> TO <dst>               — within active cuestack
@@ -13178,6 +13201,21 @@ def run_command(cmd_str):
                 save_show()
                 return f"FX Preset {slot} cleared (show saved)"
             return f"FX Preset {slot} is already empty"
+        _clear_attr_map = {
+            'POSITION': position_pool,
+            'GOBO':     gobo_pool,
+            'ZOOM':     zoom_pool,
+            'FOCUS':    focus_pool,
+            'BEAM':     beam_pool,
+            'CONTROL':  control_pool,
+        }
+        if sub in _clear_attr_map:
+            pool = _clear_attr_map[sub]
+            if slot in pool.presets:
+                del pool.presets[slot]
+                save_show()
+                return f"{sub.title()} Preset {slot} cleared (show saved)"
+            return f"{sub.title()} Preset {slot} is already empty"
 
     if t0 == 'CLEAR' and len(tokens) == 1:
         result = prog.do_clear()
