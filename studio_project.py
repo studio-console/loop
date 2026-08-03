@@ -8213,8 +8213,10 @@ class GUIEngine:
 
     def _on_fixture_dim_select_all(self):
         """Select all fixtures in the programmer."""
-        if self._cmd:
-            self._cmd("1 THRU 6")
+        if self._cmd and self._patch:
+            fids = sorted(m.fixture_id for m in self._patch.all_fixtures())
+            if fids:
+                self._cmd(f"{fids[0]} THRU {fids[-1]}")
 
     def _on_fixture_chip_click(self, sender, app_data, user_data):
         """Click a fixture chip in the status bar to select it (Shift+click to add)."""
