@@ -7863,16 +7863,20 @@ class GUIEngine:
             return
         sid = stack.stack_id
         for num in stack._sorted_cue_numbers():
-            cue   = stack.cues[num]
-            tag   = f"cue_row_{sid}_{num}"
+            cue    = stack.cues[num]
+            tag    = f"cue_row_{sid}_{num}"
             ft     = f" {cue.fade_time:.1f}s" if cue.fade_time else ""
             fw     = getattr(cue, 'follow_time', 0.0)
             follow = f" →{fw:.0f}s" if fw > 0 else ""
             label  = f"  [{num:.0f}]  {cue.name}{ft}{follow}"
+            note   = getattr(cue, 'note', '')
             with dpg.group(parent="cue_list_group", horizontal=True):
                 dpg.add_selectable(label=label, tag=tag,
                                    callback=lambda *_, u=num: self._goto(u),
                                    user_data=num)
+                if note:
+                    with dpg.tooltip(tag):
+                        dpg.add_text(note, color=(200, 200, 160, 255))
 
     def _playbacks_state_hash(self):
         """Compact snapshot of active executor state — used to detect changes."""
