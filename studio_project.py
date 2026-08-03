@@ -13802,7 +13802,7 @@ def run_command(cmd_str):
                 src_cs = cuestack_pool.get(src_cs_n)
                 if not src_cs:
                     return f"COPY CS: source CS {src_cs_n} not found"
-                dst_cs = cuestack_pool.get(dst_cs_n)
+                dst_cs = cuestack_pool.get(dst_cs_n) or cuestack_pool.create(dst_cs_n)
                 for cue_n, src_cue in sorted(src_cs.cues.items()):
                     nc = Cue(
                         cue_number  = src_cue.cue_number,
@@ -13846,17 +13846,17 @@ def run_command(cmd_str):
                     return "COPY: use ... TO CS <n> CUE <dst>"
                 dst_cs_n  = int(dst_tokens[1])
                 dst_cue_n = float(dst_tokens[3])
-                dst_cs    = cuestack_pool.get(dst_cs_n)
+                dst_cs    = cuestack_pool.get(dst_cs_n) or cuestack_pool.create(dst_cs_n)
                 new_name  = _name_after(raw, tokens.index('CUE', to_idx + 1) + 2) if len(dst_tokens) > 4 else ""
             else:
                 dst_cue_n = float(dst_tokens[0])
-                dst_cs    = cuestack_pool.get(active_executor[0])
+                dst_cs    = cuestack_pool.get(active_executor[0]) or _active_stack()
                 new_name  = " ".join(dst_tokens[1:]) if len(dst_tokens) > 1 else ""
 
             if not src_cs:
                 return f"COPY CUE: source cuestack not found"
             if not dst_cs:
-                return f"COPY CUE: destination cuestack not found"
+                return f"COPY CUE: no active cuestack — specify CS <n> CUE <dst>"
 
             src_cue = src_cs.get_cue(src_cue_n)
             if not src_cue:
@@ -13911,14 +13911,12 @@ def run_command(cmd_str):
                     return "MOVE: use ... TO CS <n> CUE <dst>"
                 dst_cs_n  = int(dst_tokens[1])
                 dst_cue_n = float(dst_tokens[3])
-                dst_cs    = cuestack_pool.get(dst_cs_n)
+                dst_cs    = cuestack_pool.get(dst_cs_n) or cuestack_pool.create(dst_cs_n)
             else:
                 dst_cue_n = float(dst_tokens[0])
                 dst_cs    = src_cs
             if not src_cs:
                 return "MOVE CUE: source cuestack not found"
-            if not dst_cs:
-                return "MOVE CUE: destination cuestack not found"
             src_cue = src_cs.get_cue(src_cue_n)
             if not src_cue:
                 return f"MOVE CUE: cue {src_cue_n} not found in '{src_cs.name}'"
