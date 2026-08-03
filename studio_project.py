@@ -3180,8 +3180,24 @@ def _expand_group_fx(fx_defs_by_fid, patch, group_pool):
 # AudioMapper connects audio values to the lighting output
 # ============================================================
 
-import sounddevice as sd
-import numpy as np
+# sounddevice binds to the native PortAudio library at import time (not
+# lazily like mido/rtmidi), so a missing/broken PortAudio install raises
+# OSError here rather than on first use. AudioEngine/AudioMapper are not
+# wired into any command handler or GUI panel yet (see changelog), but the
+# import used to be unconditional, so any environment without a working
+# audio stack (most CI/headless/dry-run boxes) failed to start the entire
+# console before a single fixture patched. Guard it the same way Block 10
+# hardened MIDI startup against a missing backend/device.
+try:
+    import sounddevice as sd
+    import numpy as np
+    _AUDIO_AVAILABLE = True
+    _AUDIO_IMPORT_ERROR = None
+except Exception as e:
+    sd = None
+    np = None
+    _AUDIO_AVAILABLE = False
+    _AUDIO_IMPORT_ERROR = e
 
 
 # ------------------------------------------------------------
@@ -3221,6 +3237,9 @@ class AudioEngine:
 
     @staticmethod
     def list_devices():
+        if not _AUDIO_AVAILABLE:
+            print(f"Audio engine unavailable ({_AUDIO_IMPORT_ERROR}); no input devices to list.")
+            return
         print("\n===== AUDIO INPUT DEVICES =====")
         for i, dev in enumerate(sd.query_devices()):
             if dev['max_input_channels'] > 0:
@@ -3232,6 +3251,8 @@ class AudioEngine:
         Start capturing. device=None uses the system default.
         Pass a device index from list_devices() to pick a specific input.
         """
+        if not _AUDIO_AVAILABLE:
+            raise RuntimeError(f"Audio engine unavailable: {_AUDIO_IMPORT_ERROR}")
         self._running = True
         self._stream  = sd.InputStream(
             samplerate = self.SAMPLE_RATE,
@@ -14067,6 +14088,34 @@ if STUDIO_HEADLESS:
             r_attr = run_command(f"RECORD {_attr} 9 Smoke{_attr.title()}")
             _check(f"RECORD {_attr} handles no-data case cleanly",
                    "no" in r_attr.lower() and "data in programmer" in r_attr.lower())
+
+        # AudioEngine (Block 9) is not wired into any command/GUI path yet,
+        # but its import used to be unconditional -- a missing sounddevice
+        # package or native PortAudio lib crashed the entire console before
+        # a single fixture patched. Force the unavailable branch here so the
+        # guard is verified on every run, regardless of whether this box
+        # happens to have a working audio stack installed.
+        _audio_probe = AudioEngine()
+        _prev_audio_avail = _AUDIO_AVAILABLE
+        _AUDIO_AVAILABLE = False
+        try:
+            try:
+                _audio_probe.list_devices()
+                _list_ok = True
+            except Exception:
+                _list_ok = False
+            _check("AudioEngine.list_devices() doesn't raise when unavailable", _list_ok)
+
+            try:
+                _audio_probe.start()
+                _check("AudioEngine.start() raises RuntimeError when unavailable", False)
+            except RuntimeError:
+                _check("AudioEngine.start() raises RuntimeError when unavailable", True)
+            except Exception as _ae:
+                _check(f"AudioEngine.start() raised wrong exception "
+                       f"({type(_ae).__name__}) when unavailable", False)
+        finally:
+            _AUDIO_AVAILABLE = _prev_audio_avail
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
