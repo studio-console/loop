@@ -4722,9 +4722,10 @@ class GUIEngine:
                               width=-1, height_mode=dpg.mvComboHeight_Small,
                               callback=self._on_cs_combo_select)
             dpg.add_separator()
-            # Fixed-height scroll area for the cue list so it never pushes content down
+            # Fixed-height scroll area for the cue list
             with dpg.child_window(tag="cue_list_scroll", width=-1, height=78,
-                                  border=False, no_scrollbar=True, no_scroll_with_mouse=True):
+                                  border=False, no_scrollbar=True,
+                                  no_scroll_with_mouse=False):
                 dpg.add_group(tag="cue_list_group")
             dpg.add_separator()
             with dpg.group(horizontal=True):
@@ -8316,13 +8317,23 @@ class GUIEngine:
         except Exception:
             pass
 
-        # Highlight active cue row in left column
+        # Highlight active cue row and auto-scroll to it
         if active_cs:
             sid = active_cs.stack_id
-            for num in active_cs._sorted_cue_numbers():
+            sorted_nums = active_cs._sorted_cue_numbers()
+            for idx, num in enumerate(sorted_nums):
                 tag = f"cue_row_{sid}_{num}"
                 try:
                     dpg.set_value(tag, num == cur)
+                except Exception:
+                    pass
+            # Auto-scroll the cue list so the active cue stays visible
+            if cur is not None:
+                try:
+                    cur_idx = list(sorted_nums).index(cur) if cur in sorted_nums else 0
+                    row_h   = 19   # approximate selectable row height
+                    target  = max(0, cur_idx * row_h - 30)
+                    dpg.set_y_scroll("cue_list_scroll", target)
                 except Exception:
                     pass
 
