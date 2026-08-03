@@ -5795,6 +5795,9 @@ class GUIEngine:
                             dpg.add_menu_item(label="Rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME CUESTACK {n} ")
+                            dpg.add_menu_item(label="Assign to Executor...",
+                                callback=self._ctx_prefill,
+                                user_data=f"ASSIGN CS {n} TO EXEC ")
                             dpg.add_separator()
                             dpg.add_menu_item(label="Delete Cuestack",
                                 callback=self._ctx_exec,
