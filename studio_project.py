@@ -6317,6 +6317,14 @@ class GUIEngine:
                 ("MIDI CLOCK ON",  "Lock FX BPM to incoming MIDI beat clock (24 ppqn); shows CLK in header"),
                 ("MIDI CLOCK OFF", "Disable MIDI clock sync; FX BPM returns to manual control"),
             ]),
+            ("AI CONTROL", [
+                ("ai prompt box",         "Type a look in plain English (\"slow blue fade\", \"make it eerie\") and hit Enter/send"),
+                ("chip buttons",          "One-click built-in prompts (warm wash, strobe, blackout, rgb chase, ...)"),
+                ("ai button (header)",    "Open the AI prompt pool — save/run/delete your own reusable prompts"),
+                ("history button",        "Open the AI history popup — recent prompts and the actions they fired"),
+                ("token readout",         "Shows input/output token counts from the last request, next to the status line"),
+                ("ANTHROPIC_API_KEY",     "Required env var — AI bar/buttons are hidden entirely if it isn't set"),
+            ]),
             ("KEYBOARD", [
                 ("↑  /  ↓",               "Scroll command history (up/down arrows)"),
                 ("Enter",                 "Execute command"),
@@ -6329,6 +6337,9 @@ class GUIEngine:
                 ("PATCH button",          "Open patch editor"),
                 ("PAGES button",          "Open pages editor (assign cuestacks to pages)"),
                 ("attr button",           "Open the attribute pools (position/gobo/zoom/focus/beam)"),
+                ("mon button",            "Open the programmer/output monitor popup (per-fixture RGB/dim/FX tables)"),
+                ("ai button",             "Open the AI prompt pool (only shown when ANTHROPIC_API_KEY is set)"),
+                ("log button",            "Open the changelog popup (studio_data/changelog.json)"),
             ]),
         ]
 

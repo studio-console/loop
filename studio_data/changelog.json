@@ -3,6 +3,17 @@
   "entries": [
     {
       "date": "2026-08-03",
+      "summary": "Manual popup: documented the AI control surface + two missing header buttons",
+      "details": [
+        "Re-audited the full roadmap list from scratch before touching anything: GUI polish (scroll fallback in place), manual/glossary popup, changelog popup, executor FLASH wired to real MIDI note-on/off, Block 12 AI layer (Anthropic client + action schema + execute()), MIDI mapping GUI (learn/reassign/delete), and attribute pool GUI panels were all already implemented and working — confirmed by reading the code paths directly, not just trusting prior changelog entries. No functional gap found there.",
+        "Found a real but purely-documentation gap instead: the '?' command manual had zero mention of the AI control surface — the ai prompt input box, the 10 built-in one-click chip prompts, the 'ai' header button (opens a save/run/delete prompt-pool popup, persisted to ai_prompts.json), the 'history' button (recent prompts + fired actions), and the token-usage readout. All of this has existed and worked for several sessions but a first-time user opening the manual would never discover it. Also missing: the 'mon' header button (programmer/output monitor popup with per-fixture RGB/dim/FX tables) wasn't listed in the KEYBOARD section's button rundown alongside MIDI/PATCH/PAGES/attr.",
+        "Added a new 'AI CONTROL' section to the manual (six rows: prompt box, chips, ai button, history button, token readout, ANTHROPIC_API_KEY requirement) and added 'mon button' / 'ai button' / 'log button' rows to the existing KEYBOARD section so every header button is now documented in one place.",
+        "Pure text addition inside _build_keys_popup's static _S list — no data model, schema, or behavior changes, so no backward-compatibility concerns. Verified with python3 -m py_compile and STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 (8/8 smoke test); confirmed via git status that studio_data/*.json was untouched by the run.",
+        "GUI sizing/clipping polish is still genuinely unverified from this container: dearpygui segfaults on import here even under xvfb-run (tried both bare and via Xvfb), so pixel-level layout checks remain out of reach — same limitation prior sessions hit, just confirmed again with a different failure mode (segfault instead of 'no display')."
+      ]
+    },
+    {
+      "date": "2026-08-03",
       "summary": "Cleanup: removed two dead/shadowed OutputState class definitions (~120 lines)",
       "details": [
         "pyflakes flagged 'redefinition of unused OutputState' three times — the class was defined once in Block 7 (cue_layer/programmer_layer only, no FX), redefined in Block 8 (added fx_layer, additive-only FX), and redefined again after Block 9 (the real, currently-used version: LTP executor merge, audio_layer, master_level, blind, FX-replaces-base priority model). Only the last definition was ever reachable — output_state = OutputState(patch) at module bottom always bound to the final class. The first two were 100% dead code, never instantiated, and risked misleading future reads (including AI-assisted ones) about how output merging actually works.",
