@@ -4598,7 +4598,7 @@ class GUIEngine:
                 self._build_right_column()
                 self._build_stage_panel()
             self._build_pools_row()
-            if self._ai:
+            if self._ai and self._ai._enabled:
                 self._build_ai_bar()
         self._build_osc_popup()
         self._build_midi_popup()
@@ -4715,7 +4715,7 @@ class GUIEngine:
             dpg.add_button(label="color", width=52,
                            callback=self._on_color_picker_toggle)
             dpg.add_spacer(width=4)
-            if self._ai:
+            if self._ai and self._ai._enabled:
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="ai", width=36,
                                callback=self._on_ai_prompts_toggle)
@@ -5253,8 +5253,12 @@ class GUIEngine:
     # Header~70 + 3-col row~480 + sep~2 + P1~170 + P2~170 + Forms~88 = 980px ✓ (no AI bar)
     # Attribute pools (position/gobo/zoom/focus/beam) live in a separate popup
     # (_build_attr_popup), not stacked in the main window — see _build_pools_row.
-    # AI bar (~70px, only when self._ai is set) is the one section not counted
-    # above; the main window keeps scrolling enabled as a fallback for that case
+    # AI bar (~70px, only when self._ai._enabled — i.e. ANTHROPIC_API_KEY is set;
+    # previously gated on `if self._ai:`, which is always truthy since `ai` is
+    # always an AIEngine instance, so the bar and header "ai" button used to be
+    # built unconditionally, permanently busting this budget for every user,
+    # not just AI-enabled ones — fixed this session) is the one section not
+    # counted above; the main window keeps scrolling enabled as a fallback for that case
     # since it can't be verified pixel-exact without a real display.
     _H_MAIN     = 480   # main 3-col area — tall enough for all left-col FX controls
     _H_P1       = 170   # pool row 1: 4×24btn + 3×4gap + 26header + 12WP = 146 content, 170 total
