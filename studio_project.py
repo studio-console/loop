@@ -1019,7 +1019,7 @@ class Programmer:
 # ColorPreset / ColorPool — referenced RGB presets
 # DimmerPreset / DimmerPool — referenced dimmer presets
 # AttributePreset / AttributePool — generic attribute presets
-#   (position, gobo, zoom, focus, beam)
+#   (position, gobo, zoom, focus, beam, control)
 # Group / GroupPool — fixture selection groups
 # ============================================================
 
@@ -1167,7 +1167,7 @@ class DimmerPool:
             print(f"  {p}")
 
 
-# ── Generic attribute pools (position, gobo, zoom, focus, beam) ──
+# ── Generic attribute pools (position, gobo, zoom, focus, beam, control) ──
 #
 # To add a new pool type:
 #   1. Instantiate AttributePool("position") etc. in the main init block.
@@ -4222,6 +4222,7 @@ _C_P_GOBO    = (175, 130, 255, 255)  # medium violet
 _C_P_ZOOM    = (155, 175, 255, 255)  # blue-lavender
 _C_P_FOCUS   = (210, 140, 255, 255)  # light violet-pink
 _C_P_BEAM    = (145, 120, 230, 255)  # dim violet
+_C_P_CONTROL = (130, 220, 200, 255)  # teal-mint
 
 
 def _apply_theme():
@@ -5499,9 +5500,9 @@ class GUIEngine:
     def _build_attr_popup(self):
         """Floating attribute pool panel — hidden by default, opened via header button."""
         with dpg.window(tag="attr_window", label="Attribute Pools",
-                        width=1902, height=250, show=False,
+                        width=1902, height=290, show=False,
                         pos=(10, 80), no_collapse=False):
-            dpg.add_text("position / gobo / zoom / focus / beam", color=_C_ACCENT)
+            dpg.add_text("position / gobo / zoom / focus / beam / control", color=_C_ACCENT)
             dpg.add_text("Moving-light attributes — not used by the 6 LT-200 pixel tubes "
                          "in this rig, but recalled the same way as color/dim presets "
                          "for any fixture patched with these channels.", color=_C_DIM, wrap=1860)
@@ -5511,8 +5512,9 @@ class GUIEngine:
                 self._build_attr_pool_panel("gobo",     _C_P_GOBO,  "gobo")
                 self._build_attr_pool_panel("zoom",     _C_P_ZOOM,  "zoom")
             with dpg.group(horizontal=True):
-                self._build_attr_pool_panel("focus",    _C_P_FOCUS, "focus")
-                self._build_attr_pool_panel("beam",     _C_P_BEAM,  "beam")
+                self._build_attr_pool_panel("focus",    _C_P_FOCUS,    "focus")
+                self._build_attr_pool_panel("beam",     _C_P_BEAM,     "beam")
+                self._build_attr_pool_panel("control",  _C_P_CONTROL,  "ctrl")
 
     def _build_forms_panel(self):
         # Spans the same width as the 3 pool panels above (3 × _PANEL_W).
@@ -5741,7 +5743,7 @@ class GUIEngine:
         _ATTR_SLOTS = 12
         _ATTR_MAP = [
             ("position", "pos"), ("gobo", "gobo"), ("zoom", "zoom"),
-            ("focus", "focus"), ("beam", "beam"),
+            ("focus", "focus"), ("beam", "beam"), ("control", "ctrl"),
         ]
         for attr_name, pfx in _ATTR_MAP:
             pool = self._attr_pools.get(attr_name) if self._attr_pools else None
@@ -6177,7 +6179,7 @@ class GUIEngine:
             ("ATTRIBUTE POOLS", [
                 ("RECORD POSITION 1 Wide", "Snapshot pan/tilt from programmer into slot 1"),
                 ("POSITION 1",            "Apply position preset 1 to programmer"),
-                ("RECORD GOBO 1 / GOBO 1", "Same pattern for gobo, zoom, focus, beam"),
+                ("RECORD GOBO 1 / GOBO 1", "Same pattern for gobo, zoom, focus, beam, control"),
                 ("attr button",           "Open the position/gobo/zoom/focus/beam GUI panels"),
             ]),
             ("programmer", [
@@ -8136,6 +8138,7 @@ class ShowFile:
     ZOOM      = os.path.join(DATA_DIR, "zoom_pool.json")
     FOCUS     = os.path.join(DATA_DIR, "focus_pool.json")
     BEAM      = os.path.join(DATA_DIR, "beam_pool.json")
+    CONTROL   = os.path.join(DATA_DIR, "control_pool.json")
     GDTF_DIR  = os.path.join(DATA_DIR, "gdtf")
     STATE     = os.path.join(DATA_DIR, "state.json")
     EXEC_PAGES   = os.path.join(DATA_DIR, "executor_pages.json")
@@ -8726,6 +8729,14 @@ class ShowFile:
     def load_beam_pool(pool):
         return ShowFile.load_attribute_pool(pool, ShowFile.BEAM)
 
+    @staticmethod
+    def save_control_pool(pool):
+        ShowFile.save_attribute_pool(pool, ShowFile.CONTROL)
+
+    @staticmethod
+    def load_control_pool(pool):
+        return ShowFile.load_attribute_pool(pool, ShowFile.CONTROL)
+
     # ── Legacy migration ─────────────────────────────────────
 
     @staticmethod
@@ -8973,6 +8984,7 @@ gobo_pool     = AttributePool("gobo",     ["gobo", "gobo_rot", "gobo2", "gobo2_r
 zoom_pool     = AttributePool("zoom",     ["zoom"])
 focus_pool    = AttributePool("focus",    ["focus"])
 beam_pool     = AttributePool("beam",     ["iris", "shutter1", "strobe"])
+control_pool  = AttributePool("control",  ["control", "macro", "prism", "frost", "animation"])
 
 # Wire attribute pools into executor_pool now that they exist
 _attr_pools = {
@@ -8981,6 +8993,7 @@ _attr_pools = {
     "zoom":     zoom_pool,
     "focus":    focus_pool,
     "beam":     beam_pool,
+    "control":  control_pool,
 }
 executor_pool.default_attr_pools = _attr_pools
 
@@ -9000,6 +9013,7 @@ ShowFile.load_gobo_pool(gobo_pool)
 ShowFile.load_zoom_pool(zoom_pool)
 ShowFile.load_focus_pool(focus_pool)
 ShowFile.load_beam_pool(beam_pool)
+ShowFile.load_control_pool(control_pool)
 ShowFile.load_executor_pages(executor_pool)
 ShowFile.load_executors(executor_pool, cuestack_pool)
 ShowFile.load_state(output_state, executor_pool, cuestack_pool, active_executor,
@@ -9503,6 +9517,7 @@ def save_show():
     ShowFile.save_zoom_pool(zoom_pool)
     ShowFile.save_focus_pool(focus_pool)
     ShowFile.save_beam_pool(beam_pool)
+    ShowFile.save_control_pool(control_pool)
     ShowFile.save_executor_pages(executor_pool)
     ShowFile.save_executors(executor_pool)
     ShowFile.save_state(output_state, executor_pool, active_executor,
@@ -11235,7 +11250,7 @@ def run_command(cmd_str):
         return "RECORD DIM: no dimmer data in programmer  (set a dim level first)"
 
     # ── Attribute pool record / recall ───────────────────────────
-    # Covers: POSITION, GOBO, ZOOM, FOCUS, BEAM
+    # Covers: POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL
     # RECORD POSITION 1 [name]   — snapshot pan/tilt from programmer
     # POSITION 1                 — apply position preset 1 to programmer
     _ATTR_POOL_MAP = {
@@ -11244,6 +11259,7 @@ def run_command(cmd_str):
         'ZOOM':     zoom_pool,
         'FOCUS':    focus_pool,
         'BEAM':     beam_pool,
+        'CONTROL':  control_pool,
     }
     if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] in _ATTR_POOL_MAP:
         pool_key = tokens[1]
