@@ -4790,8 +4790,7 @@ class GUIEngine:
         """Ctrl+S: save show."""
         is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
                    dpg.is_key_down(dpg.mvKey_RControl) or
-                   dpg.is_key_down(dpg.mvKey_LSuper) or   # Cmd on macOS
-                   dpg.is_key_down(dpg.mvKey_RSuper))
+                   dpg.is_key_down(dpg.mvKey_ModSuper))   # Cmd on macOS
         if is_ctrl:
             self._on_save()
 
