@@ -5913,13 +5913,19 @@ class GUIEngine:
                     pass
                 del self._dim_btn_themes[n]
 
-        # Cuestacks (slots 1-48)
+        # Cuestacks (slots 1-48) — highlight the active one
         active = self._active_executor[0] if self._active_executor else None
         for n in range(1, self._POOL_SLOTS + 1):
             cs = self._cuestack_pool.get(n) if self._cuestack_pool else None
             lbl = f"{n}:{cs.name[:5]}" if cs else f"CS{n}"
             try:
                 dpg.set_item_label(f"cs_btn_{n}", lbl)
+            except Exception:
+                pass
+            try:
+                is_active = (n == active and cs is not None)
+                theme = self._go_theme if is_active else (self._dim_btn_theme if not cs else 0)
+                dpg.bind_item_theme(f"cs_btn_{n}", theme if theme else 0)
             except Exception:
                 pass
 
@@ -11968,7 +11974,8 @@ def run_command(cmd_str):
             return "BLACKOUT ON — all output cut (BLACKOUT OFF to restore)"
 
     if t0 == 'BBO':
-        _blackout_saved_level[0] = output_state.master_level
+        if output_state.master_level > 0.0:
+            _blackout_saved_level[0] = output_state.master_level
         output_state.master_level = 0.0
         return "BLACKOUT ON"
 
