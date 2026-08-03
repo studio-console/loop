@@ -3349,6 +3349,8 @@ class OutputState:
         self.executor_pool    = None   # set via link_executor_pool()
         self.master_level     = 1.0   # grand master fader (0.0–1.0)
         self.blind            = False  # when True, programmer layer is suppressed from DMX output
+        self.highlight_mode   = False  # when True, selected fixtures go full-white at 100%
+        self.highlight_fids   = set()  # set of master fixture_id ints to highlight
         self._lock            = threading.Lock()
 
     def link_programmer(self, programmer):
@@ -3465,9 +3467,14 @@ class OutputState:
                         b = base_b
 
                     gm      = self.master_level
-                    final_r = max(0, min(255, int(r * sub_dim * gm)))
-                    final_g = max(0, min(255, int(g * sub_dim * gm)))
-                    final_b = max(0, min(255, int(b * sub_dim * gm)))
+                    if self.highlight_mode and master.fixture_id in self.highlight_fids:
+                        final_r = 255
+                        final_g = 255
+                        final_b = 255
+                    else:
+                        final_r = max(0, min(255, int(r * sub_dim * gm)))
+                        final_g = max(0, min(255, int(g * sub_dim * gm)))
+                        final_b = max(0, min(255, int(b * sub_dim * gm)))
 
                     for output in sub.outputs:
                         if output['universe'] == universe:
@@ -4723,6 +4730,10 @@ class GUIEngine:
             dpg.add_button(label="bbo", tag="sb_bbo_lbl",
                            width=44, height=16,
                            callback=lambda: self._cmd("BLACKOUT") if self._cmd else None)
+            dpg.add_spacer(width=10)
+            dpg.add_button(label="hl", tag="sb_hl_lbl",
+                           width=36, height=16,
+                           callback=self._on_highlight_toggle)
             dpg.add_spacer(width=20)
             dpg.add_text("PT", tag="sb_pt_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
@@ -6418,6 +6429,7 @@ class GUIEngine:
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
                 ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
+                ("HIGHLIGHT / HL",        "Selected fixtures go full white at 100% — HL OFF to cancel; hl button in header"),
                 ("BLACKOUT",              "Cut all DMX output instantly (BLACKOUT OFF to restore)"),
                 ("BLACKOUT OFF  / BBO",   "Same as BLACKOUT — BBO is a one-key shorthand"),
                 ("SNAPSHOT 5",            "Record current live look (cue+prog merged) as cue 5"),
@@ -6462,6 +6474,7 @@ class GUIEngine:
                 ("F4",                    "BACK — step to previous cue"),
                 ("Cmd/Ctrl + S",          "Save show"),
                 ("tap button (FX panel)", "Set BPM from tap intervals (auto-resets after 3s)"),
+                ("Ctrl/Cmd + Z",          "Undo last programmer change (same as UNDO command)"),
                 ("MIDI button",           "Open MIDI mapping editor"),
                 ("PATCH button",          "Open patch editor"),
                 ("PAGES button",          "Open pages editor (assign cuestacks to pages)"),
@@ -6469,6 +6482,19 @@ class GUIEngine:
                 ("mon button",            "Open the programmer/output monitor popup (per-fixture RGB/dim/FX tables)"),
                 ("ai button",             "Open the AI prompt pool (only shown when ANTHROPIC_API_KEY is set)"),
                 ("log button",            "Open the changelog popup (studio_data/changelog.json)"),
+            ]),
+            ("STATUS BAR & QUICK CONTROLS", [
+                ("blind button",          "Click to toggle BLIND — programmer hidden from DMX output; glows red when active"),
+                ("bbo button",            "Click to toggle BLACKOUT — all DMX to zero; glows red when active"),
+                ("[1] [2] … chips",       "Click a fixture chip to select that fixture (same as typing the number)"),
+                ("Shift + chip click",    "Add/remove that fixture from the current selection without clearing others"),
+                ("hl button",             "Toggle HIGHLIGHT — selected fixtures go full white at 100%; glows green when active"),
+                ("flash button (executor)", "Hold for FLASH ON; release for FLASH OFF — button shows ■ FLASH while held"),
+            ]),
+            ("FIXTURE DIM PANEL (right column)", [
+                ("sliders",               "Per-fixture master dim — drag to set; writes directly into programmer layer"),
+                ("all button",            "Select all fixtures (convenience shortcut for fixture dim context)"),
+                ("sync",                  "Sliders auto-update from live merged output when not being dragged"),
             ]),
         ]
 
@@ -8097,6 +8123,26 @@ class GUIEngine:
             if self._cmd:
                 self._cmd(str(fid))
 
+    def _on_highlight_toggle(self):
+        """Toggle HIGHLIGHT mode — selected fixtures go full-white at full dim."""
+        if not self._out:
+            return
+        self._out.highlight_mode = not self._out.highlight_mode
+        if self._out.highlight_mode:
+            self._sync_highlight_selection()
+            self._log("> HIGHLIGHT ON")
+        else:
+            self._log("> HIGHLIGHT OFF")
+
+    def _sync_highlight_selection(self):
+        """Push the current programmer selection into the output engine's highlight set."""
+        if not self._out or not self._prog:
+            return
+        self._out.highlight_fids = {
+            f.fixture_id for f in self._prog.selection
+            if isinstance(f, MasterFixture)
+        }
+
     def _cue_timing_target(self):
         """Return (CueStack, Cue) for the currently active cue, or (None, None)."""
         active_n = self._active_executor[0] if self._active_executor else 1
@@ -8228,6 +8274,18 @@ class GUIEngine:
                         dpg.set_value("stage_master_fader", 0)
                 except Exception:
                     pass
+        except Exception:
+            pass
+
+        # HIGHLIGHT indicator (button — clickable toggle; syncs selection each tick)
+        try:
+            hl = self._out.highlight_mode if self._out else False
+            dpg.configure_item("sb_hl_lbl", label="■ HL" if hl else "hl")
+            theme = self._go_theme if hl else self._dim_btn_theme
+            if theme:
+                dpg.bind_item_theme("sb_hl_lbl", theme)
+            if hl:
+                self._sync_highlight_selection()
         except Exception:
             pass
 
@@ -11755,6 +11813,21 @@ def run_command(cmd_str):
     if t0 == 'LIVE':
         output_state.blind = False
         return "LIVE mode — programmer active in output"
+
+    if t0 == 'HIGHLIGHT' or (t0 == 'HL' and len(tokens) <= 2):
+        off = len(tokens) > 1 and tokens[1] == 'OFF'
+        on  = len(tokens) > 1 and tokens[1] == 'ON'
+        if off or (output_state.highlight_mode and not on):
+            output_state.highlight_mode = False
+            return "HIGHLIGHT OFF"
+        else:
+            output_state.highlight_mode = True
+            output_state.highlight_fids = {
+                f.fixture_id for f in prog.selection
+                if isinstance(f, MasterFixture)
+            }
+            fids = sorted(output_state.highlight_fids)
+            return f"HIGHLIGHT ON — fixtures {fids} at full white"
 
     if t0 == 'BLACKOUT':
         off = len(tokens) > 1 and tokens[1] == 'OFF'
