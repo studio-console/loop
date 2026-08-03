@@ -2828,6 +2828,7 @@ class FXLayer:
 
     def get_values(self, now):
         if not self.is_active or not self.targets:
+            self._last_env = 0.0
             return {}
 
         # Amplitude envelope: outfade → infade → full
@@ -2836,11 +2837,13 @@ class FXLayer:
             env = max(0.0, 1.0 - elapsed_out / self.outfade) if self.outfade > 0 else 0.0
             if env <= 0.0:
                 self.is_active = False   # engine will sweep this layer out
+                self._last_env = 0.0
                 return {}
         elif self.infade > 0:
             env = min(1.0, (now - self.start) / self.infade)
         else:
             env = 1.0
+        self._last_env = env  # expose for FXEngine to store in fx_layer
 
         fn      = self._get_fn()
         rate_hz = self.rate_bpm / 60.0
@@ -2991,6 +2994,7 @@ class FXEngine:
             with self._lock:
                 for fx_id, layer in self._layers.items():
                     vals = layer.get_values(now)
+                    env  = getattr(layer, '_last_env', 1.0)
                     if not layer.is_active:
                         dead.append(fx_id)
                         continue
@@ -3000,6 +3004,11 @@ class FXEngine:
                         merged[fid][layer.channel] = (
                             merged[fid].get(layer.channel, 0) + value
                         )
+                        # Store max envelope so get_dmx_for_universe can lerp
+                        # base → FX rather than replacing base at env=0.
+                        env_key = f'_env_{layer.channel}'
+                        if env > merged[fid].get(env_key, 0.0):
+                            merged[fid][env_key] = env
                 for fx_id in dead:
                     self._layers.pop(fx_id, None)
                     print(f"FX {fx_id} outfade complete — removed.")
@@ -3392,8 +3401,17 @@ class OutputState:
                 fx_master        = {} if _fx_kill else self.fx_layer.get(master_fid, {})
                 _fixture_dim_fx  = fx_master.get('dim')
                 _first_sub       = next(iter(master.sub_fixtures.values()), None)
-                _rgb_fx_on       = (not _fx_kill and bool(
-                                    _first_sub and self.fx_layer.get(str(_first_sub.fixture_id))))
+                # _rgb_fx_on: only True when colour FX has actually faded in (env > 0).
+                # Checking _env_ keys avoids a dim-snap at infade t=0 where the FX
+                # layer exists but all amplitudes are still 0.
+                if _fx_kill or not _first_sub:
+                    _rgb_fx_on = False
+                else:
+                    _fsub_fx = self.fx_layer.get(str(_first_sub.fixture_id), {})
+                    _rgb_fx_on = any(
+                        _fsub_fx.get(f'_env_{c}', 0.0) > 0.001
+                        for c in ('red', 'green', 'blue')
+                    )
 
                 _base_dim = prog_master.get('dim', audio_master.get('dim',
                              cue_master.get('dim', master.virtual_dimmer)))
@@ -3419,14 +3437,31 @@ class OutputState:
                     else:
                         sub_dim = _base_dim
 
-                    # FX has highest output priority for any channel it drives.
                     # Base priority for non-FX channels: programmer > audio > cue
                     base_r = prog_vals.get('red',   audio_vals.get('red',   cue_vals.get('red',   0)))
                     base_g = prog_vals.get('green', audio_vals.get('green', cue_vals.get('green', 0)))
                     base_b = prog_vals.get('blue',  audio_vals.get('blue',  cue_vals.get('blue',  0)))
-                    r = int(fx_vals['red'])   if 'red'   in fx_vals else base_r
-                    g = int(fx_vals['green']) if 'green' in fx_vals else base_g
-                    b = int(fx_vals['blue'])  if 'blue'  in fx_vals else base_b
+
+                    # Envelope-blended merge:
+                    #   output = base*(1-env) + fx_val
+                    # where fx_val is already amplitude-scaled by env.
+                    # At env=0: output = base  (base passes through, no FX jump)
+                    # At env=1: output = fx_val (full FX replaces base)
+                    if 'red' in fx_vals:
+                        env_r = fx_vals.get('_env_red', 1.0)
+                        r = max(0, min(255, int(base_r * (1.0 - env_r) + fx_vals['red'])))
+                    else:
+                        r = base_r
+                    if 'green' in fx_vals:
+                        env_g = fx_vals.get('_env_green', 1.0)
+                        g = max(0, min(255, int(base_g * (1.0 - env_g) + fx_vals['green'])))
+                    else:
+                        g = base_g
+                    if 'blue' in fx_vals:
+                        env_b = fx_vals.get('_env_blue', 1.0)
+                        b = max(0, min(255, int(base_b * (1.0 - env_b) + fx_vals['blue'])))
+                    else:
+                        b = base_b
 
                     gm      = self.master_level
                     final_r = max(0, min(255, int(r * sub_dim * gm)))
@@ -5240,14 +5275,28 @@ class GUIEngine:
                     base_r = prog_s.get('red',   cue_s.get('red',   0))
                     base_g = prog_s.get('green', cue_s.get('green', 0))
                     base_b = prog_s.get('blue',  cue_s.get('blue',  0))
-                    r = int(fx_s['red'])   if 'red'   in fx_s else int(base_r)
-                    g = int(fx_s['green']) if 'green' in fx_s else int(base_g)
-                    b = int(fx_s['blue'])  if 'blue'  in fx_s else int(base_b)
+                    # Envelope-blended merge (matches get_dmx_for_universe)
+                    if 'red' in fx_s:
+                        env_r = fx_s.get('_env_red', 1.0)
+                        r = max(0, min(255, int(base_r * (1.0 - env_r) + fx_s['red'])))
+                    else:
+                        r = int(base_r)
+                    if 'green' in fx_s:
+                        env_g = fx_s.get('_env_green', 1.0)
+                        g = max(0, min(255, int(base_g * (1.0 - env_g) + fx_s['green'])))
+                    else:
+                        g = int(base_g)
+                    if 'blue' in fx_s:
+                        env_b = fx_s.get('_env_blue', 1.0)
+                        b = max(0, min(255, int(base_b * (1.0 - env_b) + fx_s['blue'])))
+                    else:
+                        b = int(base_b)
                     mp  = self._out.programmer_layer.get(fid, {})
                     mc  = cue_merged.get(fid, {})
                     fxm = self._out.fx_layer.get(fid, {})
                     fdr = fxm.get('dim')
-                    ron = bool('red' in fx_s or 'green' in fx_s or 'blue' in fx_s)
+                    ron = any(fx_s.get(f'_env_{c}', 0.0) > 0.001
+                              for c in ('red', 'green', 'blue'))
                     if fdr is not None:
                         dim = max(0.0, min(1.0, mp.get('dim', mc.get('dim', master.virtual_dimmer)) * (fdr / 255.0)))
                     elif ron:
