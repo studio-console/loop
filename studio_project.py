@@ -5890,6 +5890,22 @@ class GUIEngine:
                             tag=f"form_btn_{n}", label=f"F{n}",
                             width=_FORMS_BTN_W, height=self._BTN_H,
                             callback=self._on_form_click, user_data=n)
+                        with dpg.tooltip(f"form_btn_{n}"):
+                            dpg.add_text(f"Form {n}", tag=f"form_tip_{n}")
+                        if n >= FormPool.FIRST_CUSTOM_SLOT:
+                            with dpg.popup(f"form_btn_{n}", mousebutton=1):
+                                dpg.add_text(f"Form {n}", color=_C_P_FORMS)
+                                dpg.add_separator()
+                                dpg.add_menu_item(label="Use Form",
+                                    callback=self._ctx_exec,
+                                    user_data=f"FX FORM {n}")
+                                dpg.add_menu_item(label="Rename...",
+                                    callback=self._ctx_prefill,
+                                    user_data=f"RENAME FORM {n} ")
+                                dpg.add_separator()
+                                dpg.add_menu_item(label="Delete Form",
+                                    callback=self._ctx_exec,
+                                    user_data=f"DELETE FORM {n}")
 
     def _on_fx_click(self, _sender, _app_data, user_data):
         n = user_data
@@ -6171,6 +6187,20 @@ class GUIEngine:
             lbl = f"{n}:{f.name[:6]}" if f else f"F{n}"
             try:
                 dpg.set_item_label(f"form_btn_{n}", lbl)
+            except Exception:
+                pass
+            try:
+                if f:
+                    ft = getattr(f, 'form_type', 'custom')
+                    form_tip = f"Form {n}: {f.name}  ({ft})"
+                    if hasattr(f, 'points') and f.points:
+                        form_tip += f"\n{len(f.points)} points"
+                elif n < FormPool.FIRST_CUSTOM_SLOT:
+                    _BUILTIN = {1: "sine", 2: "ramp", 3: "pulse", 4: "square"}
+                    form_tip = f"Form {n}: {_BUILTIN.get(n, '?')} (built-in)"
+                else:
+                    form_tip = f"Form {n} — empty  (RECORD FORM {n} ...)"
+                dpg.set_value(f"form_tip_{n}", form_tip)
             except Exception:
                 pass
 
