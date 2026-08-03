@@ -11000,6 +11000,18 @@ def load_show_from(name):
     ShowFile.load_size_pool(size_pool)
     spread_pool.presets.clear()
     ShowFile.load_spread_pool(spread_pool)
+    for _pool in (position_pool, gobo_pool, zoom_pool, focus_pool, beam_pool, control_pool):
+        _pool.presets.clear()
+    ShowFile.load_position_pool(position_pool)
+    ShowFile.load_gobo_pool(gobo_pool)
+    ShowFile.load_zoom_pool(zoom_pool)
+    ShowFile.load_focus_pool(focus_pool)
+    ShowFile.load_beam_pool(beam_pool)
+    ShowFile.load_control_pool(control_pool)
+    ShowFile.load_executor_pages(executor_pool)
+    ShowFile.load_executors(executor_pool, cuestack_pool)
+    ShowFile.load_state(output_state, executor_pool, cuestack_pool,
+                        active_executor, prog_time=_prog_time, fader_dim=_fader_dim)
     return f"Show '{name}' loaded — restart may be needed for patch/MIDI changes"
 
 
