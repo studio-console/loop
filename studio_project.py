@@ -11811,7 +11811,7 @@ def run_command(cmd_str):
         merge=False → RECORD mode: replaces cue data entirely.
         Returns result string.
         """
-        _KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY',
+        _KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY', 'FOLLOW',
                'CFADE', 'CINFADE', 'DFADE', 'DINFADE', 'CDELAY', 'DDELAY',
                'GROUP', 'COLOR', 'COLOUR', 'DIM'}
         up  = raw_str.upper()
@@ -11843,9 +11843,11 @@ def run_command(cmd_str):
 
         # Global fade: FADE / INFADE / OUTFADE are synonyms for cue crossfade time
         _ft = _get_timing('FADE', 'INFADE', 'OUTFADE')
-        fade  = _ft if _ft is not None else 2.0
+        fade   = _ft if _ft is not None else 2.0
         _dt = _get_timing('DELAY')
-        delay = _dt if _dt is not None else 0.0
+        delay  = _dt if _dt is not None else 0.0
+        _fw = _get_timing('FOLLOW')
+        follow = _fw if _fw is not None else 0.0
 
         # Per-attribute-group overrides: CFade / DFade / CDelay / DDelay
         fade_times, delay_times = {}, {}
@@ -11956,6 +11958,7 @@ def run_command(cmd_str):
 
         cue = cs.record_cue(cue_num, prog, name=name, fade_time=fade)
         cue.delay_time  = delay
+        cue.follow_time = follow
         cue.fade_times  = fade_times
         cue.delay_times = delay_times
         if cue_num == int(cue_num):
@@ -12032,6 +12035,33 @@ def run_command(cmd_str):
             if not cs:
                 return "UPDATE CUE: no active cuestack"
             return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw, merge=True)
+
+    # ── GO CS <n>  /  BACK CS <n> ────────────────────────────
+    # Advance/step the specified executor without specifying a cue number.
+    # e.g.  GO CS 2   (same as EXEC 2 GO, without changing active_executor)
+    if t0 in ('GO', 'BACK') and 'CS' in tokens and 'CUE' not in tokens:
+        cs_idx = tokens.index('CS')
+        try:
+            cs_n = int(tokens[cs_idx + 1])
+        except (IndexError, ValueError):
+            cs_n = active_executor[0]
+        ex = None
+        for _e in executor_pool.executors.values():
+            if _e.cuestack and _e.cuestack.stack_id == cs_n:
+                ex = _e
+                break
+        if not ex:
+            ex = executor_pool.get(cs_n)
+        executor_pool.bump_priority(ex.exec_id)
+        if t0 == 'GO':
+            msg = ex.go(patch, fade_engine)
+        else:
+            msg = ex.back(patch, fade_engine)
+        if ex.cuestack:
+            _on_cue_fire(ex.cuestack.current)
+        direction = "GO" if t0 == 'GO' else "BACK"
+        cur = ex.cuestack.current if ex.cuestack else None
+        return msg or f"{direction} CS {cs_n} → Cue {cur}"
 
     # ── GO CS [n] CUE <m> ────────────────────────────────────
     # e.g.  GO CS 2 CUE 4
@@ -13376,6 +13406,9 @@ def run_command(cmd_str):
                 else:
                     lines.append(f"  [{fid}] {m.name}  {m.profile.name}")
             return "\n".join(lines)
+        return (f"LIST: unknown sub-command '{tokens[1]}' — "
+                "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
+                "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, SHOWS")
 
     # ── Clear — programmer only, never touches cuestacks ────────
     # ── RELEASE — stop executor(s) ───────────────────────────
@@ -13449,8 +13482,9 @@ def run_command(cmd_str):
         cue = cs.cues.get(cue_num)
         if not cue:
             return f"Cue {cue_num} not found in active cuestack"
-        note_str = f"  [{cue.note}]" if getattr(cue, 'note', '') else ""
-        lines = [f"Cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s{note_str}"]
+        note_str   = f"  [{cue.note}]" if getattr(cue, 'note', '') else ""
+        follow_str = f"  Follow:{cue.follow_time:.1f}s" if getattr(cue, 'follow_time', 0.0) > 0 else ""
+        lines = [f"Cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s{follow_str}{note_str}"]
         # Gather master-level keys (dim, fx) and sub-fixture RGB
         masters = {}; subs = {}
         for fid, vals in cue.data.items():
@@ -13916,6 +13950,11 @@ def run_command(cmd_str):
         result = prog.do_clear()
         if result.startswith("Programmer cleared"):
             _prog_fx_stop()
+        elif result == "output_clear":
+            _prog_fx_stop()
+            _blackout_saved_level[0] = output_state.master_level
+            output_state.master_level = 0.0
+            return "Output cleared — master → 0%  (BLACKOUT OFF to restore)"
         return result
 
     if t0 == 'UNDO':
@@ -14155,6 +14194,23 @@ if STUDIO_HEADLESS:
                        f"({type(_ae).__name__}) when unavailable", False)
         finally:
             _AUDIO_AVAILABLE = _prev_audio_avail
+
+        # CLEAR stage 3 — should blackout output, not silently return "output_clear"
+        prog.do_clear(); prog.do_clear()   # advance to stage 2 (Programmer cleared)
+        _saved_master = output_state.master_level
+        output_state.master_level = 0.8    # set master to non-zero so blackout is detectable
+        prog._clear_stage = 2              # force stage 3 on next CLEAR
+        _r_clear3 = run_command("CLEAR")
+        _check("CLEAR stage 3 blacks out master", output_state.master_level == 0.0)
+        output_state.master_level = _saved_master  # restore for any remaining tests
+
+        # RECORD CUE with FOLLOW time — was silently dropped before the fix
+        run_command("ALL AT R 255 G 0 B 0")
+        _r_follow = run_command("RECORD CS 1 CUE 99 FollowTest FOLLOW 3.5")
+        _cs_1 = cuestack_pool.get(1)
+        _cue_99 = _cs_1.cues.get(99.0) if _cs_1 else None
+        _check("RECORD CUE stores FOLLOW time", _cue_99 is not None and
+               abs(getattr(_cue_99, 'follow_time', 0) - 3.5) < 0.01)
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
