@@ -12759,11 +12759,14 @@ def run_command(cmd_str):
             save_show()
             return f"Recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"Color {pid}"
+        _has_rgb = any(any(ch in vals for ch in ('red', 'green', 'blue'))
+                       for fid, vals in prog.data.items()
+                       if '.' in fid)
+        if not _has_rgb:
+            return "RECORD COLOR: no RGB data in programmer  (set a colour first)"
         p = color_pool.record(pid, prog, name=name)
-        if p and p.data:
-            save_show()
-            return f"Recorded: {p}  (show saved)"
-        return "RECORD COLOR: no RGB data in programmer  (set a colour first)"
+        save_show()
+        return f"Recorded: {p}  (show saved)"
 
     # ── Dim preset recall / record ────────────────────────────
     # DIM PRESET <n>            — apply dim preset n
