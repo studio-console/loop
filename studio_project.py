@@ -6879,6 +6879,11 @@ class GUIEngine:
                 ("LIST POSITION / GOBO / ZOOM / FOCUS / BEAM / CONTROL", "List attr pool presets"),
                 ("LIST EXEC",             "List all executor assignments and active state"),
                 ("LIST MIDI",             "List all CC and note MIDI mappings"),
+                ("MIDI CC 1 7 Grandmaster Dim",  "Map CH1 CC7 → target (see MIDI TARGETS)"),
+                ("MIDI NOTE 10 36 GO",    "Map CH10 Note36 → GO"),
+                ("MIDI REMOVE CC 1 7",   "Delete a CC mapping"),
+                ("MIDI REMOVE NOTE 10 36", "Delete a note mapping"),
+                ("MIDI TARGETS",          "List all assignable MIDI target names"),
                 ("LIST OSC",              "List registered OSC output targets"),
                 ("LIST PATCH",            "List patched fixtures with universe/address"),
                 ("FX LIST",               "Show active programmer/executor FX layers"),
@@ -12741,6 +12746,63 @@ def run_command(cmd_str):
             return "OSC feedback disabled"
         return "OSC usage: TARGET name host port | REMOVE name | LIST | FEEDBACK host port | SEND /addr [args]"
 
+    # MIDI CC <ch> <cc> <target name>        — add CC mapping
+    # MIDI NOTE <ch> <note> <target name>    — add note mapping
+    # MIDI REMOVE CC <ch> <cc>              — delete CC mapping
+    # MIDI REMOVE NOTE <ch> <note>          — delete note mapping
+    if t0 == 'MIDI' and len(tokens) >= 2:
+        t1 = tokens[1]
+        if t1 in ('CC', 'NOTE') and len(tokens) >= 5:
+            try:
+                ch   = int(tokens[2])
+                num  = int(tokens[3])
+            except ValueError:
+                return f"MIDI {t1}: usage  MIDI {t1} <ch> <number> <target name>"
+            target_name = " ".join(tokens[4:])
+            entry = GUIEngine.target_registry.get(target_name)
+            if not entry:
+                available = ", ".join(sorted(GUIEngine.target_registry.keys()))
+                return (f"MIDI {t1}: target '{target_name}' not found\n"
+                        f"Available: {available}")
+            cb          = entry[0]
+            soft_takeover = entry[1]
+            off_cb      = entry[3] if len(entry) > 3 else None
+            if t1 == 'CC':
+                midi.map_cc(ch, num, cb, name=target_name, soft_takeover=soft_takeover)
+                ShowFile.save_midi(midi)
+                return f"Mapped CH{ch} CC{num} → {target_name}  (saved)"
+            else:
+                midi.map_note(ch, num, cb, off_cb, name=target_name)
+                ShowFile.save_midi(midi)
+                return f"Mapped CH{ch} Note{num} → {target_name}  (saved)"
+        if t1 == 'REMOVE' and len(tokens) >= 5 and tokens[2] in ('CC', 'NOTE'):
+            try:
+                ch  = int(tokens[3])
+                num = int(tokens[4])
+            except ValueError:
+                return "MIDI REMOVE CC|NOTE <ch> <number>"
+            if tokens[2] == 'CC':
+                key = (ch, num)
+                if key in midi.cc_maps:
+                    del midi.cc_maps[key]
+                    ShowFile.save_midi(midi)
+                    return f"Removed CC mapping CH{ch} CC{num}  (saved)"
+                return f"No CC mapping for CH{ch} CC{num}"
+            else:
+                key = (ch, num)
+                if key in midi.note_maps:
+                    del midi.note_maps[key]
+                    ShowFile.save_midi(midi)
+                    return f"Removed Note mapping CH{ch} Note{num}  (saved)"
+                return f"No Note mapping for CH{ch} Note{num}"
+        if t1 == 'TARGETS':
+            lines = ["Available MIDI targets:"]
+            for name in sorted(GUIEngine.target_registry.keys()):
+                entry = GUIEngine.target_registry[name]
+                kind = "note" if entry[2] else "cc"
+                lines.append(f"  {name}  [{kind}]")
+            return "\n".join(lines)
+
     if t0 == 'MIDI' and len(tokens) >= 3 and tokens[1] == 'CLOCK':
         if tokens[2] == 'ON':
             midi.clock_sync = True
@@ -13861,6 +13923,16 @@ if STUDIO_HEADLESS:
         _tap_times.append(time.monotonic() - 0.5)  # simulate a prior tap 500ms ago
         _r_tap1 = run_command("TAP")                 # second tap → should compute BPM
         _check("TAP computes BPM from two taps", "BPM" in _r_tap1 or "→" in _r_tap1)
+
+        # MIDI text commands — add, list, remove
+        _r_midi_map = run_command("MIDI CC 15 100 GO")
+        _check("MIDI CC maps correctly", "Mapped" in _r_midi_map)
+        _r_midi_list = run_command("LIST MIDI")
+        _check("LIST MIDI shows new mapping", "CH15" in _r_midi_list)
+        _r_midi_rm = run_command("MIDI REMOVE CC 15 100")
+        _check("MIDI REMOVE CC removes mapping", "Removed" in _r_midi_rm)
+        _r_targets = run_command("MIDI TARGETS")
+        _check("MIDI TARGETS lists targets", "GO" in _r_targets)
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
