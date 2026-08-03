@@ -6917,6 +6917,40 @@ class GUIEngine:
                 dpg.add_text("Changes are live. Re-open console to rebuild monitors.",
                              color=_C_DIM)
 
+            dpg.add_separator()
+            dpg.add_text("sACN Network", color=_C_ACCENT)
+            with dpg.group(horizontal=True):
+                dpg.add_text("Bind IP:", color=_C_DIM)
+                _saved_bind, _saved_univs = ShowFile.load_network()
+                dpg.add_input_text(tag="net_bind_input", label="", width=160,
+                                   default_value=_saved_bind or network.bind_address or "",
+                                   hint="e.g. 192.168.1.161")
+                dpg.add_spacer(width=8)
+                dpg.add_text("Universes:", color=_C_DIM)
+                _univ_str = " ".join(str(u) for u in (_saved_univs or network.universes))
+                dpg.add_input_text(tag="net_univs_input", label="", width=120,
+                                   default_value=_univ_str,
+                                   hint="e.g. 1 2")
+                dpg.add_spacer(width=8)
+                dpg.add_button(label="save network", width=110,
+                               callback=self._on_net_save)
+            dpg.add_text("Saved settings apply on next console restart.",
+                         color=_C_DIM)
+
+    def _on_net_save(self, *_):
+        try:
+            bind = dpg.get_value("net_bind_input").strip()
+            univs_raw = dpg.get_value("net_univs_input").strip().split()
+            univs = [int(v) for v in univs_raw if v.isdigit()]
+            if not univs:
+                self._log("  Network: universe list must contain at least one number")
+                return
+        except Exception as e:
+            self._log(f"  Network: bad input — {e}")
+            return
+        ShowFile.save_network(bind, univs)
+        self._log(f"  Network saved: bind={bind or '(auto)'}  universes={univs}  (restart to apply)")
+
     def _refresh_patch_table(self):
         """Rebuild the rows in the patch table from the current patch state."""
         try:
@@ -7170,6 +7204,12 @@ class GUIEngine:
                 ("IMPORT PRESETS <file>", "Merge a preset bundle JSON into live pools"),
                 ("CLONE 1 TO 7",          "Copy fixture 1's presets / cue data to fixture 7"),
                 ("CLONE 1 TO 7 THRU 9",   "Clone to a range of destinations"),
+            ]),
+            ("NETWORK / sACN", [
+                ("NETWORK STATUS",         "Show current sACN bind address and universe list"),
+                ("NETWORK BIND 192.168.1.161", "Set sACN bind address (saved; restart to apply)"),
+                ("NETWORK UNIVERSE 1 2",   "Set which DMX universes to broadcast (saved; restart to apply)"),
+                ("network.json",           "Config file: studio_data/network.json — edit directly or use commands above"),
             ]),
             ("OSC", [
                 ("OSC TARGET name host port", "Add an OSC output target"),
@@ -9827,6 +9867,7 @@ class ShowFile:
     CHANGELOG    = os.path.join(DATA_DIR, "changelog.json")
     AI_PROMPTS   = os.path.join(DATA_DIR, "ai_prompts.json")
     OSC_TARGETS  = os.path.join(DATA_DIR, "osc_targets.json")
+    NETWORK      = os.path.join(DATA_DIR, "network.json")
 
     # ── Save ────────────────────────────────────────────────
 
@@ -10388,6 +10429,22 @@ class ShowFile:
         if n: print(f"  Loaded speed masters — {n}")
         return True
 
+    @staticmethod
+    def save_network(bind_address, universes):
+        _write_file(ShowFile.NETWORK, {
+            "version":      ShowFile.VERSION,
+            "bind_address": bind_address,
+            "universes":    list(universes),
+        })
+
+    @staticmethod
+    def load_network():
+        """Return (bind_address, universes) from network.json, or (None, None) if missing."""
+        doc = _read_file(ShowFile.NETWORK)
+        if not doc:
+            return None, None
+        return doc.get("bind_address", ""), doc.get("universes", [1, 2])
+
     # ── Generic attribute pools ──────────────────────────────
 
     @staticmethod
@@ -10665,8 +10722,11 @@ STUDIO_HEADLESS = os.environ.get('STUDIO_HEADLESS') == '1'
 if STUDIO_DRY_RUN:
     print("*** STUDIO_DRY_RUN active — sACN output disabled, no data sent to fixtures ***")
 
-network      = NetworkEngine(output_state, universes=[1, 2],
-                             bind_address="192.168.1.161",
+_net_bind, _net_univs = ShowFile.load_network()
+_NET_BIND     = _net_bind  if _net_bind  is not None else "192.168.1.161"
+_NET_UNIVERSES = _net_univs if _net_univs is not None else [1, 2]
+network      = NetworkEngine(output_state, universes=_NET_UNIVERSES,
+                             bind_address=_NET_BIND,
                              dry_run=STUDIO_DRY_RUN)
 network.start()
 
@@ -13144,6 +13204,31 @@ def run_command(cmd_str):
     if t0 == 'IMPORT' and len(tokens) >= 3 and tokens[1] == 'PRESETS':
         path = raw.split(None, 2)[2]
         return import_presets(path)
+
+    if t0 == 'NETWORK' or t0 == 'NET':
+        t1 = tokens[1].upper() if len(tokens) > 1 else ''
+        if t1 == 'BIND' and len(tokens) >= 3:
+            new_bind = tokens[2]
+            ShowFile.save_network(new_bind, network.universes)
+            return (f"sACN bind address → {new_bind}  (restart console to apply)")
+        if t1 in ('UNIVERSE', 'UNIVERSES', 'UNIV') and len(tokens) >= 3:
+            try:
+                new_univs = [int(v) for v in tokens[2:] if v.isdigit()]
+            except ValueError:
+                return "Usage: NETWORK UNIVERSE 1 2 3 ..."
+            if not new_univs:
+                return "Usage: NETWORK UNIVERSE 1 2 3 ..."
+            ShowFile.save_network(network.bind_address, new_univs)
+            return (f"sACN universes → {new_univs}  (restart console to apply)")
+        if t1 == 'STATUS' or not t1:
+            cfg_bind, cfg_univs = ShowFile.load_network()
+            return (
+                f"  sACN bind:       {network.bind_address or '(auto)'}\n"
+                f"  sACN universes:  {network.universes}\n"
+                f"  Saved in config: bind={cfg_bind or '(auto)'}  univs={cfg_univs}\n"
+                f"  Restart console to apply any saved changes."
+            )
+        return "Usage: NETWORK BIND <ip>  |  NETWORK UNIVERSE <n> [n...]  |  NETWORK STATUS"
 
     if t0 == 'OSC':
         t1 = tokens[1] if len(tokens) > 1 else ''
