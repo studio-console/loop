@@ -4855,8 +4855,7 @@ class GUIEngine:
         # Suppress Ctrl+key combos (they're shortcuts, not text input)
         is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
                    dpg.is_key_down(dpg.mvKey_RControl) or
-                   dpg.is_key_down(dpg.mvKey_LSuper) or
-                   dpg.is_key_down(dpg.mvKey_RSuper))
+                   dpg.is_key_down(dpg.mvKey_ModSuper))   # Cmd on macOS
         if is_ctrl:
             return
         dpg.set_value("cmd_input",
