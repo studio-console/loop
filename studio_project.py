@@ -7588,6 +7588,18 @@ class GUIEngine:
                             str(master.fixture_id), {})['dim'] = fd
             except Exception:
                 pass
+            # Auto-reload all executors that have a saved cue position so DMX
+            # outputs immediately on startup without requiring a manual RELOAD.
+            try:
+                if self._cmd:
+                    for ex in executor_pool.executors.values():
+                        cs = ex.cuestack
+                        if cs and cs.current is not None:
+                            ex.reload(patch, fade_engine)
+                            ex.is_active = True
+                    self._log("↺  auto-reload — DMX live")
+            except Exception:
+                pass
 
         # Consume deferred MIDI table rebuild (must be on main thread)
         if self._pending_table_refresh:
