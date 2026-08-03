@@ -826,7 +826,9 @@ class Programmer:
             return
 
         # Split on AT (or auto-detect action start if AT is omitted)
-        _ACTION_KEYWORDS = {'R', 'G', 'B', 'RED', 'GREEN', 'BLUE', 'FULL', 'OUT', 'DIM'}
+        _ACTION_KEYWORDS = {'R', 'G', 'B', 'RED', 'GREEN', 'BLUE', 'FULL', 'OUT', 'DIM',
+                             'WHITE', 'WARM', 'AMBER', 'YELLOW', 'ORANGE', 'CYAN',
+                             'MAGENTA', 'PINK', 'UV', 'PURPLE', 'LIME', 'TEAL'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -938,11 +940,25 @@ class Programmer:
             return
         _CH = {'R': 'red', 'G': 'green', 'B': 'blue',
                'RED': 'red', 'GREEN': 'green', 'BLUE': 'blue'}
+        _NAMED = {
+            'WHITE':   (255, 255, 255), 'WARM':    (255, 180,  60),
+            'AMBER':   (255, 140,   0), 'YELLOW':  (255, 200,   0),
+            'ORANGE':  (255,  80,   0), 'CYAN':    (  0, 200, 200),
+            'MAGENTA': (255,   0, 200), 'PINK':    (255,  50, 150),
+            'UV':      ( 80,   0, 200), 'PURPLE':  (120,   0, 220),
+            'LIME':    (  0, 255,  60), 'TEAL':    (  0, 180, 140),
+        }
         if tokens[0] == 'FULL':
             self.set_dimmer(100)
             return
         if tokens[0] == 'OUT':
             self.set_dimmer(0)
+            return
+        if tokens[0] in _NAMED:
+            r, g, b = _NAMED[tokens[0]]
+            self.set_channel('red', r)
+            self.set_channel('green', g)
+            self.set_channel('blue', b)
             return
         if tokens[0] == 'DIM' and len(tokens) > 1:
             try:
@@ -6817,6 +6833,9 @@ class GUIEngine:
                 ("1 AT FULL",             "Full brightness (dim = 1.0)"),
                 ("1 AT OUT",              "Output off (dim = 0.0)"),
                 ("1 AT DIM 75",           "Dim to 75%"),
+                ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
+                ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
+                ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
                 ("COL 3  /  COLOR 3",     "Apply colour preset to selection"),
                 ("DIM 2",                 "Apply dim preset to selection"),
             ]),
