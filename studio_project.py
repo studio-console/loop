@@ -4509,7 +4509,7 @@ class GUIEngine:
     # ── Popup layout persistence ─────────────────────────────
 
     _POPUP_TAGS = [
-        "patch_window", "midi_window", "fx_editor_window",
+        "patch_window", "osc_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window",
         "color_picker_window",
@@ -4543,6 +4543,7 @@ class GUIEngine:
         "changelog_window": "_refresh_changelog_popup",
         "patch_window":     "_refresh_patch_table",
         "pages_window":     "_refresh_pages_table",
+        "osc_window":       "_refresh_osc_table",
     }
 
     def _load_popup_layout(self):
@@ -4599,6 +4600,7 @@ class GUIEngine:
             self._build_pools_row()
             if self._ai:
                 self._build_ai_bar()
+        self._build_osc_popup()
         self._build_midi_popup()
         self._build_patch_popup()
         self._build_keys_popup()
@@ -4685,6 +4687,9 @@ class GUIEngine:
             dpg.add_text("   ", color=_C_BORDER)
             dpg.add_button(label="patch", width=60,
                            callback=self._on_patch_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="osc", width=50,
+                           callback=self._on_osc_toggle)
             dpg.add_spacer(width=4)
             dpg.add_button(label="midi", width=60,
                            callback=self._on_midi_toggle)
@@ -5042,6 +5047,17 @@ class GUIEngine:
             else:
                 self._refresh_patch_table()
                 dpg.show_item("patch_window")
+        except Exception:
+            pass
+
+    def _on_osc_toggle(self):
+        try:
+            if dpg.is_item_shown("osc_window"):
+                self._save_popup_layout()
+                dpg.hide_item("osc_window")
+            else:
+                self._refresh_osc_table()
+                dpg.show_item("osc_window")
         except Exception:
             pass
 
@@ -6036,6 +6052,98 @@ class GUIEngine:
                                color=_C_DIM if not other_str else (180, 180, 140, 255))
         except Exception:
             pass
+
+    # ── OSC target management popup ───────────────────────────────────────────
+
+    def _build_osc_popup(self):
+        """Floating OSC target manager — add/remove output destinations without typing commands."""
+        with dpg.window(tag="osc_window", label="OSC targets",
+                        width=620, height=360, show=False,
+                        pos=(200, 150), no_collapse=False):
+            dpg.add_text("osc output targets", color=_C_ACCENT)
+            dpg.add_separator()
+
+            # ── Add target row ────────────────────────────────────
+            with dpg.group(horizontal=True):
+                dpg.add_text("add:", color=_C_DIM)
+                dpg.add_input_text(tag="osc_add_name", label="", width=100,
+                                   hint="name")
+                dpg.add_input_text(tag="osc_add_host", label="", width=140,
+                                   hint="host / IP")
+                dpg.add_input_int(tag="osc_add_port", label="", width=70,
+                                  default_value=8000, min_value=1, max_value=65535, step=0)
+                dpg.add_button(label="add", width=52, callback=self._on_osc_add_target)
+                dpg.add_text("", tag="osc_add_status", color=_C_ACCENT)
+
+            dpg.add_separator()
+
+            # ── Targets table (rebuilt on refresh) ────────────────
+            with dpg.child_window(tag="osc_targets_scroll", width=-1, height=-1, border=False):
+                dpg.add_group(tag="osc_targets_group")
+
+    def _refresh_osc_table(self):
+        """Rebuild the OSC targets list widget from the live osc engine state."""
+        try:
+            dpg.delete_item("osc_targets_group", children_only=True)
+        except Exception:
+            return
+        if not self._osc:
+            dpg.add_text("(no OSC engine)", color=_C_DIM, parent="osc_targets_group")
+            return
+        clients = self._osc._clients
+        if not clients:
+            dpg.add_text("(no targets — add one above)", color=_C_DIM,
+                         parent="osc_targets_group")
+            return
+        with dpg.table(parent="osc_targets_group",
+                       header_row=True,
+                       borders_innerV=True,
+                       policy=dpg.mvTable_SizingStretchProp):
+            dpg.add_table_column(label="name",    init_width_or_weight=0.22)
+            dpg.add_table_column(label="host",    init_width_or_weight=0.38)
+            dpg.add_table_column(label="port",    init_width_or_weight=0.12)
+            dpg.add_table_column(label="",        init_width_or_weight=0.28)
+            for name, client in list(clients.items()):
+                with dpg.table_row():
+                    dpg.add_text(name,              color=_C_ACCENT)
+                    dpg.add_text(client._address,   color=_C_TEXT)
+                    dpg.add_text(str(client._port), color=_C_DIM)
+                    with dpg.group(horizontal=True):
+                        dpg.add_button(label="test", width=46,
+                                       callback=self._on_osc_test,
+                                       user_data=name)
+                        dpg.add_spacer(width=4)
+                        dpg.add_button(label="remove", width=58,
+                                       callback=self._on_osc_remove,
+                                       user_data=name)
+
+    def _on_osc_add_target(self):
+        name = dpg.get_value("osc_add_name").strip()
+        host = dpg.get_value("osc_add_host").strip()
+        port = int(dpg.get_value("osc_add_port"))
+        if not name or not host:
+            dpg.set_value("osc_add_status", "name+host required")
+            return
+        if self._osc:
+            self._osc.add_target(name, host, port)
+            if self._save:
+                self._save()
+        dpg.set_value("osc_add_status", f"→ {name} added")
+        dpg.set_value("osc_add_name", "")
+        self._refresh_osc_table()
+
+    def _on_osc_remove(self, _sender, _app, user_data):
+        name = user_data
+        if self._osc:
+            self._osc.remove_target(name)
+            if self._save:
+                self._save()
+        self._refresh_osc_table()
+
+    def _on_osc_test(self, _sender, _app, user_data):
+        name = user_data
+        if self._osc:
+            self._osc.send("/studio/ping", 1, target=name)
 
     def _build_midi_popup(self):
         """Floating MIDI mapping window — hidden by default, opened via header button."""
@@ -8879,6 +8987,7 @@ class ShowFile:
     EXECUTORS    = os.path.join(DATA_DIR, "executors.json")
     CHANGELOG    = os.path.join(DATA_DIR, "changelog.json")
     AI_PROMPTS   = os.path.join(DATA_DIR, "ai_prompts.json")
+    OSC_TARGETS  = os.path.join(DATA_DIR, "osc_targets.json")
 
     # ── Save ────────────────────────────────────────────────
 
@@ -9044,6 +9153,23 @@ class ShowFile:
             doc["midi_note"].append({"channel": ch, "note": note, "target": m.name})
         _write_file(ShowFile.MIDI, doc)
         print(f"  Saved midi      → {len(midi.cc_maps)} CC, {len(midi.note_maps)} note")
+
+    @staticmethod
+    def save_osc_targets(osc_engine):
+        targets = []
+        for name, client in osc_engine._clients.items():
+            targets.append({"name": name, "host": client._address, "port": client._port})
+        _write_file(ShowFile.OSC_TARGETS, {"targets": targets})
+        if targets:
+            print(f"  Saved OSC targets → {len(targets)}")
+
+    @staticmethod
+    def load_osc_targets(osc_engine):
+        doc = _read_file(ShowFile.OSC_TARGETS)
+        if not doc:
+            return
+        for t in doc.get("targets", []):
+            osc_engine.add_target(t["name"], t["host"], int(t["port"]))
 
     @staticmethod
     def save_fx(fx_params):
@@ -9770,6 +9896,7 @@ ShowFile.load_beam_pool(beam_pool)
 ShowFile.load_control_pool(control_pool)
 ShowFile.load_executor_pages(executor_pool)
 ShowFile.load_executors(executor_pool, cuestack_pool)
+ShowFile.load_osc_targets(osc)
 ShowFile.load_state(output_state, executor_pool, cuestack_pool, active_executor,
                     prog_time=_prog_time, fader_dim=_fader_dim)
 
@@ -10274,6 +10401,7 @@ def save_show():
     ShowFile.save_control_pool(control_pool)
     ShowFile.save_executor_pages(executor_pool)
     ShowFile.save_executors(executor_pool)
+    ShowFile.save_osc_targets(osc)
     ShowFile.save_state(output_state, executor_pool, active_executor,
                         prog_time=_prog_time, fader_dim=_fader_dim[0])
 
@@ -11872,9 +12000,11 @@ def run_command(cmd_str):
         t1 = tokens[1] if len(tokens) > 1 else ''
         if t1 == 'TARGET' and len(tokens) >= 5:
             osc.add_target(tokens[2], tokens[3], int(tokens[4]))
+            ShowFile.save_osc_targets(osc)
             return f"OSC target '{tokens[2]}' → {tokens[3]}:{tokens[4]}"
         if t1 == 'REMOVE' and len(tokens) >= 3:
             osc.remove_target(tokens[2])
+            ShowFile.save_osc_targets(osc)
             return f"OSC target '{tokens[2]}' removed"
         if t1 == 'LIST':
             lines = []
