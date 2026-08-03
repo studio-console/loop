@@ -8071,11 +8071,14 @@ class GUIEngine:
                 ex.level = float(value)
 
     def _on_fixture_dim_slider(self, _sender, value, user_data):
-        """Write dim into programmer layer for a single master fixture."""
-        fid = int(user_data)
-        if self._cmd:
-            pct = int(round(float(value) * 100))
-            self._cmd(f"{fid} AT DIM {pct}")
+        """Write dim directly into programmer layer without changing fixture selection."""
+        fid    = int(user_data)
+        dim    = max(0.0, min(1.0, float(value)))
+        fid_s  = str(fid)
+        if self._out:
+            self._out.programmer_layer.setdefault(fid_s, {})['dim'] = dim
+        if self._patch and fid in self._patch.fixtures:
+            self._patch.fixtures[fid].set_dimmer(dim * 100)
 
     def _on_fixture_dim_select_all(self):
         """Select all fixtures in the programmer."""
