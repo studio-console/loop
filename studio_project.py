@@ -8775,11 +8775,15 @@ class GUIEngine:
                 self._ai_history = self._ai_history[-100:]
             self._refresh_ai_history()
 
-        # Install token display callback once
+        # Install token display callback once; accumulates session total
         if self._ai and self._ai._token_cb is None:
+            _sess = [0, 0]  # [session_in, session_out]
             def _tok_cb(in_t, out_t):
+                _sess[0] += in_t
+                _sess[1] += out_t
                 try:
-                    dpg.set_value("ai_tokens", f"↑{in_t} ↓{out_t} tok")
+                    dpg.set_value("ai_tokens",
+                                  f"↑{in_t} ↓{out_t} tok  (session: {_sess[0]+_sess[1]})")
                 except Exception:
                     pass
             self._ai._token_cb = _tok_cb
