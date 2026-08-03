@@ -550,6 +550,35 @@ class Programmer:
         self.disabled  = {}         # Removed parameters — remembered but inactive
         self._clear_stage     = 0   # 0=fresh, 1=values cleared, 2=selection cleared
         self._last_clear_time = 0.0
+        self._undo_stack      = []  # list of (data_snapshot, selection_ids) dicts
+        self._UNDO_MAX        = 20
+
+    def _push_undo(self):
+        """Snapshot current programmer state onto the undo stack."""
+        self._undo_stack.append({
+            'data':      copy.deepcopy(self.data),
+            'disabled':  copy.deepcopy(self.disabled),
+            'selection': [f.fixture_id for f in self.selection],
+        })
+        if len(self._undo_stack) > self._UNDO_MAX:
+            self._undo_stack.pop(0)
+
+    def undo(self):
+        """Restore the previous programmer snapshot. Returns result string."""
+        if not self._undo_stack:
+            return "Nothing to undo"
+        snap = self._undo_stack.pop()
+        self.data     = snap['data']
+        self.disabled = snap['disabled']
+        # Restore selection by fixture ID
+        sel_ids = set(snap['selection'])
+        restored = []
+        for m in self.patch.all_fixtures():
+            if m.fixture_id in sel_ids:
+                restored.append(m)
+                restored += m.all_subs()
+        self.selection = restored
+        return f"Undo — programmer restored  ({len(self._undo_stack)} step(s) remaining)"
 
     # ----------------------------------------------------------
     # Selection Management
@@ -643,6 +672,7 @@ class Programmer:
         return [f for f in self.selection if isinstance(f, SubFixture)]
 
     def set_dimmer(self, level):
+        self._push_undo()
         value = max(0.0, min(1.0, level / 100))
         for f in self.selection:
             if isinstance(f, MasterFixture):
@@ -656,6 +686,7 @@ class Programmer:
         self._print_programmer()
 
     def set_rgb(self, r, g, b):
+        self._push_undo()
         for f in self._get_sub_selection():
             self._ensure_data(f)
             fid = str(f.fixture_id)
@@ -674,6 +705,7 @@ class Programmer:
         if channel == 'dim':
             self.set_dimmer(value)
             return
+        self._push_undo()
         for f in self._get_sub_selection():
             self._ensure_data(f)
             fid = str(f.fixture_id)
@@ -4387,12 +4419,14 @@ class GUIEngine:
         self._map_rows = {}
         # Reassign flow: stores {'type','ch','num','label'} when user clicks ► on a row
         self._reassign_pending = None
+        self._ai_history       = []   # list of {ts, prompt, summary, actions}
 
     # ── Popup layout persistence ─────────────────────────────
 
     _POPUP_TAGS = [
         "patch_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
+        "ai_history_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -4484,6 +4518,7 @@ class GUIEngine:
         self._build_changelog_popup()
         self._build_pages_popup()
         self._build_monitors_popup()
+        self._build_ai_history_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -6759,6 +6794,20 @@ class GUIEngine:
     def _log_error(self, line):
         self._log(f"⚠ {line}")
 
+    def _build_ai_history_popup(self):
+        with dpg.window(tag="ai_history_window", label="ai history",
+                        width=700, height=460, show=False, pos=(240, 140)):
+            with dpg.group(horizontal=True):
+                dpg.add_text("recent ai prompts", color=_C_ACCENT)
+                dpg.add_spacer(width=8)
+                dpg.add_button(label="clear",
+                               callback=lambda: (self._ai_history.clear(),
+                                                 self._refresh_ai_history()))
+            dpg.add_separator()
+            with dpg.child_window(tag="ai_hist_scroll", width=-1, height=-1,
+                                  border=False):
+                dpg.add_text("", tag="ai_hist_text", wrap=680, color=_C_TEXT)
+
     def _build_monitors_popup(self):
         """Floating programmer/output monitor popup — no inner boxes, just tables."""
         with dpg.window(tag="monitors_window", label="monitors",
@@ -6821,6 +6870,19 @@ class GUIEngine:
                                 dpg.add_progress_bar(default_value=0.0,
                                                      tag=f"out_bar_{fid}", width=-1)
 
+    _AI_CHIPS = [
+        ("warm wash",    "warm amber golden wash on all fixtures, moderate brightness"),
+        ("strobe",       "fast white strobe on all fixtures"),
+        ("blackout",     "full blackout, all fixtures off immediately"),
+        ("rgb chase",    "RGB color chase effect rippling through all fixtures"),
+        ("cool wash",    "cool blue-white wash, clean and bright"),
+        ("purple haze",  "deep violet-purple haze atmosphere"),
+        ("sunrise",      "slow sunrise from deep red to orange to gold"),
+        ("pulse",        "slow red breathing pulse on all fixtures"),
+        ("thunderstorm", "chaotic random flicker simulating lightning"),
+        ("disco",        "fast random colourful disco effect"),
+    ]
+
     def _build_ai_bar(self):
         dpg.add_separator()
         with dpg.group(horizontal=True):
@@ -6829,12 +6891,23 @@ class GUIEngine:
             dpg.add_text("", tag="ai_status", color=_C_DIM)
             dpg.add_spacer(width=8)
             dpg.add_text("", tag="ai_tokens", color=_C_DIM)
+            dpg.add_spacer(width=8)
+            dpg.add_button(label="history", width=70,
+                           callback=lambda: dpg.configure_item(
+                               "ai_history_window",
+                               show=not dpg.is_item_shown("ai_history_window")))
         with dpg.group(horizontal=True):
             dpg.add_input_text(tag="ai_input", hint="describe the look...",
                                width=-120, on_enter=True,
                                callback=self._on_ai_send)
             dpg.add_button(label="send", width=110,
                            callback=self._on_ai_send)
+        # Quick-prompt chips
+        with dpg.group(horizontal=True):
+            for label, prompt in self._AI_CHIPS:
+                dpg.add_button(label=label, width=98,
+                               callback=self._on_ai_chip,
+                               user_data=prompt)
 
     # ── Callbacks ────────────────────────────────────────────
 
@@ -7026,6 +7099,16 @@ class GUIEngine:
             pass
         self._pending_table_refresh = True
 
+    def _on_ai_chip(self, sender, app_data, user_data):
+        """Fire a quick-prompt chip — set the input text and send immediately."""
+        if self._ai is None:
+            return
+        try:
+            dpg.set_value("ai_input", user_data)
+        except Exception:
+            pass
+        self._on_ai_send()
+
     def _on_ai_send(self):
         if self._ai is None:
             return
@@ -7034,17 +7117,26 @@ class GUIEngine:
             return
         dpg.set_value("ai_input", "")
         self._log(f"AI ← {prompt}")
+        import datetime as _dt
+        ts = _dt.datetime.now().strftime("%H:%M:%S")
         try:
             dpg.configure_item("ai_status", default_value="thinking…", color=_C_DIM)
         except Exception:
             pass
 
         def _run():
-            self._ai.ask(prompt)
+            actions = self._ai.ask(prompt)
             try:
                 dpg.configure_item("ai_status", default_value="", color=_C_DIM)
             except Exception:
                 pass
+            summary = f"{len(actions)} action(s)" if actions else "no actions"
+            entry = {'ts': ts, 'prompt': prompt, 'summary': summary,
+                     'actions': [a.get('action', '?') for a in (actions or [])]}
+            self._ai_history.append(entry)
+            if len(self._ai_history) > 100:
+                self._ai_history = self._ai_history[-100:]
+            self._refresh_ai_history()
 
         # Install token display callback once
         if self._ai and self._ai._token_cb is None:
@@ -7056,6 +7148,18 @@ class GUIEngine:
             self._ai._token_cb = _tok_cb
 
         threading.Thread(target=_run, daemon=True).start()
+
+    def _refresh_ai_history(self):
+        try:
+            lines = []
+            for e in reversed(self._ai_history[-50:]):
+                acts = ", ".join(e['actions'][:6]) or "—"
+                lines.append(f"[{e['ts']}] {e['prompt']}")
+                lines.append(f"  → {e['summary']}: {acts}")
+                lines.append("")
+            dpg.set_value("ai_hist_text", "\n".join(lines))
+        except Exception:
+            pass
 
     def _remove_cc_map(self, ch, cc):
         self._midi.cc_maps.pop((ch, cc), None)
@@ -11299,6 +11403,9 @@ def run_command(cmd_str):
         if result.startswith("Programmer cleared"):
             _prog_fx_stop()
         return result
+
+    if t0 == 'UNDO':
+        return prog.undo()
 
     # ── Default: programmer ───────────────────────────────────
     try:
