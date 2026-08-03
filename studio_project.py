@@ -12807,9 +12807,16 @@ def run_command(cmd_str):
         if sub == 'CLEAR':
             # FX CLEAR            → clear all FX (programmer + all running executors)
             # FX CLEAR <channel>  → clear only that channel in programmer
+            # Both scope to selection when fixtures are selected.
+            _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
+
             if len(tokens) >= 3 and tokens[2].upper() in _CHANNELS:
                 ch = tokens[2].upper().lower()
-                for vals in prog.data.values():
+                _targets = _sel_fids or set(prog.data.keys())
+                for fid in _targets:
+                    vals = prog.data.get(fid)
+                    if vals is None:
+                        continue
                     existing = vals.get('fx', [])
                     filtered = [ld for ld in existing if ld.get('channel') != ch]
                     if filtered:
@@ -12817,12 +12824,22 @@ def run_command(cmd_str):
                     else:
                         vals.pop('fx', None)
                 _prog_fx_rebuild()
-                return f"FX {ch} cleared from programmer"
+                _scope = f" ({len(_targets)} fixture(s))" if _sel_fids else ""
+                return f"FX {ch} cleared from programmer{_scope}"
+
+            if _sel_fids:
+                # Selection active — clear programmer FX for selected fixtures only
+                for fid in _sel_fids:
+                    vals = prog.data.get(fid)
+                    if vals:
+                        vals.pop('fx', None)
+                _prog_fx_rebuild()
+                return f"FX cleared for {len(_sel_fids)} selected fixture(s) (programmer)"
+
+            # No selection — global clear (programmer + all running executors)
             _prog_fx_stop()
-            # Remove FX defs from programmer
             for vals in prog.data.values():
                 vals.pop('fx', None)
-            # Stop all running executor FX layers too
             _cleared_exec = 0
             for _ex in executor_pool.executors.values():
                 if _ex._fx_ids:
@@ -14547,15 +14564,50 @@ def run_command(cmd_str):
                 "record into cue to make permanent, or CLEAR to release")
 
     if t0 == 'CLEAR' and len(tokens) == 2 and tokens[1] == 'FX':
+        _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
+        _targets  = _sel_fids or set(prog.data.keys())
         cleared = 0
-        for fid, vals in prog.data.items():
-            if 'fx' in vals:
-                del vals['fx']
-                cleared += 1
-            vals.pop('fx_kill', None)
-        _prog_fx_stop()
-        _fx_params.pop('pending_form_id', None)
-        return f"FX cleared from {cleared} fixture(s) — colour/dim preserved"
+        for fid in _targets:
+            vals = prog.data.get(fid)
+            if vals:
+                if 'fx' in vals:
+                    del vals['fx']
+                    cleared += 1
+                vals.pop('fx_kill', None)
+        if _sel_fids:
+            _prog_fx_rebuild()  # keep FX on unselected fixtures alive
+        else:
+            _prog_fx_stop()
+            _fx_params.pop('pending_form_id', None)
+        _scope = f" ({len(_sel_fids)} fixture(s))" if _sel_fids else ""
+        return f"FX cleared from {cleared} fixture(s){_scope} — colour/dim preserved"
+
+    # CLEAR COLOUR / CLEAR COLOR / CLEAR DIM / CLEAR RGB
+    # Remove specific parameter groups from programmer. Selection-scoped when active.
+    if t0 == 'CLEAR' and len(tokens) == 2:
+        _pclear = tokens[1].upper()
+        _colour_chs = {'red', 'green', 'blue', 'white', 'amber', 'warm_white', 'cool_white'}
+        _param_map = {
+            'COLOUR': _colour_chs,
+            'COLOR':  _colour_chs,
+            'RGB':    {'red', 'green', 'blue'},
+            'DIM':    {'dim'},
+        }
+        if _pclear in _param_map:
+            _chs = _param_map[_pclear]
+            _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
+            _targets  = _sel_fids or set(prog.data.keys())
+            _n_cleared = 0
+            for fid in _targets:
+                vals = prog.data.get(fid)
+                if vals is None:
+                    continue
+                for ch in _chs:
+                    if ch in vals:
+                        del vals[ch]
+                        _n_cleared += 1
+            _scope = f" ({len(_targets)} fixture(s))" if _sel_fids else ""
+            return f"{_pclear.title()} cleared from programmer{_scope}"
 
     # CLEAR COLOR/DIM/GROUP/FX <n> — clear a specific pool slot
     if t0 == 'CLEAR' and len(tokens) == 3:
@@ -15179,6 +15231,29 @@ if STUDIO_HEADLESS:
         run_command("FX CLEAR")
         _check("FX CLEAR clears executor FX (executor._fx_ids empty)",
                not _ex0._fx_ids)
+
+        # FX CLEAR scoped to selection — only clears selected fixtures' programmer FX
+        run_command("1 THRU 3")   # select fixtures 1-3
+        run_command("FX SINE RED BPM 60 SIZE 100")
+        _all_fids = list(prog.data.keys())
+        run_command("FX CLEAR")   # selection active → programmer-only, scoped
+        _cleared_sel = all(
+            'fx' not in prog.data.get(str(f.fixture_id), {})
+            for f in prog.selection
+        )
+        _check("FX CLEAR with selection clears only selected fixtures (programmer)",
+               _cleared_sel)
+
+        # CLEAR COLOUR removes RGB from programmer, leaves dim intact
+        run_command("1 THRU 3")
+        run_command("@ FULL")        # set dim
+        run_command("@ COLOR 1 0 0") # set red
+        _pre_dim = prog.data.get("1", {}).get('dim')
+        run_command("CLEAR COLOUR")
+        _post_rgb = prog.data.get("1", {}).get('red')
+        _post_dim = prog.data.get("1", {}).get('dim')
+        _check("CLEAR COLOUR removes RGB and leaves dim intact",
+               _post_rgb is None and _post_dim == _pre_dim)
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
