@@ -4856,6 +4856,20 @@ class GUIEngine:
                                    callback=self._on_rate_click, user_data=n)
                     with dpg.tooltip(f"rate_btn_{n}"):
                         dpg.add_text(f"Rate {n}", tag=f"rate_tip_{n}")
+                    with dpg.popup(f"rate_btn_{n}", mousebutton=1):
+                        dpg.add_text(f"Rate {n}", color=_C_DIM)
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Recall Rate",
+                            callback=self._ctx_exec, user_data=f"RATE {n}")
+                        dpg.add_menu_item(label="Record Rate Here...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RECORD RATE {n} ")
+                        dpg.add_menu_item(label="Rename...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RENAME RATE {n} ")
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Delete Rate",
+                            callback=self._ctx_exec, user_data=f"DELETE RATE {n}")
             dpg.add_text("size", color=_C_DIM)
             with dpg.group(horizontal=True):
                 for n in range(1, 5):
@@ -4864,6 +4878,20 @@ class GUIEngine:
                                    callback=self._on_size_click, user_data=n)
                     with dpg.tooltip(f"size_btn_{n}"):
                         dpg.add_text(f"Size {n}", tag=f"size_tip_{n}")
+                    with dpg.popup(f"size_btn_{n}", mousebutton=1):
+                        dpg.add_text(f"Size {n}", color=_C_DIM)
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Recall Size",
+                            callback=self._ctx_exec, user_data=f"SIZEP {n}")
+                        dpg.add_menu_item(label="Record Size Here...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RECORD SIZEP {n} ")
+                        dpg.add_menu_item(label="Rename...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RENAME SIZEP {n} ")
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Delete Size",
+                            callback=self._ctx_exec, user_data=f"DELETE SIZEP {n}")
             dpg.add_text("spread", color=_C_DIM)
             with dpg.group(horizontal=True):
                 for n in range(1, 5):
@@ -4872,6 +4900,20 @@ class GUIEngine:
                                    callback=self._on_spread_click, user_data=n)
                     with dpg.tooltip(f"spread_btn_{n}"):
                         dpg.add_text(f"Spread {n}", tag=f"spread_tip_{n}")
+                    with dpg.popup(f"spread_btn_{n}", mousebutton=1):
+                        dpg.add_text(f"Spread {n}", color=_C_DIM)
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Recall Spread",
+                            callback=self._ctx_exec, user_data=f"SPREADP {n}")
+                        dpg.add_menu_item(label="Record Spread Here...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RECORD SPREADP {n} ")
+                        dpg.add_menu_item(label="Rename...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RENAME SPREADP {n} ")
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Delete Spread",
+                            callback=self._ctx_exec, user_data=f"DELETE SPREADP {n}")
 
     # ── numpad helpers ───────────────────────────────────────────
     def _numpad_append(self, sender, app_data, user_data):
@@ -11422,6 +11464,15 @@ def run_command(cmd_str):
             cuestack_pool.delete(n)
             save_show()
             return f"Deleted Cuestack {n}: {cs_name}"
+        if sub == 'RATE':
+            if not rate_pool.get(n): return f"Rate {n} is empty"
+            rate_pool.delete(n); save_show(); return f"Deleted Rate preset {n}"
+        if sub in ('SIZEP', 'SIZE'):
+            if not size_pool.get(n): return f"Size {n} is empty"
+            size_pool.delete(n); save_show(); return f"Deleted Size preset {n}"
+        if sub in ('SPREADP', 'SPREAD'):
+            if not spread_pool.get(n): return f"Spread {n} is empty"
+            spread_pool.delete(n); save_show(); return f"Deleted Spread preset {n}"
 
     # ── Shared record/update-cue helper ──────────────────────
     def _record_cue_into(cs, cue_num, suffix_tokens, raw_str, merge=False):
