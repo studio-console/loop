@@ -5409,7 +5409,12 @@ class GUIEngine:
                     r = max(0, min(255, int(r * dim * gm)))
                     g = max(0, min(255, int(g * dim * gm)))
                     b = max(0, min(255, int(b * dim * gm)))
-            fill = (r, g, b, 255) if (r or g or b) else (8, 6, 18, 255)
+            hl_active = (self._out and self._out.highlight_mode and
+                         master.fixture_id in self._out.highlight_fids)
+            if hl_active:
+                fill = (255, 255, 255, 255)
+            else:
+                fill = (r, g, b, 255) if (r or g or b) else (8, 6, 18, 255)
             sel_masters = {f.fixture_id for f in self._prog.selection
                            if isinstance(f, MasterFixture)}
             border_col = (162, 115, 255, 255) if master.fixture_id in sel_masters else (38, 26, 78, 255)
@@ -5471,7 +5476,10 @@ class GUIEngine:
                 sr  = max(0, min(255, int(sr  * sdim * gm)))
                 sg  = max(0, min(255, int(sg  * sdim * gm)))
                 sb2 = max(0, min(255, int(sb2 * sdim * gm)))
-                sfill = (sr, sg, sb2, 255) if (sr or sg or sb2) else (8, 6, 18, 255)
+                if hl_active:
+                    sfill = (255, 255, 255, 255)
+                else:
+                    sfill = (sr, sg, sb2, 255) if (sr or sg or sb2) else (8, 6, 18, 255)
                 try:
                     dpg.configure_item(f"stage_sub_{i}_{j}",
                                        pmin=(sx0, sy0), pmax=(sx0 + dot, sy0 + dot),
