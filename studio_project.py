@@ -6555,6 +6555,7 @@ class GUIEngine:
             ("programmer", [
                 ("CLEAR",                 "Clear selection (tap 1) then programmer (tap 2)"),
                 ("CLEAR FX",              "Clear only FX, keep colour/dim references"),
+                ("MASTER 75",             "Set grandmaster to 75% directly (same as sliding the master fader)"),
                 ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
                 ("HIGHLIGHT / HL",        "Selected fixtures go full white at 100% — HL OFF to cancel; hl button in header"),
@@ -12028,6 +12029,14 @@ def run_command(cmd_str):
             }
             fids = sorted(output_state.highlight_fids)
             return f"HIGHLIGHT ON — fixtures {fids} at full white"
+
+    if t0 == 'MASTER' and len(tokens) >= 2:
+        try:
+            pct = float(tokens[1])
+        except ValueError:
+            return f"MASTER: bad value '{tokens[1]}' — use 0-100"
+        output_state.master_level = max(0.0, min(1.0, pct / 100.0))
+        return f"Master → {pct:.0f}%"
 
     if t0 == 'BLACKOUT':
         off = len(tokens) > 1 and tokens[1] == 'OFF'
