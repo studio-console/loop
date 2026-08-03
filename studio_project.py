@@ -885,6 +885,16 @@ class Programmer:
                 i += 1
                 continue
 
+            if token == 'ODD':
+                selected += [m for m in self.patch.all_fixtures() if m.fixture_id % 2 == 1]
+                i += 1
+                continue
+
+            if token == 'EVEN':
+                selected += [m for m in self.patch.all_fixtures() if m.fixture_id % 2 == 0]
+                i += 1
+                continue
+
             if (i + 1 < len(tokens) and tokens[i + 1] == 'THRU'
                     and i + 2 < len(tokens)):
 
@@ -6796,6 +6806,8 @@ class GUIEngine:
                 ("1",                     "Select fixture 1"),
                 ("1 THRU 6",              "Select fixtures 1 through 6"),
                 ("ALL",                   "Select every patched fixture"),
+                ("ODD",                   "Select odd-numbered fixtures (1, 3, 5, …)"),
+                ("EVEN",                  "Select even-numbered fixtures (2, 4, 6, …)"),
                 ("GRP 1  /  GROUP 1",     "Recall group (expands to all member fixtures)"),
                 ("1 + 3 + 5",             "Select multiple individual fixtures"),
             ]),
