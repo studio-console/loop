@@ -10223,20 +10223,30 @@ class ShowFile:
         if group_pool.groups:
             ShowFile.save_groups(group_pool)
 
-        # Colors
+        # Colors — old format stored per-fixture data dict; migrate to global RGB
         for pid_str, pdata in old.get("color_presets", {}).items():
             pid    = int(pid_str)
             preset = ColorPreset(pid, pdata.get("name", f"Color {pid}"))
-            preset.data = pdata.get("data", {})
+            old_data = pdata.get("data", {})
+            # Take first fixture's RGB as the global value
+            for fvals in old_data.values():
+                preset.red   = fvals.get("red",   0)
+                preset.green = fvals.get("green", 0)
+                preset.blue  = fvals.get("blue",  0)
+                break
             color_pool.presets[pid] = preset
         if color_pool.presets:
             ShowFile.save_colors(color_pool)
 
-        # Dims
+        # Dims — old format stored per-fixture data dict; migrate to global level
         for pid_str, pdata in old.get("dim_presets", {}).items():
             pid    = int(pid_str)
             preset = DimmerPreset(pid, pdata.get("name", f"Dimmer {pid}"))
-            preset.data = pdata.get("data", {})
+            old_data = pdata.get("data", {})
+            for fvals in old_data.values():
+                raw = fvals.get("dim", 0)
+                preset.level = max(0.0, min(1.0, float(raw) / 255.0 if float(raw) > 1.0 else float(raw)))
+                break
             dim_pool.presets[pid] = preset
         if dim_pool.presets:
             ShowFile.save_dims(dim_pool)
