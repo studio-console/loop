@@ -1345,6 +1345,7 @@ class Cue:
         self.fade_times  = dict(fade_times)  if fade_times  else {}
         self.delay_times = dict(delay_times) if delay_times else {}
         self.follow_time = float(follow_time)  # >0 = auto-GO after N seconds
+        self.note        = ""                 # production annotation (saved, optional)
 
         # Delta snapshot: { fixture_id_string: { channel: value } }
         # Only contains what was active in the programmer at record time
@@ -4766,6 +4767,9 @@ class GUIEngine:
                                default_value=0.0, min_value=0.0, max_value=300.0,
                                speed=0.05, format="%.2f", width=_tw,
                                callback=self._on_cue_follow_edit)
+            dpg.add_input_text(tag="cue_note_input", label="Note",
+                               hint="production note...", width=_tw,
+                               callback=self._on_cue_note_edit)
 
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
@@ -6260,6 +6264,7 @@ class GUIEngine:
                 ("CLEAR GROUP 1",         "Delete group 1 from the pool (saves show)"),
                 ("CLEAR FX 3",            "Delete FX preset 3 from the pool (saves show)"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
+                ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
                 ("CUE 5 FADE 2 DELAY 1",  "Set fade + delay"),
                 ("CUE 5 FADE 2 DFADE 5",  "Global fade + dim-only fade override"),
@@ -7902,6 +7907,13 @@ class GUIEngine:
         if cue and self._cmd:
             self._cmd(f"CUE {cue.cue_number} FOLLOW {value:.2f}")
 
+    def _on_cue_note_edit(self, _sender, value, _user_data):
+        _, cue = self._cue_timing_target()
+        if cue:
+            cue.note = value
+            if self._save:
+                self._save()
+
     _tick_first = True   # sync one-shot values on first tick
 
     def _tick(self):
@@ -8168,6 +8180,8 @@ class GUIEngine:
                     dpg.set_value("cue_delay_input", cue_t.delay_time)
                 if not dpg.is_item_active("cue_follow_input"):
                     dpg.set_value("cue_follow_input", getattr(cue_t, 'follow_time', 0.0))
+                if not dpg.is_item_active("cue_note_input"):
+                    dpg.set_value("cue_note_input", getattr(cue_t, 'note', ''))
             else:
                 dpg.set_value("cue_timing_label", "—")
         except Exception:
@@ -8563,6 +8577,8 @@ class ShowFile:
                     entry["delay_times"] = cue.delay_times
                 if getattr(cue, 'follow_time', 0.0) > 0:
                     entry["follow_time"] = cue.follow_time
+                if getattr(cue, 'note', ''):
+                    entry["note"] = cue.note
                 cues_out[str(num)] = entry
             doc["cuestacks"][str(sid)] = {
                 "name":            stack.name,
@@ -8772,6 +8788,7 @@ class ShowFile:
                                cdata.get("fade_times"),
                                cdata.get("delay_times"),
                                cdata.get("follow_time", 0.0))
+                cue.note = cdata.get("note", "")
                 cue.data = copy.deepcopy(cdata["data"])
                 if needs_migration:
                     ShowFile._migrate_fx_scale(cue.data)
@@ -11845,6 +11862,23 @@ def run_command(cmd_str):
     _has_timing = bool(_TIMING_KW & set(tokens))
 
     # CUE <n> SHOW / INFO — inspect cue contents without firing it
+    # CUE <n> NOTE <text>  — set production annotation on a cue
+    if t0 == 'CUE' and len(tokens) >= 3 and tokens[2] == 'NOTE':
+        try:
+            cue_num = float(tokens[1])
+        except ValueError:
+            return f"CUE NOTE: bad cue number '{tokens[1]}'"
+        cs = _active_stack()
+        if not cs:
+            return "CUE NOTE: no active cuestack"
+        cue = cs.cues.get(cue_num)
+        if not cue:
+            return f"Cue {cue_num} not found in active cuestack"
+        note_text = raw.split(None, 3)[3].strip() if len(tokens) > 3 else ""
+        cue.note = note_text
+        save_show()
+        return f"Cue {cue_num}: note set — \"{note_text}\""
+
     if t0 == 'CUE' and len(tokens) >= 3 and tokens[2] in ('SHOW', 'INFO', 'PRINT'):
         try:
             cue_num = float(tokens[1])
@@ -11856,7 +11890,8 @@ def run_command(cmd_str):
         cue = cs.cues.get(cue_num)
         if not cue:
             return f"Cue {cue_num} not found in active cuestack"
-        lines = [f"Cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s"]
+        note_str = f"  [{cue.note}]" if getattr(cue, 'note', '') else ""
+        lines = [f"Cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s{note_str}"]
         # Gather master-level keys (dim, fx) and sub-fixture RGB
         masters = {}; subs = {}
         for fid, vals in cue.data.items():
