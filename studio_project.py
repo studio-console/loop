@@ -5402,6 +5402,10 @@ class GUIEngine:
                         pos=(0, 0), tag=f"stage_lbl_{i}",
                         text="", color=_C_TEXT, size=14,
                     )
+                    dpg.draw_text(
+                        pos=(0, 0), tag=f"stage_dim_{i}",
+                        text="", color=_C_DIM, size=11,
+                    )
                     for j in range(len(master.sub_fixtures)):
                         dpg.draw_rectangle(
                             pmin=(0, 0), pmax=(1, 1),
@@ -5494,10 +5498,14 @@ class GUIEngine:
             sel_masters = {f.fixture_id for f in self._prog.selection
                            if isinstance(f, MasterFixture)}
             border_col = (162, 115, 255, 255) if master.fixture_id in sel_masters else (38, 26, 78, 255)
+            dim_pct = int(dim * gm * 100)
+            dim_col = _C_TEXT if dim_pct > 0 else _C_DIM
             try:
                 dpg.configure_item(f"stage_rect_{i}", pmin=(x0, gap), pmax=(x1, gap + mh),
                                    fill=fill, color=border_col, thickness=2)
-                dpg.configure_item(f"stage_lbl_{i}",  pos=(x0 + 4, gap + 14), text=master.name[:10])
+                dpg.configure_item(f"stage_lbl_{i}",  pos=(x0 + 4, gap + 6),  text=master.name[:10])
+                dpg.configure_item(f"stage_dim_{i}",  pos=(x0 + 4, gap + 28),
+                                   text=f"{dim_pct}%", color=dim_col)
             except Exception:
                 pass
 
