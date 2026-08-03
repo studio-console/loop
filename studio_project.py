@@ -4845,6 +4845,33 @@ class GUIEngine:
                                  callback=self._on_fx_spread)
             dpg.add_button(label="kill fx", width=_W - 20,
                            callback=lambda: self._cmd("KILL FX") if self._cmd else None)
+            # Rate / Size / Spread pool quick-recall rows (4 slots each)
+            _POOL_BTN = (_W - 20 - 3 * 4) // 4   # 4 buttons per row, 4px gaps
+            dpg.add_spacer(height=2)
+            dpg.add_text("rate", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                for n in range(1, 5):
+                    dpg.add_button(tag=f"rate_btn_{n}", label=f"R{n}",
+                                   width=_POOL_BTN, height=18,
+                                   callback=self._on_rate_click, user_data=n)
+                    with dpg.tooltip(f"rate_btn_{n}"):
+                        dpg.add_text(f"Rate {n}", tag=f"rate_tip_{n}")
+            dpg.add_text("size", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                for n in range(1, 5):
+                    dpg.add_button(tag=f"size_btn_{n}", label=f"S{n}",
+                                   width=_POOL_BTN, height=18,
+                                   callback=self._on_size_click, user_data=n)
+                    with dpg.tooltip(f"size_btn_{n}"):
+                        dpg.add_text(f"Size {n}", tag=f"size_tip_{n}")
+            dpg.add_text("spread", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                for n in range(1, 5):
+                    dpg.add_button(tag=f"spread_btn_{n}", label=f"Sp{n}",
+                                   width=_POOL_BTN, height=18,
+                                   callback=self._on_spread_click, user_data=n)
+                    with dpg.tooltip(f"spread_btn_{n}"):
+                        dpg.add_text(f"Spread {n}", tag=f"spread_tip_{n}")
 
     # ── numpad helpers ───────────────────────────────────────────
     def _numpad_append(self, sender, app_data, user_data):
@@ -5962,6 +5989,30 @@ class GUIEngine:
             else:
                 self._log(f"  To record: RECORD FORM {n} Name 0.0,0.0 0.5,1.0 1.0,0.0")
         self._focus_cmd()
+
+    def _on_rate_click(self, _sender, _app_data, user_data):
+        n = user_data
+        if self._cmd:
+            result = self._cmd(f"RATE {n}")
+            if result:
+                self._log(f"> RATE {n}")
+                self._log(f"  {result}")
+
+    def _on_size_click(self, _sender, _app_data, user_data):
+        n = user_data
+        if self._cmd:
+            result = self._cmd(f"SIZEP {n}")
+            if result:
+                self._log(f"> SIZEP {n}")
+                self._log(f"  {result}")
+
+    def _on_spread_click(self, _sender, _app_data, user_data):
+        n = user_data
+        if self._cmd:
+            result = self._cmd(f"SPREADP {n}")
+            if result:
+                self._log(f"> SPREADP {n}")
+                self._log(f"  {result}")
 
     def _tick_pools(self):
         """Update pool button labels to show occupied/empty state."""
@@ -8911,6 +8962,39 @@ class GUIEngine:
         else:
             dpg.set_value("hdr_fx", "fx: off")
             dpg.configure_item("hdr_fx", color=_C_DIM)
+
+        # Rate/Size/Spread pool button labels + tooltips
+        try:
+            for n in range(1, 5):
+                rp = self._rate_pool.get(n) if self._rate_pool else None
+                sp = self._size_pool.get(n) if self._size_pool else None
+                xp = self._spread_pool.get(n) if self._spread_pool else None
+                try:
+                    dpg.set_item_label(f"rate_btn_{n}",
+                                       f"R{n}:{rp.bpm:.0f}" if rp else f"R{n}")
+                    dpg.set_value(f"rate_tip_{n}",
+                                  f"Rate {n}: {rp.name}  {rp.bpm:.0f} BPM" if rp
+                                  else f"Rate {n} — empty  (RECORD RATE {n} Name bpm)")
+                except Exception:
+                    pass
+                try:
+                    dpg.set_item_label(f"size_btn_{n}",
+                                       f"S{n}:{sp.size:.0f}" if sp else f"S{n}")
+                    dpg.set_value(f"size_tip_{n}",
+                                  f"Size {n}: {sp.name}  {sp.size:.0f}%" if sp
+                                  else f"Size {n} — empty  (RECORD SIZEP {n} Name size)")
+                except Exception:
+                    pass
+                try:
+                    dpg.set_item_label(f"spread_btn_{n}",
+                                       f"Sp{n}:{xp.spread:.0f}" if xp else f"Sp{n}")
+                    dpg.set_value(f"spread_tip_{n}",
+                                  f"Spread {n}: {xp.name}  {xp.spread:.2f}" if xp
+                                  else f"Spread {n} — empty  (RECORD SPREADP {n} Name spread)")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # Header: dim (from programmer layer)
         pl = self._out.programmer_layer
@@ -12529,6 +12613,39 @@ def run_command(cmd_str):
         return f"Applied: {p}"
 
     # ── Rate / Size / Spread pool record ─────────────────────────
+    # RATE <n>  — recall rate preset (sets BPM from pool slot n)
+    if t0 == 'RATE' and len(tokens) == 2:
+        try:
+            pid = int(tokens[1])
+        except ValueError:
+            return f"RATE: bad slot number '{tokens[1]}'"
+        p = rate_pool.get(pid)
+        if not p:
+            return f"Rate preset {pid} is empty — use RECORD RATE {pid} Name <bpm>"
+        return run_command(f"BPM {p.bpm}")
+
+    # SIZEP <n>  — recall size preset
+    if t0 == 'SIZEP' and len(tokens) == 2:
+        try:
+            pid = int(tokens[1])
+        except ValueError:
+            return f"SIZEP: bad slot number '{tokens[1]}'"
+        p = size_pool.get(pid)
+        if not p:
+            return f"Size preset {pid} is empty — use RECORD SIZEP {pid} Name <size>"
+        return run_command(f"SIZE {p.size}")
+
+    # SPREADP <n>  — recall spread preset
+    if t0 == 'SPREADP' and len(tokens) == 2:
+        try:
+            pid = int(tokens[1])
+        except ValueError:
+            return f"SPREADP: bad slot number '{tokens[1]}'"
+        p = spread_pool.get(pid)
+        if not p:
+            return f"Spread preset {pid} is empty — use RECORD SPREADP {pid} Name <spread>"
+        return run_command(f"SPREAD {p.spread}")
+
     # RECORD RATE <n> [name] <bpm>      — e.g. RECORD RATE 5 Strobe 240
     if t0 == 'RECORD' and len(tokens) >= 4 and tokens[1] == 'RATE':
         try:
