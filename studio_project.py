@@ -10654,7 +10654,11 @@ def _osc_cmd(_, *args):  # _ = OSC address, unused here
     for ma3_word, our_word in translations.items():
         lower = lower.replace(ma3_word, our_word)
     try:
-        prog.execute(lower.upper())
+        # Use run_command so GO/BACK/EXEC etc. work; prog.execute only handles
+        # selection and AT commands.
+        result = run_command(lower.upper())
+        if result:
+            print(f"  OSC cmd result: {result}")
     except Exception as e:
         print(f"  OSC cmd error: {e}")
 
