@@ -4484,6 +4484,7 @@ class GUIEngine:
         "patch_window", "midi_window", "fx_editor_window",
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window",
+        "color_picker_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -4578,6 +4579,7 @@ class GUIEngine:
         self._build_monitors_popup()
         self._build_ai_history_popup()
         self._build_ai_prompts_popup()
+        self._build_color_picker_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -4672,6 +4674,9 @@ class GUIEngine:
             dpg.add_spacer(width=4)
             dpg.add_button(label="mon", width=50,
                            callback=self._on_monitors_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="color", width=52,
+                           callback=self._on_color_picker_toggle)
             dpg.add_spacer(width=4)
             if self._ai:
                 dpg.add_spacer(width=4)
@@ -7124,6 +7129,95 @@ class GUIEngine:
                 dpg.hide_item("ai_prompts_window")
             else:
                 dpg.show_item("ai_prompts_window")
+        except Exception:
+            pass
+
+    def _on_color_picker_toggle(self):
+        try:
+            if dpg.is_item_shown("color_picker_window"):
+                dpg.hide_item("color_picker_window")
+            else:
+                self._cpick_sync_from_programmer()
+                dpg.show_item("color_picker_window")
+        except Exception:
+            pass
+
+    def _build_color_picker_popup(self):
+        """Floating RGB color picker — live mode fires to programmer on every drag."""
+        with dpg.window(tag="color_picker_window", label="color picker",
+                        width=310, height=390, show=False,
+                        pos=(800, 200), no_collapse=False):
+            with dpg.group(horizontal=True):
+                dpg.add_text("color picker", color=_C_ACCENT)
+                dpg.add_spacer(width=12)
+                dpg.add_checkbox(tag="cpick_live", label="live",
+                                 default_value=True)
+            dpg.add_separator()
+            dpg.add_color_picker(
+                tag="cpick_wheel",
+                default_value=(255, 0, 128, 255),
+                no_alpha=True,
+                no_small_preview=True,
+                display_rgb=True,
+                display_hex=True,
+                picker_mode=dpg.mvColorPicker_wheel,
+                width=290,
+                callback=self._on_cpick_change,
+            )
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="Apply",  width=90, height=26,
+                               callback=self._on_cpick_apply)
+                dpg.add_spacer(width=6)
+                dpg.add_button(label="White",  width=70, height=26,
+                               callback=lambda: self._cpick_set(255, 255, 255))
+                dpg.add_spacer(width=6)
+                dpg.add_button(label="Off",    width=60, height=26,
+                               callback=lambda: self._cpick_set(0, 0, 0))
+            dpg.add_text("", tag="cpick_status", color=_C_DIM)
+
+    def _on_cpick_change(self, sender, color_val):
+        """Called realtime as the user drags the picker — fires if live is on."""
+        if dpg.get_value("cpick_live"):
+            self._cpick_fire(color_val)
+
+    def _on_cpick_apply(self):
+        """Apply button — push current picker color to programmer unconditionally."""
+        col = dpg.get_value("cpick_wheel")
+        self._cpick_fire(col)
+
+    def _cpick_set(self, r, g, b):
+        """Set picker to an explicit colour and apply immediately."""
+        dpg.set_value("cpick_wheel", (r, g, b, 255))
+        self._cpick_fire((r, g, b, 255))
+
+    def _cpick_fire(self, color_val):
+        """Send R G B values to the programmer for the current fixture selection."""
+        r = max(0, min(255, int(color_val[0])))
+        g = max(0, min(255, int(color_val[1])))
+        b = max(0, min(255, int(color_val[2])))
+        if self._cmd:
+            self._cmd(f"R {r} G {g} B {b}")
+        try:
+            dpg.set_value("cpick_status", f"R {r}  G {g}  B {b}")
+        except Exception:
+            pass
+
+    def _cpick_sync_from_programmer(self):
+        """Seed the picker with the current programmer RGB of the first selected fixture."""
+        if not self._prog:
+            return
+        sel = list(self._prog.selection)
+        if not sel:
+            return
+        fid = str(sel[0])
+        vals = self._prog.data.get(fid, {})
+        r = int(vals.get('red',   0) * 255 + 0.5)
+        g = int(vals.get('green', 0) * 255 + 0.5)
+        b = int(vals.get('blue',  0) * 255 + 0.5)
+        try:
+            dpg.set_value("cpick_wheel", (r, g, b, 255))
+            dpg.set_value("cpick_status", f"R {r}  G {g}  B {b}")
         except Exception:
             pass
 
