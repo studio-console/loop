@@ -2311,9 +2311,19 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     self.current = cue_number
     executor.is_active = True
 
-    # If the new cue doesn't have fx_kill set, explicitly clear it from the executor
-    # layer now so the incoming Fade snapshot doesn't carry a stale 1.0 into v_from.
-    if not any(v.get('fx_kill') for v in cue.data.values() if isinstance(v, dict)):
+    # fx_kill: instant-apply by default so FX dies immediately without waiting
+    # for the fade to interpolate 0→1.  Pre-setting executor.layer to 1.0 before
+    # FadeEngine.fire() snapshots it means v_from==v_to==1 — no interpolation.
+    # Leaving an fx_kill cue: clear it now so the Fade starts from 0 (not stale 1).
+    new_cue_has_fx_kill = any(
+        isinstance(v, dict) and v.get('fx_kill')
+        for v in cue.data.values()
+    )
+    if new_cue_has_fx_kill:
+        for fid_str, vals in cue.data.items():
+            if isinstance(vals, dict) and vals.get('fx_kill'):
+                executor.layer.setdefault(fid_str, {})['fx_kill'] = 1.0
+    else:
         for fid_vals in executor.layer.values():
             fid_vals.pop('fx_kill', None)
 
@@ -2341,8 +2351,11 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
 
     # Effective fade time — used as default FX infade so FX ramps match DMX fades
     eff_fade = ov_fade if ov_fade is not None else cue.fade_time
+    # FX outfade: snap to 0 when fx_kill is present; otherwise cap at 1s so old
+    # FX doesn't override the new cue's base values for the full crossfade duration.
+    fx_outfade = 0.0 if new_cue_has_fx_kill else min(eff_fade, 1.0)
 
-    executor._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=eff_fade)
+    executor._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=fx_outfade)
 
     fade_engine.fire(cue, executor, data_to=resolved,
                      override_fade=ov_fade, override_delay=ov_delay)
