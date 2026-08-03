@@ -880,6 +880,11 @@ class Programmer:
                 i += 1
                 continue
 
+            if token == 'ALL':
+                selected += list(self.patch.all_fixtures())
+                i += 1
+                continue
+
             if (i + 1 < len(tokens) and tokens[i + 1] == 'THRU'
                     and i + 2 < len(tokens)):
 
@@ -6790,6 +6795,7 @@ class GUIEngine:
             ("SELECTION", [
                 ("1",                     "Select fixture 1"),
                 ("1 THRU 6",              "Select fixtures 1 through 6"),
+                ("ALL",                   "Select every patched fixture"),
                 ("GRP 1  /  GROUP 1",     "Recall group (expands to all member fixtures)"),
                 ("1 + 3 + 5",             "Select multiple individual fixtures"),
             ]),
