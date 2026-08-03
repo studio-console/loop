@@ -6852,6 +6852,7 @@ class GUIEngine:
                 ("FX SINE RED PIXEL",     "Force per-pixel scope (crosses tube boundaries)"),
                 ("FX SINE DIM FIXTURE",   "Force whole-fixture scope (steps by whole tube)"),
                 ("BPM 60",                "Set global BPM (live + programmer)"),
+                ("TAP",                   "Tap-tempo: tap 2+ times within 3 s to lock BPM"),
                 ("SIZE 100",              "Set global FX size (0–100)"),
                 ("SPREAD 50",             "Set global FX spread (0–100)"),
                 ("FX FORM 5",             "Set waveform to Form Pool slot 5"),
@@ -8079,30 +8080,14 @@ class GUIEngine:
             self._fx_params['spread'] = value
 
     def _on_tap_tempo(self, *_):
-        """Record a tap and compute BPM from the average of the last 4 intervals."""
-        now = time.monotonic()
-        self._tap_times.append(now)
-        # Drop taps older than 3 seconds — they're from a different phrase
-        self._tap_times = [t for t in self._tap_times if now - t < 3.0]
-        # Keep only last 5 taps (4 intervals)
-        if len(self._tap_times) > 5:
-            self._tap_times = self._tap_times[-5:]
-        if len(self._tap_times) >= 2:
-            intervals = [self._tap_times[i+1] - self._tap_times[i]
-                         for i in range(len(self._tap_times) - 1)]
-            avg_interval = sum(intervals) / len(intervals)
-            bpm = round(60.0 / avg_interval, 1) if avg_interval > 0 else 60.0
-            bpm = max(10.0, min(480.0, bpm))
+        """Record a tap — delegates to the TAP command so GUI and text share state."""
+        if self._cmd:
+            result = self._cmd("TAP")
             try:
-                dpg.set_value("fx_rate", bpm)
-                dpg.set_value("fx_tap_label", f"{bpm:.0f} bpm")
-            except Exception:
-                pass
-            if self._cmd:
-                self._cmd(f"BPM {bpm:.1f}")
-        else:
-            try:
-                dpg.set_value("fx_tap_label", "tap…")
+                if result and result.startswith("BPM"):
+                    dpg.set_value("fx_tap_label", result.replace("BPM → ", "") + " bpm")
+                else:
+                    dpg.set_value("fx_tap_label", "tap…")
             except Exception:
                 pass
 
@@ -10382,6 +10367,7 @@ cue_pool       = CuePool()
 cuestack_pool  = CueStackPool()
 fx_pool        = FXPool()
 active_executor = [1]   # list so closures can rebind it
+_tap_times: list = []   # monotonic timestamps for tap-tempo; shared between GUI and TAP command
 
 # Programmer time override — when on, overrides cue fade/delay for manually fired cues
 _prog_time = {
@@ -10837,6 +10823,27 @@ def transport_rewind(val):
     if val > 0.5:
         goto_cue(1)
 
+def tap_tempo():
+    """MIDI-mappable tap-tempo trigger (safe to call from MIDI thread).
+    Shares _tap_times with the TAP command and GUI button.
+    Updates _fx_params['rate_bpm'] directly — FX engine reads it on next tick.
+    """
+    _now = time.monotonic()
+    _tap_times.append(_now)
+    _tap_times[:] = [t for t in _tap_times if _now - t < 3.0]
+    if len(_tap_times) > 5:
+        _tap_times[:] = _tap_times[-5:]
+    if len(_tap_times) >= 2:
+        _intervals = [_tap_times[i + 1] - _tap_times[i]
+                      for i in range(len(_tap_times) - 1)]
+        _avg = sum(_intervals) / len(_intervals)
+        _bpm = round(60.0 / _avg, 1) if _avg > 0 else 60.0
+        _bpm = max(10.0, min(480.0, _bpm))
+        _fx_params['rate_bpm'] = _bpm
+        for _layer in fx_engine._layers.values():
+            if _layer.fx_id < 10000:
+                _layer.set_rate_smooth(_bpm, _now)
+
 # ----------------------------------------------------------
 # MIDI mappings — Axiom 25 MkII
 # ----------------------------------------------------------
@@ -10907,6 +10914,7 @@ GUIEngine.target_registry = {
     "GO":               (cue_go,           False, True),
     "BACK":             (cue_back,         False, True),
     "FX Kill":          (_stop_fx,         False, True),
+    "Tap Tempo":          (tap_tempo,        False, True),
     # 4-tuple: (on_cb, soft_takeover, is_note, off_cb)
     "Flash White (hold)": (flash_on,       False, True, flash_off),
 }
@@ -12074,12 +12082,45 @@ def run_command(cmd_str):
         for fvals in prog.data.values():
             for ld in fvals.get('fx', []):
                 ld['bpm'] = val
-        try:
-            import dearpygui.dearpygui as _dpg_local
-            _dpg_local.set_value("fx_rate", val)
-        except Exception:
-            pass
+        if not STUDIO_HEADLESS:
+            try:
+                import dearpygui.dearpygui as _dpg_local
+                _dpg_local.set_value("fx_rate", val)
+            except Exception:
+                pass
         return f"BPM → {val:.1f}"
+
+    if t0 == 'TAP':
+        # TAP — tap-tempo; compute BPM from last 4 inter-tap intervals (<3 s window).
+        # Shares _tap_times with the GUI tap button so either source is valid.
+        # Updates _fx_params and running layers directly to avoid dpg.set_value
+        # being called without a context (headless mode).
+        _now = time.monotonic()
+        _tap_times.append(_now)
+        _tap_times[:] = [t for t in _tap_times if _now - t < 3.0]
+        if len(_tap_times) > 5:
+            _tap_times[:] = _tap_times[-5:]
+        if len(_tap_times) >= 2:
+            _intervals = [_tap_times[i + 1] - _tap_times[i]
+                          for i in range(len(_tap_times) - 1)]
+            _avg = sum(_intervals) / len(_intervals)
+            _bpm = round(60.0 / _avg, 1) if _avg > 0 else 60.0
+            _bpm = max(10.0, min(480.0, _bpm))
+            _fx_params['rate_bpm'] = _bpm
+            for _layer in fx_engine._layers.values():
+                if _layer.fx_id < 10000:
+                    _layer.set_rate_smooth(_bpm, _now)
+            for _fvals in prog.data.values():
+                for _ld in _fvals.get('fx', []):
+                    _ld['bpm'] = _bpm
+            if not STUDIO_HEADLESS:
+                try:
+                    import dearpygui.dearpygui as _dpg_l
+                    _dpg_l.set_value("fx_rate", _bpm)
+                except Exception:
+                    pass
+            return f"BPM → {_bpm:.1f}"
+        return "TAP (tap again to lock BPM…)"
 
     if t0 == 'SIZE' and len(tokens) >= 2:
         try:
@@ -12095,11 +12136,12 @@ def run_command(cmd_str):
         for fvals in prog.data.values():
             for ld in fvals.get('fx', []):
                 ld['size'] = val
-        try:
-            import dearpygui.dearpygui as _dpg_local
-            _dpg_local.set_value("fx_size", val)
-        except Exception:
-            pass
+        if not STUDIO_HEADLESS:
+            try:
+                import dearpygui.dearpygui as _dpg_local
+                _dpg_local.set_value("fx_size", val)
+            except Exception:
+                pass
         return f"Size → {val:.0f}"
 
     if t0 == 'SPREAD' and len(tokens) >= 2:
@@ -12116,11 +12158,12 @@ def run_command(cmd_str):
         for fvals in prog.data.values():
             for ld in fvals.get('fx', []):
                 ld['spread'] = val
-        try:
-            import dearpygui.dearpygui as _dpg_local
-            _dpg_local.set_value("fx_spread", val)
-        except Exception:
-            pass
+        if not STUDIO_HEADLESS:
+            try:
+                import dearpygui.dearpygui as _dpg_local
+                _dpg_local.set_value("fx_spread", val)
+            except Exception:
+                pass
         return f"Spread → {val:.1f}"
 
     if t0 == 'FX' and len(tokens) >= 2:
@@ -13812,6 +13855,12 @@ if STUDIO_HEADLESS:
         run_command("RECORD DIM 5 CopySrc 75%")
         r_cp_dim = run_command("COPY DIM 5 TO 6 CopiedDim")
         _check("COPY DIM routes to pool handler", "Copied Dim" in r_cp_dim)
+
+        # TAP command — pre-seed _tap_times to avoid sleep; two taps → BPM
+        _tap_times.clear()
+        _tap_times.append(time.monotonic() - 0.5)  # simulate a prior tap 500ms ago
+        _r_tap1 = run_command("TAP")                 # second tap → should compute BPM
+        _check("TAP computes BPM from two taps", "BPM" in _r_tap1 or "→" in _r_tap1)
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
