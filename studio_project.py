@@ -4644,6 +4644,8 @@ class GUIEngine:
                                       callback=lambda *_: self._go())
             dpg.add_key_press_handler(dpg.mvKey_S,
                                       callback=self._on_ctrl_s)
+            dpg.add_key_press_handler(dpg.mvKey_Z,
+                                      callback=self._on_ctrl_z)
             dpg.add_key_press_handler(dpg.mvKey_Up,
                                       callback=self._on_hist_up)
             dpg.add_key_press_handler(dpg.mvKey_Down,
@@ -4909,6 +4911,16 @@ class GUIEngine:
         if is_ctrl:
             self._on_save()
 
+    def _on_ctrl_z(self, *_):
+        """Ctrl+Z: undo last programmer change."""
+        is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
+                   dpg.is_key_down(dpg.mvKey_RControl) or
+                   dpg.is_key_down(dpg.mvKey_ModSuper))
+        if is_ctrl and self._cmd:
+            result = self._cmd("UNDO")
+            if result:
+                self._log(f"> {result}")
+
     def _on_global_mouse_click(self, sender, app_data):
         """Handle left-click on the stage canvas to select/deselect fixtures."""
         if app_data != 0:   # 0 = left button
@@ -5125,6 +5137,7 @@ class GUIEngine:
                 for label, ud in [
                     ("CLEAR", "CLEAR"), ("reload", "RELOAD"),
                     ("go",    "GO"),    ("back",   "BACK"),
+                    ("undo",  "UNDO"),
                 ]:
                     dpg.add_button(label=label, height=_BH,
                                    callback=self._numpad_exec, user_data=ud)
