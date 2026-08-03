@@ -6158,6 +6158,10 @@ class GUIEngine:
                 ("SNAPSHOT 5",            "Record current live look (cue+prog merged) as cue 5"),
                 ("SNAPSHOT 5 Frozen",     "Snapshot with a custom name"),
                 ("SAVE",                  "Save entire show to studio_data/"),
+                ("SAVE AS <name>",        "Save a named snapshot to studio_saves/<name>/"),
+                ("LOAD SHOW <name>",      "Restore a snapshot (cuestacks/presets reload live)"),
+                ("LIST SHOWS",            "List all saved show snapshots"),
+                ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
                 ("CLONE 1 TO 7",          "Copy fixture 1's presets / cue data to fixture 7"),
                 ("CLONE 1 TO 7 THRU 9",   "Clone to a range of destinations"),
             ]),
@@ -7996,6 +8000,7 @@ import shutil as _shutil
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR    = os.path.join(_SCRIPT_DIR, "studio_data")
+SAVES_DIR   = os.path.join(_SCRIPT_DIR, "studio_saves")
 
 if os.environ.get('STUDIO_HEADLESS') == '1':
     # Automated/unattended smoke-test runs must never read or overwrite the
@@ -9426,6 +9431,96 @@ def save_show():
     ShowFile.save_state(output_state, executor_pool, active_executor,
                         prog_time=_prog_time, fader_dim=_fader_dim[0])
 
+
+def save_show_as(name):
+    """Copy current show files into studio_saves/<name>/."""
+    import shutil as _sh
+    if not name or not name.strip():
+        return "SAVE AS: provide a show name"
+    safe = "".join(c for c in name.strip() if c.isalnum() or c in (' ', '-', '_')).strip()
+    if not safe:
+        return "SAVE AS: invalid name"
+    save_show()  # flush current state first
+    dest = os.path.join(SAVES_DIR, safe)
+    os.makedirs(dest, exist_ok=True)
+    for fname in os.listdir(DATA_DIR):
+        if fname.endswith('.json') and not fname.endswith('.bak'):
+            _sh.copy2(os.path.join(DATA_DIR, fname), os.path.join(dest, fname))
+    return f"Show saved as '{safe}'  →  studio_saves/{safe}/"
+
+
+def load_show_from(name):
+    """Copy saved show files back into studio_data/ and reload all pools."""
+    import shutil as _sh
+    if not name or not name.strip():
+        return "LOAD SHOW: provide a show name"
+    src = os.path.join(SAVES_DIR, name.strip())
+    if not os.path.isdir(src):
+        # fuzzy match
+        try:
+            all_saves = [d for d in os.listdir(SAVES_DIR)
+                         if os.path.isdir(os.path.join(SAVES_DIR, d))]
+        except OSError:
+            return "LOAD SHOW: no saves directory found — use SAVE AS first"
+        matches = [s for s in all_saves if name.strip().lower() in s.lower()]
+        if len(matches) == 1:
+            src = os.path.join(SAVES_DIR, matches[0])
+            name = matches[0]
+        elif matches:
+            return f"LOAD SHOW: ambiguous — matches: {', '.join(matches)}"
+        else:
+            return f"LOAD SHOW: '{name}' not found — LIST SHOWS to see saves"
+    for fname in os.listdir(src):
+        if fname.endswith('.json'):
+            _sh.copy2(os.path.join(src, fname), os.path.join(DATA_DIR, fname))
+    # Reload pools from newly-copied files
+    doc = _read_file(ShowFile.CUESTACKS)
+    if doc:
+        ShowFile.load_cuestacks(doc, cuestack_pool)
+    doc = _read_file(ShowFile.GROUPS)
+    if doc:
+        ShowFile.load_groups(doc, group_pool)
+    doc = _read_file(ShowFile.COLORS)
+    if doc:
+        ShowFile.load_colors(doc, color_pool)
+    doc = _read_file(ShowFile.DIMS)
+    if doc:
+        ShowFile.load_dims(doc, dim_pool)
+    doc = _read_file(ShowFile.FX_POOL)
+    if doc:
+        ShowFile.load_fx_pool(doc, fx_pool)
+    doc = _read_file(ShowFile.FORMS)
+    if doc:
+        ShowFile.load_forms(doc, form_pool)
+    doc = _read_file(ShowFile.RATES)
+    if doc:
+        ShowFile.load_rate_pool(doc, rate_pool)
+    doc = _read_file(ShowFile.SIZES)
+    if doc:
+        ShowFile.load_size_pool(doc, size_pool)
+    doc = _read_file(ShowFile.SPREADS)
+    if doc:
+        ShowFile.load_spread_pool(doc, spread_pool)
+    return f"Show '{name}' loaded — restart may be needed for patch/MIDI changes"
+
+
+def list_shows():
+    """List all saved shows in studio_saves/."""
+    try:
+        saves = [d for d in sorted(os.listdir(SAVES_DIR))
+                 if os.path.isdir(os.path.join(SAVES_DIR, d))]
+    except OSError:
+        return "No saves yet — use: SAVE AS <name>"
+    if not saves:
+        return "No saved shows — use: SAVE AS <name>"
+    import datetime as _dt
+    lines = ["Saved shows:"]
+    for s in saves:
+        mtime = os.path.getmtime(os.path.join(SAVES_DIR, s))
+        ts = _dt.datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+        lines.append(f"  {s}  [{ts}]")
+    return "\n".join(lines)
+
 # ── MIDI restore (must happen after target_registry is built) ──
 _midi_doc = _read_file(ShowFile.MIDI)
 if _midi_doc:
@@ -10795,8 +10890,19 @@ def run_command(cmd_str):
 
     # ── Save ─────────────────────────────────────────────────
     if t0 == 'SAVE':
+        if len(tokens) >= 3 and tokens[1] == 'AS':
+            name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
+            return save_show_as(name)
         save_show()
         return "Show saved."
+
+    if t0 in ('LOAD',) and len(tokens) >= 3 and tokens[1] in ('SHOW', 'CS'):
+        if tokens[1] == 'SHOW':
+            name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
+            return load_show_from(name)
+
+    if t0 == 'LIST' and len(tokens) >= 2 and tokens[1] == 'SHOWS':
+        return list_shows()
 
     # ── Stack info ───────────────────────────────────────────
     if t0 in ('CUES', 'STACK', 'LIST'):
