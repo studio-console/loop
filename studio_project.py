@@ -3731,6 +3731,8 @@ class OutputState:
         self.highlight_mode   = False  # when True, selected fixtures go full-white at 100%
         self.highlight_fids   = set()  # set of master fixture_id ints to highlight
         self.direct_dmx       = {}    # {universe: {address(1-512): value(0-255)}}
+        self.freeze_mode      = False  # when True, frozen_dmx is output verbatim
+        self.frozen_dmx       = {}    # {universe: tuple(512)} — snapshot at FREEZE time
         self._lock            = threading.Lock()
 
     def link_programmer(self, programmer):
@@ -3753,6 +3755,8 @@ class OutputState:
         return merged
 
     def get_dmx_for_universe(self, universe):
+        if self.freeze_mode and universe in self.frozen_dmx:
+            return self.frozen_dmx[universe]
         dmx = [0] * 512
         with self._lock:
             cue_merged = self._merged_cue_layer()
@@ -7621,6 +7625,8 @@ class GUIEngine:
                 ("MASTER 75",             "Set grandmaster to 75% directly (same as sliding the master fader)"),
                 ("BLIND",                 "Suppress programmer from DMX output — edit safely offline"),
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
+                ("FREEZE",                "Lock DMX output at current look — cue/programmer changes won't affect output"),
+                ("FREEZE OFF",            "Release FREEZE — live output resumes"),
                 ("HIGHLIGHT / HL",        "Selected fixtures go full white at 100% — HL OFF to cancel; hl button in header"),
                 ("BLACKOUT",              "Cut all DMX output instantly (BLACKOUT OFF to restore)"),
                 ("BLACKOUT OFF  / BBO",   "Same as BLACKOUT — BBO is a one-key shorthand"),
@@ -14069,6 +14075,22 @@ def run_command(cmd_str):
         output_state.blind = False
         return "LIVE mode — programmer active in output"
 
+    if t0 == 'FREEZE':
+        off = len(tokens) > 1 and tokens[1] in ('OFF', 'RELEASE')
+        if off or output_state.freeze_mode:
+            output_state.freeze_mode = False
+            output_state.frozen_dmx.clear()
+            return "FREEZE OFF — live output restored"
+        # Snapshot universes present in patch
+        univs = {out['universe']
+                 for m in output_state.patch.all_fixtures()
+                 for sub in m.sub_fixtures.values()
+                 for out in sub.outputs}
+        for u in univs:
+            output_state.frozen_dmx[u] = output_state.get_dmx_for_universe(u)
+        output_state.freeze_mode = True
+        return f"FREEZE ON — output locked at current look ({len(univs)} universe(s))"
+
     if t0 == 'HIGHLIGHT' or (t0 == 'HL' and len(tokens) <= 2):
         off = len(tokens) > 1 and tokens[1] == 'OFF'
         on  = len(tokens) > 1 and tokens[1] == 'ON'
@@ -14362,9 +14384,11 @@ def run_command(cmd_str):
         gm = output_state.master_level if output_state else 1.0
         blind = output_state.blind if output_state else False
         bbo   = (gm == 0.0)
+        freeze = output_state.freeze_mode if output_state else False
         lines.append(f"  Grand Master: {gm*100:.0f}%"
                      + ("  [BBO]" if bbo else "")
-                     + ("  [BLIND]" if blind else ""))
+                     + ("  [BLIND]" if blind else "")
+                     + ("  [FREEZE]" if freeze else ""))
         # Selection + programmer
         sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
         if sel_masters:
