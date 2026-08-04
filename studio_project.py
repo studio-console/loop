@@ -873,7 +873,7 @@ class Programmer:
                              'GOBO', 'GOBO_ROT', 'GOBO2', 'GOBO2_ROT',
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
-                             'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT'}
+                             'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1170,6 +1170,18 @@ class Programmer:
             self.set_channel('red', r)
             self.set_channel('green', g)
             self.set_channel('blue', b)
+            return
+
+        # FLIP <channel> — invert channel value: new = 255 - current (0 if unset)
+        # Useful for mirroring pan/tilt on symmetric rigs, or inverting colour.
+        if tokens[0] == 'FLIP':
+            ch = _CH.get(tokens[1]) if len(tokens) > 1 else None
+            if ch:
+                self._push_undo()
+                for sub in self._get_sub_selection():
+                    sfid = str(sub.fixture_id)
+                    cur = self.data.get(sfid, {}).get(ch, 0)
+                    self.data.setdefault(sfid, {})[ch] = max(0, min(255, 255 - int(cur)))
             return
 
         if tokens[0] == 'FULL':
@@ -7580,6 +7592,8 @@ class GUIEngine:
                 ("1 AT HUE 60 SAT 100 VAL 70", "Full HSV control — hue, saturation, and value (brightness)"),
                 ("1 AT CT 3200",          "Set colour from color temperature in Kelvin (1000–10000K) — warm to cool"),
                 ("1 AT CT 5600",          "Daylight-balanced white (5600K)"),
+                ("1 AT FLIP PAN",         "Invert pan: new = 255 − current (mirror for symmetric rigs)"),
+                ("1 AT FLIP R",           "Invert red channel value"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -17363,6 +17377,19 @@ if STUDIO_HEADLESS:
                prog.data.get('1.1', {}).get('red') == 255)
         _check("CT 2700 (warm) sets blue < 200",
                (prog.data.get('1.1', {}).get('blue') or 0) < 200)
+        prog.clear_programmer()
+
+        # ── FLIP CHANNEL TESTS ────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT R 60")           # set red to 60
+        run_command("AT FLIP R")         # invert: 255 - 60 = 195
+        _check("AT FLIP R inverts red channel",
+               prog.data.get('1.1', {}).get('red') == 195)
+        run_command("AT R 0")
+        run_command("AT FLIP R")         # 255 - 0 = 255
+        _check("AT FLIP R on 0 gives 255",
+               prog.data.get('1.1', {}).get('red') == 255)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
