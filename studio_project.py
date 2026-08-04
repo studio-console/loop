@@ -1314,6 +1314,31 @@ class Programmer:
                     self.data.setdefault(sfid, {})[ch] = 255 - int(cur)
             return
 
+        # CLEAR [<ch>] — remove programmer values for the selection (all or one channel)
+        if tokens[0] == 'CLEAR':
+            ch = _CH.get(tokens[1]) if len(tokens) >= 2 else None
+            if len(tokens) >= 2 and not ch:
+                # Unknown channel name — ignore silently so CLEAR without a ch arg still works
+                pass
+            self._push_undo()
+            if ch:
+                # Remove only this channel from each sub-fixture
+                for sub in self._get_sub_selection():
+                    sfid = str(sub.fixture_id)
+                    if sfid in self.data:
+                        self.data[sfid].pop(ch, None)
+                        if not self.data[sfid]:
+                            del self.data[sfid]
+            else:
+                # Remove all channels for master + all subs in selection
+                for f in self.selection:
+                    fid = str(f.fixture_id)
+                    self.data.pop(fid, None)
+                    if isinstance(f, MasterFixture):
+                        for sub in f.all_subs():
+                            self.data.pop(str(sub.fixture_id), None)
+            return
+
         if tokens[0] == 'FULL':
             self.set_dimmer(100)
             return
@@ -7711,6 +7736,8 @@ class GUIEngine:
                 ("1 THRU 6 AT INVERT R",   "Invert each fixture's red: new = 255 − current (complements the colour)"),
                 ("1 THRU 6 AT SCALE R 50", "Scale each fixture's red by 50% (halve); >100% amplifies, clamped to 255"),
                 ("1 THRU 6 AT WOBBLE R 20","Add independent random ±20 jitter to each fixture's red (organic variation)"),
+                ("1 THRU 3 AT CLEAR R",   "Remove red channel from fixtures 1-3 in the programmer (keeps other channels)"),
+                ("1 THRU 3 AT CLEAR",     "Remove all programmer values for fixtures 1-3 (targeted partial-programmer clear)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -18530,6 +18557,19 @@ if STUDIO_HEADLESS:
                all(v is not None and 0 <= v <= 255 for v in _wb_vals))
         _check("AT WOBBLE R values are near the seed (within 50)",
                all(v is not None and abs(v - 128) <= 50 for v in _wb_vals))
+        prog.clear_programmer()
+
+        # ── AT CLEAR ──────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT R 200 G 100")   # fixture 1: red=200, green=100
+        run_command("1 AT CLEAR R")       # remove only red
+        _ac_r = prog.data.get("1.1", {}).get('red')
+        _ac_g = prog.data.get("1.1", {}).get('green')
+        _check("AT CLEAR R removes red from programmer", _ac_r is None)
+        _check("AT CLEAR R leaves other channels intact", _ac_g == 100)
+        run_command("1 AT CLEAR")         # remove all channels for fixture 1
+        _ac_all = prog.data.get("1.1", {})
+        _check("AT CLEAR (no ch) removes all channels for selection", not _ac_all)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
