@@ -874,7 +874,8 @@ class Programmer:
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
-                             'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP', 'MIRROR'}
+                             'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP', 'MIRROR',
+                             'INVERT'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1271,6 +1272,18 @@ class Programmer:
                 self._push_undo()
                 for sub in subs:
                     self.data.setdefault(str(sub.fixture_id), {})[ch] = int(round(target))
+            return
+
+        # INVERT <ch> — flip each sub's channel value: new = 255 - current
+        if tokens[0] == 'INVERT' and len(tokens) >= 2:
+            ch = _CH.get(tokens[1])
+            if ch:
+                subs = self._get_sub_selection()
+                self._push_undo()
+                for sub in subs:
+                    sfid = str(sub.fixture_id)
+                    cur = self.data.get(sfid, {}).get(ch, 0)
+                    self.data.setdefault(sfid, {})[ch] = 255 - int(cur)
             return
 
         if tokens[0] == 'FULL':
@@ -7667,6 +7680,7 @@ class GUIEngine:
                 ("1 THRU 6 AT CLAMP R 50 200", "Restrict each fixture's red to the range 50–200 (clamps values outside)"),
                 ("1 THRU 6 AT STEP R 10",   "Staircase red: each fixture adds 10 more than the previous (1→+0, 2→+10, ...)"),
                 ("1 THRU 6 AT MIRROR R",    "Mirror red across selection: fixture 1 ↔ fixture 6, fixture 2 ↔ fixture 5, ..."),
+                ("1 THRU 6 AT INVERT R",   "Invert each fixture's red: new = 255 − current (complements the colour)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -7819,6 +7833,7 @@ class GUIEngine:
                 ("FADER SWAP 1 2",          "Swap the cuestacks on faders 1 and 2"),
                 ("FADER 1 INFO",            "Detailed status of fader 1: level, priority, rate, buttons, cuestack, current cue"),
                 ("FADER 1 CLEAR",           "Stop fader 1 and reset its cuestack to 'not started' (position resets to top)"),
+                ("FADER ALL CLEAR",         "Stop every fader and reset all cuestack positions to the start"),
                 ("FADER 1 LABEL Main Show", "Set a human-readable label on fader 1 (shown in LIST FADER)"),
                 ("FADER 1 LABEL",           "Clear the label on fader 1"),
                 ("RELEASE 2",               "Stop fader 2"),
@@ -13257,6 +13272,16 @@ def run_command(cmd_str):
         name_b = ex_b.cuestack.name if ex_b.cuestack else "(empty)"
         return f"Swapped fader {fa} ↔ fader {fb}  ({name_a} / {name_b})"
 
+    # ── FADER ALL CLEAR — stop and reset every fader at once ──────
+    if t0 in ('FADER', 'EXEC') and len(tokens) >= 3 and tokens[1] == 'ALL' and tokens[2].upper() == 'CLEAR':
+        cleared = 0
+        for ex in executor_pool.executors.values():
+            ex.stop()
+            if ex.cuestack:
+                ex.cuestack.current = None
+            cleared += 1
+        return f"All {cleared} fader(s) cleared"
+
     # ── EXEC <n> GO / BACK / STOP ────────────────────────────
     if t0 in ('FADER', 'EXEC') and len(tokens) >= 2:
         try:
@@ -17746,6 +17771,14 @@ if STUDIO_HEADLESS:
             _check("FADER CLEAR resets cuestack position to None", _clr_cs.current is None)
             _check("FADER CLEAR returns confirmation", "cleared" in r_fc or "reset" in r_fc)
 
+        # FADER ALL CLEAR
+        if _clr_cs:
+            _clr_cs.current = 2  # set a position to confirm it gets reset
+        r_fac = run_command("FADER ALL CLEAR")
+        _check("FADER ALL CLEAR returns 'cleared' confirmation", "cleared" in r_fac)
+        _check("FADER ALL CLEAR resets position of cuestack in fader 1",
+               _clr_cs is None or _clr_cs.current is None)
+
         # LOAD SHOW must reload OSC targets and FX defaults, not just leave
         # the previous show's live values in place — same primitives
         # load_show_from() now calls (osc._clients.clear() + load_osc_targets,
@@ -18021,6 +18054,17 @@ if STUDIO_HEADLESS:
                _mir_r1 == 200)
         _check("AT MIRROR R middle fixture gets its own mirror (fixture 3 gets fixture 1's value)",
                _mir_r3 == 10)
+        prog.clear_programmer()
+
+        # ── AT INVERT ─────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT R 100")   # fixture 1 red = 100
+        run_command("2 AT R 0")     # fixture 2 red = 0
+        run_command("1 THRU 2 AT INVERT R")
+        _inv_r1 = prog.data.get("1.1", {}).get('red')
+        _inv_r2 = prog.data.get("2.1", {}).get('red')
+        _check("AT INVERT R: 100 → 155 (255-100)", _inv_r1 == 155)
+        _check("AT INVERT R: 0 → 255 (255-0)",     _inv_r2 == 255)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
