@@ -7877,6 +7877,7 @@ class GUIEngine:
                 ("STATUS",                "Console overview: GM, selection, active faders, FX"),
                 ("CUES / STACK / LIST",   "Show all cues in active cuestack with fade times"),
                 ("LIST CUESTACKS",        "List all recorded cuestacks and cue counts"),
+                ("LIST NOTES",            "List all cuelist and cue notes set in the show — quick production overview"),
                 ("LIST CUES",             "List all cues in the active cuestack with fade times"),
                 ("LIST CUES CS 2",        "List cues in cuestack 2 specifically"),
                 ("LIST COLOR",            "List all color presets with RGB sample"),
@@ -7992,6 +7993,7 @@ class GUIEngine:
                 ("FADER 1 TIME OFF",        "Remove fader 1 time override"),
                 ("FADER 1 TIMELOCK OFF",    "Lock cuestack on fader 1 to its own times"),
                 ("FADER 1 TIMELOCK ON",     "Re-enable fader time override for cuestack"),
+                ("CS 1 CLEAR",              "Delete all cues from cuestack 1 — keeps the slot and name, ready to re-record"),
                 ("CS 1 BOUNCE ON",          "CS 1: ping-pong — reverse direction at last/first cue instead of looping"),
                 ("CS 1 BOUNCE OFF",         "CS 1: restore normal forward loop (default)"),
                 ("FADER 1 BOUNCE ON",       "Same as CS BOUNCE ON but addressed through the fader slot"),
@@ -13501,6 +13503,17 @@ def run_command(cmd_str):
             save_show()
             return (f"CS {n} '{cs.name}': compressed — "
                     f"{len(ordered)} cues renumbered 1–{len(ordered)}")
+        # CS n CLEAR — delete all cues from cuestack n (keeps the slot and name)
+        if len(tokens) >= 3 and tokens[2].upper() == 'CLEAR':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            count = len(cs.cues)
+            cs.cues.clear()
+            cs.current = None
+            save_show()
+            return f"CS {n} '{cs.name}': {count} cue(s) cleared (cuestack kept)"
+
         # CS n NOTE [text] — view or set a production note on this cuestack
         if len(tokens) >= 3 and tokens[2].upper() == 'NOTE':
             cs = cuestack_pool.get(n)
@@ -16356,9 +16369,24 @@ def run_command(cmd_str):
             return "\n".join(lines)
         if sub == 'MACRO':
             return run_command("MACRO LIST")
+        if sub in ('NOTES', 'NOTE'):
+            lines = []
+            for sid in sorted(cuestack_pool.stacks):
+                cs = cuestack_pool.stacks[sid]
+                cs_note = getattr(cs, 'note', '')
+                cue_notes = [(num, cs.cues[num].note)
+                             for num in cs._sorted_cue_numbers()
+                             if getattr(cs.cues[num], 'note', '')]
+                if cs_note or cue_notes:
+                    lines.append(f"CS {sid} '{cs.name}':" + (f"  {cs_note}" if cs_note else ""))
+                    for num, nt in cue_notes:
+                        lines.append(f"    Cue {num:.0f}: {nt}")
+            if not lines:
+                return "No notes set on any cuestack or cue"
+            return "\n".join(lines)
         return (f"LIST: unknown sub-command '{tokens[1]}' — "
                 "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
-                "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS")
+                "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS, NOTES")
 
     # ── FIXTURE INFO <n> — detailed per-fixture status ──────────────────────────
     # FIXTURE SWAP <a> <b> — exchange programmer values between two fixtures
@@ -18962,6 +18990,43 @@ if STUDIO_HEADLESS:
         run_command(f"CS {_bcs_id} BOUNCE OFF")
         _check("CS BOUNCE OFF sets .bounce = False", _bcs.bounce is False)
         cuestack_pool.stacks.pop(_bcs_id, None)
+
+        # ── CS CLEAR ──────────────────────────────────────────────────────────
+        _cc_id = 103
+        cuestack_pool.create(_cc_id, "ClearTest")
+        _cc = cuestack_pool.get(_cc_id)
+        _cc.cues.clear()
+        prog.data["1"] = {"dim": 0.5}
+        _cc.cues[1.0] = Cue(1.0, "X"); _cc.cues[1.0].record(prog)
+        _cc.cues[2.0] = Cue(2.0, "Y"); _cc.cues[2.0].record(prog)
+        prog.data.clear()
+        _cc.current = 1.0
+        _check("CS CLEAR: setup has 2 cues", len(_cc.cues) == 2)
+        _r_clear_cs = run_command(f"CS {_cc_id} CLEAR")
+        _check("CS CLEAR: removes all cues", len(_cc.cues) == 0)
+        _check("CS CLEAR: resets current to None", _cc.current is None)
+        _check("CS CLEAR: returns confirmation", "cleared" in _r_clear_cs.lower())
+        cuestack_pool.stacks.pop(_cc_id, None)
+
+        # ── LIST NOTES ────────────────────────────────────────────────────────
+        # Set a cuestack note and cue note, confirm LIST NOTES shows both
+        _ln_cs = cuestack_pool.get(1)
+        if _ln_cs:
+            _ln_orig_note = getattr(_ln_cs, 'note', '')
+            _ln_cs.note = "ListNotesTest"
+            _cue1 = _ln_cs.cues.get(1.0) or next(iter(_ln_cs.cues.values()), None)
+            _orig_cue_note = ""
+            if _cue1:
+                _orig_cue_note = getattr(_cue1, 'note', '')
+                _cue1.note = "CueNoteTest"
+            _ln_result = run_command("LIST NOTES")
+            _check("LIST NOTES: includes cuestack note", "ListNotesTest" in _ln_result)
+            if _cue1:
+                _check("LIST NOTES: includes cue note", "CueNoteTest" in _ln_result)
+            _ln_cs.note = _ln_orig_note
+            if _cue1:
+                _cue1.note = _orig_cue_note
+        _ln_empty = run_command("LIST NOTES")
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
