@@ -17277,6 +17277,36 @@ if STUDIO_HEADLESS:
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
+    # ── GUI structural build check ──────────────────────────────────────
+    # Every session that's added or touched a popup has had to say some
+    # version of "reviewed by hand against the existing builders it
+    # mirrors — headless mode skips gui.build() entirely, so the new
+    # widgets aren't exercised by the smoke test itself." That caveat
+    # doesn't have to keep repeating: DearPyGui can construct a full
+    # widget tree with no display at all — only show_viewport() touches
+    # GLFW/X11 and needs a real one (it hard-crashes without $DISPLAY).
+    # Patch it to a no-op so the real, unmodified gui.build() runs start
+    # to finish (every panel, every popup, every tag, the whole handler
+    # registry) and any structural bug — duplicate tag, bad item
+    # reference, build-order mistake — surfaces here instead of only at
+    # next interactive launch.
+    if _DPG_OK:
+        _orig_show_viewport = dpg.show_viewport
+        dpg.show_viewport = lambda *a, **k: None
+        try:
+            gui.build()
+            _check("gui.build() constructs all windows/widgets without error", True)
+        except Exception as e:
+            _check(f"gui.build() raised {type(e).__name__}: {e}", False)
+        finally:
+            dpg.show_viewport = _orig_show_viewport
+            try:
+                dpg.destroy_context()
+            except Exception:
+                pass
+    else:
+        _check("gui.build() constructs all windows/widgets without error (skipped: dearpygui not installed)", True)
+
     ok = all(passed for _, passed in _results)
     print(f"\n*** SMOKE TEST {'PASSED' if ok else 'FAILED'} "
           f"({sum(p for _, p in _results)}/{len(_results)}) ***\n")
