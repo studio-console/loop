@@ -7926,6 +7926,9 @@ class GUIEngine:
                 ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
                 ("PROGRAMMER SHOW",       "Print a human-readable dump of all programmer values (fixture names + channels)"),
                 ("PROGRAMMER STATS",      "Show how many fixtures/sub-fixtures and channels are active in programmer"),
+                ("PROGRAMMER SAVE 1 Pre-show", "Save current programmer values to session slot 1 (ephemeral — not in show file)"),
+                ("PROGRAMMER LOAD 1",     "Restore programmer values from session slot 1"),
+                ("PROGRAMMER SNAPSHOTS",  "List all saved programmer session snapshots"),
                 ("EXPORT PRESETS",        "Bundle colors/dims/fx/forms to preset_export_YYYYMMDD.json"),
                 ("EXPORT PRESETS colors", "Export only color presets"),
                 ("IMPORT PRESETS <file>", "Merge a preset bundle JSON into live pools"),
@@ -12014,6 +12017,7 @@ if not ShowFile.load_patch(patch):
     ShowFile.save_patch(patch)
 
 prog         = Programmer(patch)
+_prog_snapshots = {}  # { int slot: {"name": str, "data": dict} } — session-only
 group_pool   = GroupPool()
 color_pool   = ColorPool()
 dim_pool     = DimmerPool()
@@ -16912,6 +16916,41 @@ def run_command(cmd_str):
             lines.append("  (empty)")
         return "\n".join(lines)
 
+    # ── PROGRAMMER SAVE / LOAD / SNAPSHOTS ───────────────────────────────────
+    if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] == 'SAVE':
+        try:
+            slot = int(tokens[2])
+        except (IndexError, ValueError):
+            return "Usage: PROGRAMMER SAVE <n> [name]"
+        snap_name = _name_after(raw, 3) or f"Snapshot {slot}"
+        _prog_snapshots[slot] = {"name": snap_name, "data": copy.deepcopy(prog.data)}
+        ch_count = sum(len(v) for v in prog.data.values() if v)
+        return f"Programmer snapshot {slot} '{snap_name}' saved ({ch_count} param(s))"
+
+    if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] == 'LOAD':
+        try:
+            slot = int(tokens[2])
+        except (IndexError, ValueError):
+            return "Usage: PROGRAMMER LOAD <n>"
+        snap = _prog_snapshots.get(slot)
+        if not snap:
+            return f"Programmer snapshot {slot} not found"
+        prog._push_undo()
+        prog.data.clear()
+        prog.data.update(copy.deepcopy(snap["data"]))
+        ch_count = sum(len(v) for v in prog.data.values() if v)
+        return f"Programmer loaded from snapshot {slot} '{snap['name']}' ({ch_count} param(s))"
+
+    if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('SNAPSHOTS', 'SNAPS'):
+        if not _prog_snapshots:
+            return "No programmer snapshots saved"
+        lines = ["Programmer snapshots:"]
+        for sl in sorted(_prog_snapshots):
+            s = _prog_snapshots[sl]
+            ch = sum(len(v) for v in s["data"].values() if v)
+            lines.append(f"  [{sl}] {s['name']}  ({ch} param(s))")
+        return "\n".join(lines)
+
     # ── PROGRAMMER STATS ──────────────────────────────────────────────────────
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('STATS', 'STATUS', 'INFO'):
         m_count   = sum(1 for k in prog.data if '.' not in k and prog.data[k])
@@ -17085,6 +17124,21 @@ if STUDIO_HEADLESS:
         r_ps_empty = run_command("PROGRAMMER STATS")
         _check("PROGRAMMER STATS shows 0 params when clear",
                "Total params    : 0" in r_ps_empty or "0" in r_ps_empty)
+
+        # PROGRAMMER SAVE / LOAD
+        prog.clear_programmer()
+        run_command("1 AT R 150 G 80")    # set some values
+        r_psnap = run_command("PROGRAMMER SAVE 5 TestSnap")
+        _check("PROGRAMMER SAVE returns confirmation", "saved" in r_psnap.lower())
+        _check("PROGRAMMER SAVE stores snapshot", 5 in _prog_snapshots)
+        prog.clear_programmer()           # wipe programmer
+        _check("PROGRAMMER CLEAR removes values", not prog.data.get("1.1"))
+        r_pload = run_command("PROGRAMMER LOAD 5")
+        _check("PROGRAMMER LOAD restores values", prog.data.get("1.1", {}).get('red') == 150)
+        _check("PROGRAMMER LOAD returns confirmation", "loaded" in r_pload.lower())
+        r_psnaps = run_command("PROGRAMMER SNAPSHOTS")
+        _check("PROGRAMMER SNAPSHOTS lists the saved slot", "TestSnap" in r_psnaps)
+        prog.clear_programmer()
 
         # PROGRAMMER SHOW
         run_command("1 AT R 200")
