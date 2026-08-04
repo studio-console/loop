@@ -1253,6 +1253,20 @@ class Programmer:
 
         # CLAMP <ch> <lo> <hi>  — limit each sub's channel value to [lo, hi]
         if tokens[0] == 'CLAMP' and len(tokens) >= 4:
+            # AT CLAMP DIM <lo%> <hi%> — clamp master dimmer (0–1) using percent range
+            if tokens[1] == 'DIM':
+                lo_n = _parse_num(tokens[2], lo=0.0, hi=100.0)
+                hi_n = _parse_num(tokens[3], lo=0.0, hi=100.0)
+                if lo_n is not None and hi_n is not None:
+                    lo_f = min(lo_n, hi_n) / 100.0
+                    hi_f = max(lo_n, hi_n) / 100.0
+                    masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                    self._push_undo()
+                    for master in masters:
+                        fid = str(master.fixture_id)
+                        cur = self.data.get(fid, {}).get('dim', 0.0)
+                        self.data.setdefault(fid, {})['dim'] = max(lo_f, min(hi_f, float(cur)))
+                return
             ch = _CH.get(tokens[1])
             lo_n = _parse_num(tokens[2], lo=0.0, hi=255.0)
             hi_n = _parse_num(tokens[3], lo=0.0, hi=255.0)
@@ -7815,6 +7829,7 @@ class GUIEngine:
                 ("1 THRU 6 AT DARKEST R",   "Stamp the lowest red value currently in selection to all fixtures"),
                 ("1 THRU 6 AT AVERAGE R",   "Stamp the mean red value across selection to all fixtures"),
                 ("1 THRU 6 AT CLAMP R 50 200", "Restrict each fixture's red to the range 50–200 (clamps values outside)"),
+                ("1 THRU 6 AT CLAMP DIM 20 80", "Clamp master dimmer to the range 20%–80% (lo/hi in percent)"),
                 ("1 THRU 6 AT STEP R 10",   "Staircase red: each fixture adds 10 more than the previous (1→+0, 2→+10, ...)"),
                 ("1 THRU 6 AT MIRROR R",    "Mirror red across selection: fixture 1 ↔ fixture 6, fixture 2 ↔ fixture 5, ..."),
                 ("1 THRU 6 AT INVERT R",   "Invert each fixture's red: new = 255 − current (complements the colour)"),
@@ -18961,6 +18976,18 @@ if STUDIO_HEADLESS:
         _check("AT CLAMP R clamps below-lo value up to lo (50)", _cl_vals[0] == 50)
         _check("AT CLAMP R leaves in-range value unchanged (100)", _cl_vals[1] == 100)
         _check("AT CLAMP R clamps above-hi value down to hi (200)", _cl_vals[2] == 200)
+
+        # AT CLAMP DIM — clamp master dimmer using percent range
+        prog.clear_programmer()
+        run_command("1 AT DIM 10")   # 10% — below lo
+        run_command("2 AT DIM 50")   # 50% — in range
+        run_command("3 AT DIM 90")   # 90% — above hi
+        run_command("1 THRU 3 AT CLAMP DIM 20 80")
+        _cd_dims = [prog.data.get(str(i), {}).get('dim') for i in range(1, 4)]
+        _check("AT CLAMP DIM: 10% → 20% (clamped up to lo)", abs((_cd_dims[0] or 0) - 0.2) < 0.01)
+        _check("AT CLAMP DIM: 50% unchanged (in range)", abs((_cd_dims[1] or 0) - 0.5) < 0.01)
+        _check("AT CLAMP DIM: 90% → 80% (clamped down to hi)", abs((_cd_dims[2] or 0) - 0.8) < 0.01)
+        prog.clear_programmer()
 
         # ── AT STEP ───────────────────────────────────────────────────────────
         prog.clear_programmer()
