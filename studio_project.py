@@ -874,7 +874,7 @@ class Programmer:
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
-                             'BRIGHTEST', 'DARKEST', 'AVERAGE'}
+                             'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1203,6 +1203,20 @@ class Programmer:
                     sfid = str(sub.fixture_id)
                     cur = self.data.get(sfid, {}).get(ch, 0)
                     self.data.setdefault(sfid, {})[ch] = max(0, min(255, 255 - int(cur)))
+            return
+
+        # CLAMP <ch> <lo> <hi>  — limit each sub's channel value to [lo, hi]
+        if tokens[0] == 'CLAMP' and len(tokens) >= 4:
+            ch = _CH.get(tokens[1])
+            lo_n = _parse_num(tokens[2], lo=0.0, hi=255.0)
+            hi_n = _parse_num(tokens[3], lo=0.0, hi=255.0)
+            if ch and lo_n is not None and hi_n is not None:
+                lo_v, hi_v = int(min(lo_n, hi_n)), int(max(lo_n, hi_n))
+                self._push_undo()
+                for sub in self._get_sub_selection():
+                    sfid = str(sub.fixture_id)
+                    cur = self.data.get(sfid, {}).get(ch, 0)
+                    self.data.setdefault(sfid, {})[ch] = max(lo_v, min(hi_v, int(cur)))
             return
 
         # BRIGHTEST / DARKEST / AVERAGE — stamp max/min/mean across selection
@@ -7639,6 +7653,7 @@ class GUIEngine:
                 ("1 THRU 6 AT BRIGHTEST R", "Stamp the highest red value currently in selection to all fixtures"),
                 ("1 THRU 6 AT DARKEST R",   "Stamp the lowest red value currently in selection to all fixtures"),
                 ("1 THRU 6 AT AVERAGE R",   "Stamp the mean red value across selection to all fixtures"),
+                ("1 THRU 6 AT CLAMP R 50 200", "Restrict each fixture's red to the range 50–200 (clamps values outside)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -17639,6 +17654,17 @@ if STUDIO_HEADLESS:
         _avg_vals = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 4)]
         _check("AT AVERAGE R stamps mean value (100) to all subs",
                all(v == 100 for v in _avg_vals if v is not None))
+
+        # ── AT CLAMP ──────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT R 20")   # below lo
+        run_command("2 AT R 100")  # in range
+        run_command("3 AT R 240")  # above hi
+        run_command("1 THRU 3 AT CLAMP R 50 200")
+        _cl_vals = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 4)]
+        _check("AT CLAMP R clamps below-lo value up to lo (50)", _cl_vals[0] == 50)
+        _check("AT CLAMP R leaves in-range value unchanged (100)", _cl_vals[1] == 100)
+        _check("AT CLAMP R clamps above-hi value down to hi (200)", _cl_vals[2] == 200)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
