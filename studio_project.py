@@ -3733,6 +3733,8 @@ class OutputState:
         self.direct_dmx       = {}    # {universe: {address(1-512): value(0-255)}}
         self.freeze_mode      = False  # when True, frozen_dmx is output verbatim
         self.frozen_dmx       = {}    # {universe: tuple(512)} — snapshot at FREEZE time
+        self.solo_mode        = False  # when True, only solo_fids get output
+        self.solo_fids        = set() # set of master fixture_id ints to pass through
         self._lock            = threading.Lock()
 
     def link_programmer(self, programmer):
@@ -3894,6 +3896,9 @@ class OutputState:
                                 val = base_val
                             ch_resolved[ch] = max(0, min(255, int(val)))
 
+                    # SOLO: if active, zero out non-solo fixtures
+                    _solo_suppress = (self.solo_mode and
+                                      master.fixture_id not in self.solo_fids)
                     for output in sub.outputs:
                         if output['universe'] != universe:
                             continue
@@ -3901,7 +3906,7 @@ class OutputState:
                         for offset, ch in enumerate(sub.profile.channels):
                             if addr + offset > 511:
                                 break
-                            dmx[addr + offset] = ch_resolved.get(ch, 0)
+                            dmx[addr + offset] = 0 if _solo_suppress else ch_resolved.get(ch, 0)
             # Direct DMX overrides — highest priority, applied last
             for addr1, val in self.direct_dmx.get(universe, {}).items():
                 if 1 <= addr1 <= 512:
@@ -7627,6 +7632,8 @@ class GUIEngine:
                 ("LIVE",                  "Re-enable programmer in DMX output (cancel BLIND)"),
                 ("FREEZE",                "Lock DMX output at current look — cue/programmer changes won't affect output"),
                 ("FREEZE OFF",            "Release FREEZE — live output resumes"),
+                ("SOLO",                  "Solo selected fixtures — all others zeroed on output (select first)"),
+                ("SOLO OFF",              "Release SOLO — all fixtures restore normal output"),
                 ("HIGHLIGHT / HL",        "Selected fixtures go full white at 100% — HL OFF to cancel; hl button in header"),
                 ("BLACKOUT",              "Cut all DMX output instantly (BLACKOUT OFF to restore)"),
                 ("BLACKOUT OFF  / BBO",   "Same as BLACKOUT — BBO is a one-key shorthand"),
@@ -14091,6 +14098,20 @@ def run_command(cmd_str):
         output_state.freeze_mode = True
         return f"FREEZE ON — output locked at current look ({len(univs)} universe(s))"
 
+    if t0 == 'SOLO':
+        off = len(tokens) > 1 and tokens[1] in ('OFF', 'RELEASE')
+        if off or (output_state.solo_mode and len(tokens) == 1):
+            output_state.solo_mode = False
+            output_state.solo_fids.clear()
+            return "SOLO OFF — all fixtures restored to normal output"
+        output_state.solo_mode = True
+        output_state.solo_fids = {
+            f.fixture_id for f in prog.selection
+            if isinstance(f, MasterFixture)
+        }
+        fids = sorted(output_state.solo_fids)
+        return f"SOLO ON — only fixtures {fids} pass through; others zeroed"
+
     if t0 == 'HIGHLIGHT' or (t0 == 'HL' and len(tokens) <= 2):
         off = len(tokens) > 1 and tokens[1] == 'OFF'
         on  = len(tokens) > 1 and tokens[1] == 'ON'
@@ -14385,10 +14406,12 @@ def run_command(cmd_str):
         blind = output_state.blind if output_state else False
         bbo   = (gm == 0.0)
         freeze = output_state.freeze_mode if output_state else False
+        solo   = output_state.solo_mode   if output_state else False
         lines.append(f"  Grand Master: {gm*100:.0f}%"
                      + ("  [BBO]" if bbo else "")
                      + ("  [BLIND]" if blind else "")
-                     + ("  [FREEZE]" if freeze else ""))
+                     + ("  [FREEZE]" if freeze else "")
+                     + ("  [SOLO]" if solo else ""))
         # Selection + programmer
         sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
         if sel_masters:
