@@ -873,7 +873,7 @@ class Programmer:
                              'GOBO', 'GOBO_ROT', 'GOBO2', 'GOBO2_ROT',
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
-                             'CONTROL', 'MACRO', 'FAN'}
+                             'CONTROL', 'MACRO', 'FAN', 'HUE'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1096,6 +1096,35 @@ class Programmer:
                                         self.disabled[sub_fid].pop(_fan_ch, None)
                                     sub.set_channel(_fan_ch, val)
                         self._print_programmer()
+            return
+
+        # HUE <0-360> [SAT <0-100>] [VAL <0-100>]  — set RGB from HSV
+        if tokens[0] == 'HUE':
+            try:
+                h = float(tokens[1]) % 360.0
+            except (IndexError, ValueError):
+                return
+            s = 100.0
+            v = 100.0
+            for j in range(2, len(tokens) - 1):
+                if tokens[j] == 'SAT':
+                    try: s = float(tokens[j + 1])
+                    except ValueError: pass
+                elif tokens[j] == 'VAL':
+                    try: v = float(tokens[j + 1])
+                    except ValueError: pass
+            h1, s1, v1 = h / 360.0, s / 100.0, v / 100.0
+            c = v1 * s1
+            x = c * (1 - abs((h1 * 6) % 2 - 1))
+            m = v1 - c
+            i = int(h1 * 6)
+            r1, g1, b1 = [(c,x,0),(x,c,0),(0,c,x),(0,x,c),(x,0,c),(c,0,x)][i % 6]
+            r = int(round((r1 + m) * 255))
+            g = int(round((g1 + m) * 255))
+            b = int(round((b1 + m) * 255))
+            self.set_channel('red', r)
+            self.set_channel('green', g)
+            self.set_channel('blue', b)
             return
 
         if tokens[0] == 'FULL':
@@ -7373,6 +7402,9 @@ class GUIEngine:
                 ("1 THRU 6 FAN DIM 0 100", "Fan dim from 0→100% linearly across selection"),
                 ("1 THRU 6 FAN R 0 255",   "Fan red channel 0→255 across selection"),
                 ("1 THRU 6 FAN PAN 0 200", "Fan pan position across selection"),
+                ("1 AT HUE 120",           "Set colour from hue (0–360°), full saturation and brightness"),
+                ("1 AT HUE 30 SAT 80",    "Hue + saturation (0–100%), full brightness"),
+                ("1 AT HUE 60 SAT 100 VAL 70", "Full HSV control — hue, saturation, and value (brightness)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -16311,6 +16343,24 @@ if STUDIO_HEADLESS:
         run_command("AT R +200")                  # clamp at 255
         _check("AT R +200 clamps to 255",
                prog.data.get('1.1', {}).get('red') == 255)
+        prog.clear_programmer()
+
+        # ── HUE COMMAND TESTS ─────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT HUE 0")       # pure red (hue=0°, S=100%, V=100%)
+        _check("HUE 0 sets red=255, green=0, blue=0",
+               prog.data.get('1.1', {}).get('red') == 255 and
+               prog.data.get('1.1', {}).get('green') == 0 and
+               prog.data.get('1.1', {}).get('blue') == 0)
+        run_command("AT HUE 120")     # pure green
+        _check("HUE 120 sets green=255",
+               prog.data.get('1.1', {}).get('green') == 255 and
+               prog.data.get('1.1', {}).get('red') == 0)
+        run_command("AT HUE 240")     # pure blue
+        _check("HUE 240 sets blue=255",
+               prog.data.get('1.1', {}).get('blue') == 255 and
+               prog.data.get('1.1', {}).get('red') == 0)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
