@@ -964,6 +964,20 @@ class Programmer:
                 i += 1
                 continue
 
+            # RANDOM <n>  — pick n fixtures at random from all patched
+            if token == 'RANDOM':
+                import random as _rand
+                _n = 1
+                if i + 1 < len(tokens) and tokens[i + 1].isdigit():
+                    _n = int(tokens[i + 1])
+                    i += 1
+                _pool = list(self.patch.all_fixtures())
+                _n = min(_n, len(_pool))
+                if _n > 0:
+                    selected += _rand.sample(_pool, _n)
+                i += 1
+                continue
+
             if (i + 1 < len(tokens) and tokens[i + 1] == 'THRU'
                     and i + 2 < len(tokens)):
 
@@ -994,6 +1008,14 @@ class Programmer:
                     )
                     i += 3
                     continue
+
+            # EVERY <n>  — keep every Nth fixture from accumulated selection so far
+            if token == 'EVERY' and i + 1 < len(tokens) and tokens[i + 1].isdigit():
+                n = int(tokens[i + 1])
+                if n > 1 and selected:
+                    selected = [f for idx, f in enumerate(selected) if idx % n == 0]
+                i += 2
+                continue
 
             fixture = self._parse_token_to_fixture(token)
             if fixture:
@@ -7386,6 +7408,8 @@ class GUIEngine:
                 ("EVEN",                  "Select even-numbered fixtures (2, 4, 6, …)"),
                 ("NEXT",                  "Select the next fixture after the current selection (wraps)"),
                 ("PREV",                  "Select the previous fixture before the current selection (wraps)"),
+                ("RANDOM 3",              "Randomly select 3 fixtures from all patched"),
+                ("1 THRU 12 EVERY 3",     "Select every 3rd fixture from the range (1, 4, 7, 10)"),
                 ("GRP 1  /  GROUP 1",     "Recall group (expands to all member fixtures)"),
                 ("1 + 3 + 5",             "Select multiple individual fixtures"),
             ]),
@@ -16377,6 +16401,16 @@ if STUDIO_HEADLESS:
         _fan_r = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 7)]
         _check("FAN R sets fixture 1 red to 0",   _fan_r[0] == 0)
         _check("FAN R sets fixture 6 red to 255",  _fan_r[5] == 255)
+        prog.clear_programmer()
+
+        # ── RANDOM / EVERY SELECTION TESTS ───────────────────────────────────
+        run_command("RANDOM 3")
+        _sel_m = [m for m in prog.selection if isinstance(m, MasterFixture)]
+        _check("RANDOM 3 selects exactly 3 master fixtures", len(_sel_m) == 3)
+        prog.clear_programmer()
+        run_command("1 THRU 6 EVERY 2")   # selects 1, 3, 5
+        _sel_m2 = [m.fixture_id for m in prog.selection if isinstance(m, MasterFixture)]
+        _check("1 THRU 6 EVERY 2 selects 1,3,5", _sel_m2 == [1, 3, 5])
         prog.clear_programmer()
 
         # ── NEXT/PREV FIXTURE NAVIGATION ──────────────────────────────────────
