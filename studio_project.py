@@ -7842,6 +7842,7 @@ class GUIEngine:
                 ("LOAD SHOW <name>",      "Restore a snapshot (cuestacks/presets reload live)"),
                 ("LIST SHOWS",            "List all saved show snapshots"),
                 ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
+                ("PROGRAMMER STATS",      "Show how many fixtures/sub-fixtures and channels are active in programmer"),
                 ("EXPORT PRESETS",        "Bundle colors/dims/fx/forms to preset_export_YYYYMMDD.json"),
                 ("EXPORT PRESETS colors", "Export only color presets"),
                 ("IMPORT PRESETS <file>", "Merge a preset bundle JSON into live pools"),
@@ -16435,6 +16436,25 @@ def run_command(cmd_str):
     if t0 == 'UNDO':
         return prog.undo()
 
+    # ── PROGRAMMER STATS ──────────────────────────────────────────────────────
+    if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('STATS', 'STATUS', 'INFO'):
+        m_count   = sum(1 for k in prog.data if '.' not in k and prog.data[k])
+        sub_count = sum(1 for k in prog.data if '.' in k and prog.data[k])
+        ch_total  = sum(len(v) for v in prog.data.values() if v)
+        sel_count = len(prog.selection)
+        lines = [
+            "Programmer:",
+            f"  Masters touched : {m_count}",
+            f"  Sub-fixtures    : {sub_count}",
+            f"  Total params    : {ch_total}",
+            f"  Selection       : {sel_count} fixture(s)",
+        ]
+        if prog.data:
+            active_fids = sorted(set(k.split('.')[0] for k in prog.data if prog.data[k]),
+                                 key=lambda x: int(x) if x.isdigit() else 0)
+            lines.append(f"  Active fixtures : {', '.join(active_fids)}")
+        return "\n".join(lines)
+
     # ── Default: programmer ───────────────────────────────────
     try:
         prog.execute(raw)
@@ -16561,6 +16581,19 @@ if STUDIO_HEADLESS:
             _check("FIXTURE INFO shows channel list", any(ch in r_fi for ch in _fi.profile.channels))
         r_fi_bad = run_command("FIXTURE INFO 999")
         _check("FIXTURE INFO rejects unknown fixture", "not patched" in r_fi_bad or "999" in r_fi_bad)
+
+        # PROGRAMMER STATS
+        prog.clear_programmer()
+        run_command("1 AT R 200")
+        run_command("2 AT R 100")
+        r_ps = run_command("PROGRAMMER STATS")
+        _check("PROGRAMMER STATS shows sub-fixture count", "Sub-fixtures" in r_ps)
+        _check("PROGRAMMER STATS shows total params > 0",
+               "Total params" in r_ps and "Total params    : 0" not in r_ps)
+        prog.clear_programmer()
+        r_ps_empty = run_command("PROGRAMMER STATS")
+        _check("PROGRAMMER STATS shows 0 params when clear",
+               "Total params    : 0" in r_ps_empty or "0" in r_ps_empty)
 
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
