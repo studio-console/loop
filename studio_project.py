@@ -7988,6 +7988,7 @@ class GUIEngine:
                 ("CUESTACK 2",              "Switch active fader to slot 2"),
                 ("ASSIGN CS 2 TO FADER 1",  "Wire cuestack 2 to fader 1"),
                 ("FADER 1 ASSIGN CS 2",     "Shorthand for ASSIGN CS 2 TO FADER 1"),
+                ("FADER 1 UNASSIGN",        "Detach the cuestack from fader 1 without deleting it (fader goes dark)"),
                 ("FADER SWAP 1 2",          "Swap the cuestacks on faders 1 and 2"),
                 ("FADER 1 INFO",            "Detailed status of fader 1: level, priority, rate, buttons, cuestack, current cue"),
                 ("FADER 1 CLEAR",           "Stop fader 1 and reset its cuestack to 'not started' (position resets to top)"),
@@ -13807,6 +13808,14 @@ def run_command(cmd_str):
             save_show()
             return (f"Fader {ex_n} label → '{label_text}'"
                     if label_text else f"Fader {ex_n} label cleared")
+        elif verb in ('UNASSIGN', 'DETACH'):
+            prev_cs = ex.cuestack
+            if not prev_cs:
+                return f"Fader {ex_n} has no cuestack assigned"
+            ex.stop()
+            ex.cuestack = None
+            save_show()
+            return f"Fader {ex_n}: unassigned (was '{prev_cs.name}')"
         elif verb == 'ASSIGN' and len(tokens) >= 5 and tokens[3].upper() == 'CS':
             try:
                 cs_n = int(tokens[4])
@@ -19218,6 +19227,19 @@ if STUDIO_HEADLESS:
             _r_fa_bad = run_command("FADER 15 ASSIGN CS 9999")
             _check("FADER ASSIGN CS: bad CS returns error",
                    "not found" in _r_fa_bad.lower())
+
+        # ── FADER UNASSIGN ────────────────────────────────────────────────────
+        # Assign CS 1 to fader 16, then UNASSIGN it
+        if cuestack_pool.get(1):
+            run_command("FADER 16 ASSIGN CS 1")
+            _fu_ex = executor_pool.get(16)
+            _check("FADER UNASSIGN: setup — cuestack assigned", _fu_ex.cuestack is not None)
+            _r_ua = run_command("FADER 16 UNASSIGN")
+            _check("FADER UNASSIGN: cuestack is None after unassign", _fu_ex.cuestack is None)
+            _check("FADER UNASSIGN: returns confirmation", "unassigned" in _r_ua.lower())
+            _r_ua_empty = run_command("FADER 16 UNASSIGN")
+            _check("FADER UNASSIGN: returns error when already empty",
+                   "no cuestack" in _r_ua_empty.lower())
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
