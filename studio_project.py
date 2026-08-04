@@ -873,7 +873,8 @@ class Programmer:
                              'GOBO', 'GOBO_ROT', 'GOBO2', 'GOBO2_ROT',
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
-                             'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP'}
+                             'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
+                             'BRIGHTEST', 'DARKEST'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1202,6 +1203,19 @@ class Programmer:
                     sfid = str(sub.fixture_id)
                     cur = self.data.get(sfid, {}).get(ch, 0)
                     self.data.setdefault(sfid, {})[ch] = max(0, min(255, 255 - int(cur)))
+            return
+
+        # BRIGHTEST / DARKEST — set channel to the max/min value already in programmer
+        # across all selected sub-fixtures, then stamp it to all of them.
+        if tokens[0] in ('BRIGHTEST', 'DARKEST') and len(tokens) >= 2:
+            ch = _CH.get(tokens[1])
+            if ch:
+                subs = self._get_sub_selection()
+                vals = [self.data.get(str(s.fixture_id), {}).get(ch, 0) for s in subs]
+                target = max(vals) if tokens[0] == 'BRIGHTEST' else min(vals)
+                self._push_undo()
+                for sub in subs:
+                    self.data.setdefault(str(sub.fixture_id), {})[ch] = int(target)
             return
 
         if tokens[0] == 'FULL':
@@ -7616,6 +7630,8 @@ class GUIEngine:
                 ("1 AT FLIP R",           "Invert red channel value"),
                 ("1 THRU 6 AT RANDOM R",  "Set each sub-fixture's red to an independent random value (scatter/sparkle)"),
                 ("1 THRU 6 AT RANDOM PAN MASTER", "One random value per fixture, applied to all its subs"),
+                ("1 THRU 6 AT BRIGHTEST R", "Stamp the highest red value currently in selection to all fixtures"),
+                ("1 THRU 6 AT DARKEST R",   "Stamp the lowest red value currently in selection to all fixtures"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -17536,6 +17552,23 @@ if STUDIO_HEADLESS:
         _grn_subs = [prog.data.get(f"1.{i}", {}).get('green') for i in range(1, 4)]
         _check("AT RANDOM G MASTER applies same value to all subs of a master",
                len(set(v for v in _grn_subs if v is not None)) == 1)
+
+        # ── AT BRIGHTEST / AT DARKEST ─────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT R 50")   # all subs of fixture 1 → red=50
+        run_command("2 AT R 200")  # all subs of fixture 2 → red=200
+        run_command("3 AT R 120")  # all subs of fixture 3 → red=120
+        run_command("1 THRU 3 AT BRIGHTEST R")  # max=200 → stamp to all
+        _bd_vals = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 4)]
+        _check("AT BRIGHTEST R stamps max value (200) to all subs",
+               all(v == 200 for v in _bd_vals if v is not None))
+        run_command("1 AT R 50")   # restore variety
+        run_command("2 AT R 200")
+        run_command("3 AT R 120")
+        run_command("1 THRU 3 AT DARKEST R")    # min=50 → stamp to all
+        _dk_vals = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 4)]
+        _check("AT DARKEST R stamps min value (50) to all subs",
+               all(v == 50 for v in _dk_vals if v is not None))
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
