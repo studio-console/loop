@@ -7724,6 +7724,7 @@ class GUIEngine:
                 ("GOTO 3",                  "Jump directly to cue 3 (active cuestack)"),
                 ("CUESTACK 2",              "Switch active fader to slot 2"),
                 ("ASSIGN CS 2 TO FADER 1",  "Wire cuestack 2 to fader 1"),
+                ("FADER SWAP 1 2",          "Swap the cuestacks on faders 1 and 2"),
                 ("RELEASE 2",               "Stop fader 2"),
                 ("RELEASE ALL",             "Stop all active faders"),
                 ("PRIORITY 2 HIGH",         "Set fader 2 to high priority (HI/NRM/LO)"),
@@ -13049,6 +13050,20 @@ def run_command(cmd_str):
         save_show()
         return f"CS {cs_n} assigned to fader {ex_n}  (saved)"
 
+    # ── FADER SWAP <n> <m> — swap cuestacks between two faders ──
+    if t0 == 'FADER' and len(tokens) >= 4 and tokens[1] == 'SWAP':
+        try:
+            fa, fb = int(tokens[2]), int(tokens[3])
+        except ValueError:
+            return "Usage: FADER SWAP <n> <m>"
+        ex_a = executor_pool.get(fa)
+        ex_b = executor_pool.get(fb)
+        ex_a.cuestack, ex_b.cuestack = ex_b.cuestack, ex_a.cuestack
+        save_show()
+        name_a = ex_a.cuestack.name if ex_a.cuestack else "(empty)"
+        name_b = ex_b.cuestack.name if ex_b.cuestack else "(empty)"
+        return f"Swapped fader {fa} ↔ fader {fb}  ({name_a} / {name_b})"
+
     # ── EXEC <n> GO / BACK / STOP ────────────────────────────
     if t0 in ('FADER', 'EXEC') and len(tokens) >= 2:
         try:
@@ -15058,11 +15073,15 @@ def run_command(cmd_str):
         bbo   = (gm == 0.0)
         freeze = output_state.freeze_mode if output_state else False
         solo   = output_state.solo_mode   if output_state else False
+        parked = bool(output_state.parked_fids) if output_state else False
+        rec_slot = _macro_recording.get("slot")
         lines.append(f"  Grand Master: {gm*100:.0f}%"
                      + ("  [BBO]" if bbo else "")
                      + ("  [BLIND]" if blind else "")
                      + ("  [FREEZE]" if freeze else "")
-                     + ("  [SOLO]" if solo else ""))
+                     + ("  [SOLO]" if solo else "")
+                     + ("  [PARK]" if parked else "")
+                     + (f"  [REC MACRO {rec_slot}]" if rec_slot is not None else ""))
         # Selection + programmer
         sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
         if sel_masters:
@@ -15099,9 +15118,12 @@ def run_command(cmd_str):
             return "No active cuestack"
         lines = [f"Cuestack {cs.stack_id} — {cs.name}  [fader {active_executor[0]}]"]
         for n in cs._sorted_cue_numbers():
-            c   = cs.cues[n]
-            cur = " ◀" if n == cs.current else ""
-            lines.append(f"  [{n:.0f}] {c.name}  Fade:{c.fade_time}s{cur}")
+            c      = cs.cues[n]
+            cur    = " ◀" if n == cs.current else ""
+            delay  = f"  Delay:{c.delay_time}s" if getattr(c, 'delay_time', 0.0) > 0 else ""
+            follow = f"  Follow:{c.follow_time:.1f}s" if getattr(c, 'follow_time', 0.0) > 0 else ""
+            note   = f"  [{c.note}]" if getattr(c, 'note', '') else ""
+            lines.append(f"  [{n:.0f}] {c.name}  Fade:{c.fade_time}s{delay}{follow}{note}{cur}")
         return "\n".join(lines)
 
     # ── Group recall / record ─────────────────────────────────
@@ -16370,6 +16392,17 @@ if STUDIO_HEADLESS:
                _prog_time['on'] == _pt_before['on'])
         _check("GO FADE restores prog_time.fade after fire",
                _prog_time['fade'] == _pt_before['fade'])
+
+        # FADER SWAP
+        _cs1_before = executor_pool.get(1).cuestack
+        _cs2_before = executor_pool.get(2).cuestack
+        r_swap = run_command("FADER SWAP 1 2")
+        _check("FADER SWAP swaps cs onto fader 1",
+               executor_pool.get(1).cuestack is _cs2_before)
+        _check("FADER SWAP swaps cs onto fader 2",
+               executor_pool.get(2).cuestack is _cs1_before)
+        # Swap back to restore state for remaining tests
+        run_command("FADER SWAP 1 2")
 
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
