@@ -7996,6 +7996,7 @@ class GUIEngine:
                 ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
                 ("PROGRAMMER SHOW",       "Print a human-readable dump of all programmer values (fixture names + channels)"),
                 ("PROGRAMMER STATS",      "Show how many fixtures/sub-fixtures and channels are active in programmer"),
+                ("PROGRAMMER CAPTURE",     "Pull the current live cue-layer output for selected fixtures into the programmer"),
                 ("PROGRAMMER SAVE 1 Pre-show", "Save current programmer values to session slot 1 (ephemeral — not in show file)"),
                 ("PROGRAMMER LOAD 1",     "Restore programmer values from session slot 1"),
                 ("PROGRAMMER SNAPSHOTS",  "List all saved programmer session snapshots"),
@@ -17149,6 +17150,31 @@ def run_command(cmd_str):
             lines.append("  (empty)")
         return "\n".join(lines)
 
+    # ── PROGRAMMER CAPTURE — pull live output into programmer for selected fixtures
+    if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] == 'CAPTURE':
+        sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
+        if not sel_masters:
+            return "PROGRAMMER CAPTURE: select fixtures first"
+        cue_merged = output_state._merged_cue_layer()
+        prog._push_undo()
+        captured = 0
+        for master in sel_masters:
+            fid = str(master.fixture_id)
+            cm = cue_merged.get(fid, {})
+            dim = cm.get('dim')
+            if dim is not None:
+                prog.data.setdefault(fid, {})['dim'] = float(dim)
+                captured += 1
+            for sub in master.all_subs():
+                sfid = str(sub.fixture_id)
+                cs_sub = cue_merged.get(sfid, {})
+                for ch in sub.profile.channels:
+                    val = cs_sub.get(ch)
+                    if val is not None:
+                        prog.data.setdefault(sfid, {})[ch] = int(val)
+                        captured += 1
+        return f"Captured {captured} param(s) from live output into programmer"
+
     # ── PROGRAMMER SAVE / LOAD / SNAPSHOTS ───────────────────────────────────
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] == 'SAVE':
         try:
@@ -17357,6 +17383,13 @@ if STUDIO_HEADLESS:
         r_ps_empty = run_command("PROGRAMMER STATS")
         _check("PROGRAMMER STATS shows 0 params when clear",
                "Total params    : 0" in r_ps_empty or "0" in r_ps_empty)
+
+        # PROGRAMMER CAPTURE
+        prog.clear_programmer()
+        run_command("1 THRU 3")           # select fixtures 1-3
+        r_cap = run_command("PROGRAMMER CAPTURE")
+        _check("PROGRAMMER CAPTURE returns confirmation", "Captured" in r_cap or "captured" in r_cap)
+        prog.clear_programmer()
 
         # PROGRAMMER SAVE / LOAD
         prog.clear_programmer()
