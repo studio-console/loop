@@ -7659,6 +7659,12 @@ class GUIEngine:
                 ("CLEAR DMX",              "Remove all direct DMX overrides (all universes)"),
                 ("CLEAR DMX UNIVERSE 2",   "Remove overrides on universe 2 only"),
             ]),
+            ("PATCH COMMANDS", [
+                ("LIST PATCH",             "List all patched fixtures with address and profile"),
+                ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350", "Add fixture 7 as Generic_Moving at U1 addr 350"),
+                ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350 NAME MovHead7", "Add with a custom name"),
+                ("PATCH REMOVE 7",         "Remove fixture 7 from patch (saves show)"),
+            ]),
             ("NETWORK / sACN", [
                 ("NETWORK STATUS",         "Show current sACN bind address and universe list"),
                 ("NETWORK BIND 192.168.1.161", "Set sACN bind address (saved; restart to apply)"),
@@ -14192,6 +14198,52 @@ def run_command(cmd_str):
             return "Usage: LOAD SHOW <name>  (use LIST SHOWS to see available saves)"
         name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
         return load_show_from(name)
+
+    # ── PATCH command-line ────────────────────────────────────
+    # PATCH ADD <id> <profile> UNIVERSE <u> AT <addr> [NAME <name>]
+    # PATCH REMOVE <id>
+    if t0 == 'PATCH' and len(tokens) >= 2:
+        sub = tokens[1]
+        if sub == 'ADD':
+            try:
+                fid = int(tokens[2])
+            except (IndexError, ValueError):
+                return "Usage: PATCH ADD <id> <profile> UNIVERSE <u> AT <addr> [NAME <name>]"
+            profile_name = tokens[3] if len(tokens) > 3 else None
+            if not profile_name:
+                return "PATCH ADD: profile name required"
+            univ = 1
+            addr = 1
+            name = f"Fixture {fid}"
+            if 'UNIVERSE' in tokens:
+                ui = tokens.index('UNIVERSE')
+                try: univ = int(tokens[ui + 1])
+                except (IndexError, ValueError): pass
+            if 'AT' in tokens:
+                ai = tokens.index('AT')
+                try: addr = int(tokens[ai + 1])
+                except (IndexError, ValueError): pass
+            if 'NAME' in tokens:
+                ni = tokens.index('NAME')
+                # NAME takes the rest of the token list joined
+                name = ' '.join(tokens[ni + 1:]) if ni + 1 < len(tokens) else name
+            if patch.get(fid):
+                return f"PATCH ADD: fixture {fid} already patched — PATCH REMOVE {fid} first"
+            m = patch.patch_fixture(fid, name, profile_name, univ, addr)
+            if m is None:
+                return f"PATCH ADD: profile '{profile_name}' not found"
+            save_show()
+            return f"Patched fixture {fid} '{name}' as {profile_name} U{univ}@{addr}"
+        if sub == 'REMOVE':
+            try:
+                fid = int(tokens[2])
+            except (IndexError, ValueError):
+                return "Usage: PATCH REMOVE <id>"
+            if fid not in patch.fixtures:
+                return f"PATCH REMOVE: fixture {fid} not patched"
+            del patch.fixtures[fid]
+            save_show()
+            return f"Removed fixture {fid} from patch"
 
     if t0 == 'LIST' and len(tokens) >= 2 and tokens[1] == 'SHOWS':
         return list_shows()
