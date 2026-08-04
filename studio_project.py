@@ -3758,7 +3758,18 @@ class OutputState:
 
     def get_dmx_for_universe(self, universe):
         if self.freeze_mode and universe in self.frozen_dmx:
-            return self.frozen_dmx[universe]
+            # FREEZE locks the *look*, not the master fader or a direct DMX
+            # override — BLACKOUT/MASTER must still be able to cut a frozen
+            # output (safety-critical: BLACKOUT is documented as "cut all
+            # output NOW" and must not be silently defeated by FREEZE), and
+            # a direct DMX override is documented as highest-priority/
+            # applied-last regardless of what else is happening.
+            gm = self.master_level
+            dmx = [int(v * gm) for v in self.frozen_dmx[universe]]
+            for addr1, val in self.direct_dmx.get(universe, {}).items():
+                if 1 <= addr1 <= 512:
+                    dmx[addr1 - 1] = max(0, min(255, int(val)))
+            return tuple(dmx)
         dmx = [0] * 512
         with self._lock:
             cue_merged = self._merged_cue_layer()
@@ -15891,6 +15902,25 @@ if STUDIO_HEADLESS:
         _check("BLACKOUT overrides HIGHLIGHT in DMX output", max(_dmx_bbo) == 0)
         run_command("BLACKOUT OFF")
         run_command("HIGHLIGHT OFF")
+
+        # FREEZE must not defeat BLACKOUT or a direct DMX override — real
+        # output computation, not just the flags. FREEZE snapshots a look;
+        # it must not be a way to disable the master safety cutoff.
+        run_command("ALL AT R 200 G 150 B 100")
+        run_command("FREEZE")
+        _dmx_frozen = output_state.get_dmx_for_universe(1)
+        _check("FREEZE snapshot holds the look", max(_dmx_frozen) > 0)
+        run_command("BLACKOUT")
+        _dmx_frozen_bbo = output_state.get_dmx_for_universe(1)
+        _check("BLACKOUT overrides FREEZE in DMX output", max(_dmx_frozen_bbo) == 0)
+        run_command("BLACKOUT OFF")
+        _dmx_frozen_restored = output_state.get_dmx_for_universe(1)
+        _check("FREEZE look restored after BLACKOUT OFF", _dmx_frozen_restored == _dmx_frozen)
+        run_command("DMX 1 42")
+        _dmx_frozen_override = output_state.get_dmx_for_universe(1)
+        _check("direct DMX override still applies during FREEZE", _dmx_frozen_override[0] == 42)
+        run_command("CLEAR DMX")
+        run_command("FREEZE OFF")
 
         # RECORD GROUP + recall — untested prior to this session
         run_command("1 THRU 3")

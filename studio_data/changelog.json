@@ -2,6 +2,18 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-08-04",
+      "summary": "Fixed a real safety bug: FREEZE silently defeated BLACKOUT and direct DMX overrides",
+      "details": [
+        "Roadmap re-check: all 7 established roadmap items (GUI polish, manual/glossary popup, changelog popup, executor FLASH-to-MIDI, Block 12 AI layer, MIDI mapping GUI, attribute pool panels) remain landed from prior sessions -- confirmed by reading the code, not just trusting past changelog entries. The last 9 commits (relative AT values, NEXT/PREV, FAN, HUE, RANDOM/EVERY N, direct DMX override + DMX command, FREEZE, SOLO, LOAD CUE) were never given changelog entries by the sessions that made them -- noting that gap here rather than backfilling nine separate historical entries after the fact.",
+        "Went looking for the next real bug the same way recent sessions have (asymmetric sibling code paths), focused on the newest, least-audited features: FREEZE and the direct DMX override layer, both added in the last 8 commits.",
+        "Found: OutputState.get_dmx_for_universe() returned self.frozen_dmx[universe] verbatim and immediately whenever freeze_mode was on (was line 3760), before master_level (grandmaster/MASTER/BLACKOUT) was even read and before the direct_dmx override loop that every other output path runs. Concretely: FREEZE -> BLACKOUT reported 'BLACKOUT ON -- all output cut' and set master_level to 0.0, but real DMX/sACN output kept transmitting the exact frozen look at full level, because BLACKOUT never touches freeze_mode/frozen_dmx and the frozen branch never looked at master_level at all. This is the same class of bug as the previously-fixed 'HIGHLIGHT bypassed grandmaster during BLACKOUT' issue, but more severe: BLACKOUT did nothing at all, not just one aspect of it. Also found the direct DMX override layer (documented at its own call site as 'highest priority, applied last') was equally silently defeated by FREEZE -- a technician's manual DMX patch-in via the DMX command had zero effect on real output the moment FREEZE was engaged, with no warning either way.",
+        "Fixed: the frozen branch now scales the frozen snapshot by the current master_level (so BLACKOUT/MASTER still cut/scale a frozen look in real time, exactly like the live-render path) and then re-applies direct_dmx overrides on top, matching the 'applied last' guarantee. FREEZE still locks the look itself (colours/dim baked into the snapshot don't change) -- only the master safety fader and manual overrides now correctly stay live during FREEZE, which is what BLACKOUT being an absolute safety cutoff requires.",
+        "Smoke test extended: exercises the real run_command() path end to end (FREEZE, then BLACKOUT, then BLACKOUT OFF, then a DMX override) and asserts against actual get_dmx_for_universe() output, not just the flags -- same verification style as the existing BLACKOUT-vs-HIGHLIGHT check. 4 new checks, 173/173 passing (169 previous + 4 new).",
+        "No schema or persisted-data changes -- pure fix to existing DMX render logic, fully backward compatible with existing shows. Verified with python3 -m py_compile and STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1; confirmed via git status that studio_data/*.json was untouched by the run."
+      ]
+    },
+    {
       "date": "2026-08-03",
       "summary": "feat: full attribute channel support \u2014 pan/tilt/gobo/zoom/focus/iris through programmer, cues, FX, and DMX output",
       "details": []
