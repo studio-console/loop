@@ -946,6 +946,24 @@ class Programmer:
                 i += 1
                 continue
 
+            if token in ('NEXT', 'PREV'):
+                _all = list(self.patch.all_fixtures())
+                if _all:
+                    _ids = [m.fixture_id for m in _all]
+                    _cur_ids = {m.fixture_id for m in self.selection
+                                if isinstance(m, MasterFixture)}
+                    if token == 'NEXT':
+                        _ref = max(_cur_ids) if _cur_ids else _ids[-1]
+                        _next_id = next((fid for fid in _ids if fid > _ref), _ids[0])
+                    else:
+                        _ref = min(_cur_ids) if _cur_ids else _ids[0]
+                        _next_id = next((fid for fid in reversed(_ids) if fid < _ref), _ids[-1])
+                    nxt = self.patch.get(_next_id)
+                    if nxt:
+                        selected.append(nxt)
+                i += 1
+                continue
+
             if (i + 1 < len(tokens) and tokens[i + 1] == 'THRU'
                     and i + 2 < len(tokens)):
 
@@ -7288,6 +7306,8 @@ class GUIEngine:
                 ("ALL",                   "Select every patched fixture"),
                 ("ODD",                   "Select odd-numbered fixtures (1, 3, 5, …)"),
                 ("EVEN",                  "Select even-numbered fixtures (2, 4, 6, …)"),
+                ("NEXT",                  "Select the next fixture after the current selection (wraps)"),
+                ("PREV",                  "Select the previous fixture before the current selection (wraps)"),
                 ("GRP 1  /  GROUP 1",     "Recall group (expands to all member fixtures)"),
                 ("1 + 3 + 5",             "Select multiple individual fixtures"),
             ]),
@@ -16240,6 +16260,22 @@ if STUDIO_HEADLESS:
         _check("AT R +200 clamps to 255",
                prog.data.get('1.1', {}).get('red') == 255)
         prog.clear_programmer()
+
+        # ── NEXT/PREV FIXTURE NAVIGATION ──────────────────────────────────────
+        _all_ids = [m.fixture_id for m in patch.all_fixtures()]
+        if len(_all_ids) >= 2:
+            run_command(str(_all_ids[0]))     # select first fixture
+            run_command("NEXT")               # should advance to second
+            _sel_masters = [m.fixture_id for m in prog.selection
+                            if isinstance(m, MasterFixture)]
+            _check("NEXT advances selection to next fixture",
+                   _sel_masters == [_all_ids[1]])
+            run_command("PREV")               # should go back to first
+            _sel_masters2 = [m.fixture_id for m in prog.selection
+                             if isinstance(m, MasterFixture)]
+            _check("PREV retreats selection to previous fixture",
+                   _sel_masters2 == [_all_ids[0]])
+            prog.clear_programmer()
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
