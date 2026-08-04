@@ -875,7 +875,7 @@ class Programmer:
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
                              'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP', 'MIRROR',
-                             'INVERT', 'SCALE', 'WOBBLE'}
+                             'INVERT', 'SCALE', 'WOBBLE', 'NORMALIZE'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1300,6 +1300,20 @@ class Programmer:
                     sfid = str(sub.fixture_id)
                     cur = self.data.get(sfid, {}).get(ch, 0)
                     self.data.setdefault(sfid, {})[ch] = max(0, min(255, int(round(cur * factor))))
+            return
+
+        # NORMALIZE <ch> — scale all selected subs proportionally so the max = 255
+        if tokens[0] == 'NORMALIZE' and len(tokens) >= 2:
+            ch = _CH.get(tokens[1])
+            if ch:
+                subs = self._get_sub_selection()
+                vals = [self.data.get(str(s.fixture_id), {}).get(ch, 0) for s in subs]
+                peak = max(vals) if vals else 0
+                if peak > 0:
+                    self._push_undo()
+                    for sub, v in zip(subs, vals):
+                        # Use integer arithmetic to avoid float rounding drift
+                        self.data.setdefault(str(sub.fixture_id), {})[ch] = min(255, (v * 255 + peak // 2) // peak)
             return
 
         # INVERT <ch> — flip each sub's channel value: new = 255 - current
@@ -7736,6 +7750,7 @@ class GUIEngine:
                 ("1 THRU 6 AT INVERT R",   "Invert each fixture's red: new = 255 − current (complements the colour)"),
                 ("1 THRU 6 AT SCALE R 50", "Scale each fixture's red by 50% (halve); >100% amplifies, clamped to 255"),
                 ("1 THRU 6 AT WOBBLE R 20","Add independent random ±20 jitter to each fixture's red (organic variation)"),
+                ("1 THRU 6 AT NORMALIZE R","Scale red across selection so the highest value = 255 (preserves ratio, maximises brightness)"),
                 ("1 THRU 3 AT CLEAR R",   "Remove red channel from fixtures 1-3 in the programmer (keeps other channels)"),
                 ("1 THRU 3 AT CLEAR",     "Remove all programmer values for fixtures 1-3 (targeted partial-programmer clear)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
@@ -18570,6 +18585,17 @@ if STUDIO_HEADLESS:
         run_command("1 AT CLEAR")         # remove all channels for fixture 1
         _ac_all = prog.data.get("1.1", {})
         _check("AT CLEAR (no ch) removes all channels for selection", not _ac_all)
+        prog.clear_programmer()
+
+        # ── AT NORMALIZE ──────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT R 50")    # fixture 1 red = 50
+        run_command("2 AT R 100")   # fixture 2 red = 100
+        run_command("3 AT R 200")   # fixture 3 red = 200  (max)
+        run_command("1 THRU 3 AT NORMALIZE R")
+        _nrm_r = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 4)]
+        _check("AT NORMALIZE R: highest value becomes 255", _nrm_r[2] == 255)
+        _check("AT NORMALIZE R: proportional scale (50→64, 100→128)", _nrm_r[0] == 64 and _nrm_r[1] == 128)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
