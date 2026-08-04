@@ -7747,6 +7747,8 @@ class GUIEngine:
                 ("LIST DIM",             "List all dim presets with level"),
                 ("LIST GROUP",            "List all groups and member counts"),
                 ("GROUP 2 INFO",          "Show group 2's name and all member fixture IDs and names"),
+                ("GROUP 2 ADD 7",         "Add fixture 7 to group 2 (without re-recording the whole group)"),
+                ("GROUP 2 REMOVE 7",      "Remove fixture 7 from group 2"),
                 ("LIST FX",               "List all FX presets with waveform/channel"),
                 ("LIST RATE / SIZE / SPREAD / FORM", "List pool presets"),
                 ("LIST POSITION / GOBO / ZOOM / FOCUS / BEAM / CONTROL", "List attr pool presets"),
@@ -15479,6 +15481,40 @@ def run_command(cmd_str):
             gid = int(tokens[1])
         except ValueError:
             return f"GROUP: bad id '{tokens[1]}'"
+        # GROUP <n> ADD <fid> — add a master fixture to the group
+        if len(tokens) >= 4 and tokens[2].upper() == 'ADD':
+            g = group_pool.get(gid)
+            if not g:
+                return f"Group {gid} not found"
+            try:
+                add_fid = int(tokens[3])
+            except ValueError:
+                return f"GROUP ADD: bad fixture id '{tokens[3]}'"
+            if not patch.get(add_fid):
+                return f"GROUP ADD: fixture {add_fid} not in patch"
+            if any(entry[1] == add_fid for entry in g.members if isinstance(entry, tuple)):
+                return f"GROUP ADD: fixture {add_fid} already in group {gid}"
+            g.members.append(("master", add_fid))
+            save_show()
+            return f"Group {gid}: added fixture {add_fid} ({len(g.members)} member(s))"
+
+        # GROUP <n> REMOVE <fid> — remove a master fixture from the group
+        if len(tokens) >= 4 and tokens[2].upper() == 'REMOVE':
+            g = group_pool.get(gid)
+            if not g:
+                return f"Group {gid} not found"
+            try:
+                rm_fid = int(tokens[3])
+            except ValueError:
+                return f"GROUP REMOVE: bad fixture id '{tokens[3]}'"
+            before = len(g.members)
+            g.members = [e for e in g.members
+                         if not (isinstance(e, tuple) and e[1] == rm_fid)]
+            if len(g.members) == before:
+                return f"GROUP REMOVE: fixture {rm_fid} not in group {gid}"
+            save_show()
+            return f"Group {gid}: removed fixture {rm_fid} ({len(g.members)} member(s) remaining)"
+
         # GROUP <n> INFO/STATUS — show group members
         if len(tokens) >= 3 and tokens[2] in ('INFO', 'STATUS', 'SHOW'):
             g = group_pool.get(gid)
@@ -17159,6 +17195,20 @@ if STUDIO_HEADLESS:
         r_gi = run_command("GROUP 9 INFO")
         _check("GROUP INFO shows group name", "SmokeGroup" in r_gi)
         _check("GROUP INFO shows member count", "Members" in r_gi)
+
+        # GROUP ADD / GROUP REMOVE
+        _g9 = group_pool.get(9)
+        _g9_before = len(_g9.members)
+        r_gadd = run_command("GROUP 9 ADD 4")   # add fixture 4
+        _check("GROUP ADD increases member count by 1", len(_g9.members) == _g9_before + 1)
+        _check("GROUP ADD returns confirmation", "added" in r_gadd.lower())
+        r_gadd_dup = run_command("GROUP 9 ADD 4")
+        _check("GROUP ADD rejects duplicate fixture", "already" in r_gadd_dup.lower())
+        r_grem = run_command("GROUP 9 REMOVE 4")
+        _check("GROUP REMOVE decreases member count by 1", len(_g9.members) == _g9_before)
+        _check("GROUP REMOVE returns confirmation", "removed" in r_grem.lower())
+        r_grem_miss = run_command("GROUP 9 REMOVE 4")
+        _check("GROUP REMOVE rejects missing fixture", "not in group" in r_grem_miss.lower())
 
         # RECORD FORM (custom breakpoint curve) — untested prior to this session
         r_form = run_command("RECORD FORM 6 SmokeWave 0.0,0.0 0.5,1.0 1.0,0.0")
