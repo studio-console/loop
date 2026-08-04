@@ -7800,6 +7800,7 @@ class GUIEngine:
                 ("CUESTACK 2",              "Switch active fader to slot 2"),
                 ("ASSIGN CS 2 TO FADER 1",  "Wire cuestack 2 to fader 1"),
                 ("FADER SWAP 1 2",          "Swap the cuestacks on faders 1 and 2"),
+                ("FADER 1 INFO",            "Detailed status of fader 1: level, priority, rate, buttons, cuestack, current cue"),
                 ("FADER 1 LABEL Main Show", "Set a human-readable label on fader 1 (shown in LIST FADER)"),
                 ("FADER 1 LABEL",           "Clear the label on fader 1"),
                 ("RELEASE 2",               "Stop fader 2"),
@@ -13282,6 +13283,33 @@ def run_command(cmd_str):
             save_show()
             return (f"Fader {ex_n} label → '{label_text}'"
                     if label_text else f"Fader {ex_n} label cleared")
+        elif verb in ('INFO', 'STATUS', 'SHOW'):
+            cs = ex.cuestack
+            lbl_s = f"  Label     : {ex.label}" if ex.label else ""
+            lines = [f"Fader {ex_n}:"]
+            if lbl_s:
+                lines.append(lbl_s)
+            lines.append(f"  Level     : {ex.level * 100:.0f}%")
+            lines.append(f"  Priority  : {Executor.PRIORITY_LABELS[ex.priority]}")
+            lines.append(f"  Trigger   : {ex.trigger_mode}")
+            lines.append(f"  Rate      : ×{ex.rate_factor:.2f}")
+            lines.append(f"  Buttons   : A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}")
+            if cs:
+                lines.append(f"  CueStack  : [{cs.stack_id}] {cs.name}")
+                lines.append(f"  State     : {'ACTIVE' if ex.is_active else 'idle'}")
+                if cs.current is not None:
+                    cue = cs.cues.get(cs.current)
+                    cue_name = cue.name if cue else "?"
+                    lines.append(f"  Current   : Cue {cs.current:.0f} — {cue_name}")
+                sorted_nums = cs._sorted_cue_numbers()
+                lines.append(f"  Cues      : {len(sorted_nums)} total")
+                if ex.time_override_on:
+                    lines.append(f"  Time OV   : {ex.time_override_fade}s fade"
+                                 + (f"  delay {ex.time_override_delay}s"
+                                    if ex.time_override_delay else ""))
+            else:
+                lines.append("  CueStack  : (unassigned)")
+            return "\n".join(lines)
         else:
             return f"FADER {ex_n}: unknown verb '{verb}'"
 
@@ -17416,6 +17444,16 @@ if STUDIO_HEADLESS:
         _check("LIST FADER shows label", "Main Show" in r_lbl_list)
         run_command("FADER 1 LABEL")  # clear
         _check("FADER 1 LABEL (no text) clears label", _lbl_ex.label == "")
+
+        # FADER INFO
+        r_fi1 = run_command("FADER 1 INFO")
+        _check("FADER INFO shows level", "Level" in r_fi1)
+        _check("FADER INFO shows buttons", "Buttons" in r_fi1)
+        _fi1_ex = executor_pool.get(1)
+        if _fi1_ex.cuestack:
+            _check("FADER INFO shows cuestack name", _fi1_ex.cuestack.name in r_fi1)
+        r_fi1_stat = run_command("FADER 1 STATUS")
+        _check("FADER STATUS alias works", "Level" in r_fi1_stat)
 
         # LOAD SHOW must reload OSC targets and FX defaults, not just leave
         # the previous show's live values in place — same primitives
