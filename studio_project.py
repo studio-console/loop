@@ -7678,6 +7678,15 @@ class GUIEngine:
                 ("PATCH RENAME 3 Front Par", "Rename fixture 3 (saves show)"),
                 ("PATCH MOVE 3 UNIVERSE 2 AT 1", "Move fixture 3 to U2@1 (recalculates sub addresses)"),
             ]),
+            ("MACROS", [
+                ("MACRO RECORD 1 LookA",  "Start recording commands to slot 1 (name is optional)"),
+                ("MACRO STOP",            "Stop recording and save the macro"),
+                ("MACRO ABORT",           "Discard recording without saving"),
+                ("MACRO 1",               "Play back macro slot 1"),
+                ("MACRO LIST",            "List all recorded macros with command counts"),
+                ("MACRO DELETE 1",        "Delete macro slot 1"),
+                ("RENAME MACRO 1 NewName","Rename macro slot 1"),
+            ]),
             ("NETWORK / sACN", [
                 ("NETWORK STATUS",         "Show current sACN bind address and universe list"),
                 ("NETWORK BIND 192.168.1.161", "Set sACN bind address (saved; restart to apply)"),
@@ -10689,6 +10698,7 @@ class ShowFile:
     AI_PROMPTS   = os.path.join(DATA_DIR, "ai_prompts.json")
     OSC_TARGETS  = os.path.join(DATA_DIR, "osc_targets.json")
     NETWORK      = os.path.join(DATA_DIR, "network.json")
+    MACROS       = os.path.join(DATA_DIR, "macros.json")
 
     # ── Save ────────────────────────────────────────────────
 
@@ -11415,6 +11425,32 @@ class ShowFile:
         return True
 
     @staticmethod
+    def save_macros(macro_pool):
+        data = {
+            str(slot): {"name": m["name"], "commands": list(m["commands"])}
+            for slot, m in macro_pool.items()
+        }
+        _write_file(ShowFile.MACROS, {"version": ShowFile.VERSION, "macros": data})
+        print(f"  Saved macros     → {len(macro_pool)} macro(s)")
+
+    @staticmethod
+    def load_macros(macro_pool):
+        doc = _read_file(ShowFile.MACROS)
+        if not doc:
+            return False
+        for slot_str, m in doc.get("macros", {}).items():
+            try:
+                slot = int(slot_str)
+            except ValueError:
+                continue
+            macro_pool[slot] = {
+                "name":     m.get("name", f"Macro {slot}"),
+                "commands": list(m.get("commands", [])),
+            }
+        print(f"  Loaded macros    — {len(macro_pool)} macro(s)")
+        return True
+
+    @staticmethod
     def migrate_legacy(cuestack_pool, cue_pool, group_pool, color_pool, dim_pool, fx_params):
         """Read old studio_show.json and write to new per-file format, then rename it."""
         if not os.path.exists(_LEGACY_FILE):
@@ -11657,6 +11693,9 @@ _attr_pools = {
 }
 executor_pool.default_attr_pools = _attr_pools
 
+macro_pool       = {}    # {slot_int: {"name": str, "commands": [str, ...]}}
+_macro_recording = {"slot": None, "cmds": []}
+
 # ── Load all data files (migrate legacy file if present) ──
 ShowFile.load_fx(_fx_params)
 ShowFile.load_fx_pool(fx_pool)
@@ -11678,6 +11717,7 @@ ShowFile.load_control_pool(control_pool)
 ShowFile.load_executor_pages(executor_pool)
 ShowFile.load_executors(executor_pool, cuestack_pool)
 ShowFile.load_osc_targets(osc)
+ShowFile.load_macros(macro_pool)
 ShowFile.load_state(output_state, executor_pool, cuestack_pool, active_executor,
                     prog_time=_prog_time, fader_dim=_fader_dim)
 
@@ -12628,6 +12668,15 @@ def run_command(cmd_str):
         tokens[0] = 'RECORD'
 
     t0 = tokens[0]
+
+    # ── Macro record capture ──────────────────────────────────
+    # While recording, capture every command except MACRO STOP / MACRO ABORT.
+    # The command still executes normally so the operator sees live feedback.
+    if _macro_recording["slot"] is not None:
+        is_macro_stop = (t0 == 'MACRO' and len(tokens) >= 2
+                         and tokens[1] in ('STOP', 'ABORT'))
+        if not is_macro_stop:
+            _macro_recording["cmds"].append(raw)
 
     # ── Executor selection ────────────────────────────────────
     # CUESTACK N  — make executor N the active one
@@ -14103,6 +14152,80 @@ def run_command(cmd_str):
         output_state.blind = False
         return "LIVE mode — programmer active in output"
 
+    # ── MACRO ─────────────────────────────────────────────────────────────────
+    # MACRO RECORD <n> [name]  — start recording commands to slot n
+    # MACRO STOP               — stop recording and save
+    # MACRO ABORT              — discard recording without saving
+    # MACRO <n>                — play back macro slot n
+    # MACRO LIST               — list all recorded macros
+    # MACRO DELETE <n>         — delete macro slot n
+    # RENAME MACRO <n> <name>  — rename macro slot n
+    if t0 == 'MACRO':
+        t1 = tokens[1] if len(tokens) > 1 else ''
+        if t1 == 'RECORD':
+            try:
+                slot = int(tokens[2])
+            except (IndexError, ValueError):
+                return "Usage: MACRO RECORD <n> [name]"
+            if _macro_recording["slot"] is not None:
+                return f"Already recording macro {_macro_recording['slot']} — MACRO STOP first"
+            raw_parts = raw.split(None, 3)
+            name = raw_parts[3] if len(raw_parts) > 3 else f"Macro {slot}"
+            _macro_recording["slot"] = slot
+            _macro_recording["cmds"] = []
+            _macro_recording["name"] = name
+            return f"MACRO {slot} '{name}' — recording started (MACRO STOP to save)"
+        if t1 == 'STOP':
+            slot = _macro_recording["slot"]
+            if slot is None:
+                return "MACRO STOP: not currently recording"
+            name = _macro_recording.get("name", f"Macro {slot}")
+            macro_pool[slot] = {"name": name, "commands": list(_macro_recording["cmds"])}
+            n_cmds = len(macro_pool[slot]["commands"])
+            _macro_recording["slot"] = None
+            _macro_recording["cmds"] = []
+            ShowFile.save_macros(macro_pool)
+            return f"MACRO {slot} '{name}' saved — {n_cmds} command(s)"
+        if t1 == 'ABORT':
+            if _macro_recording["slot"] is None:
+                return "MACRO ABORT: not currently recording"
+            slot = _macro_recording["slot"]
+            _macro_recording["slot"] = None
+            _macro_recording["cmds"] = []
+            return f"MACRO {slot} recording discarded"
+        if t1 == 'LIST':
+            if not macro_pool:
+                return "No macros recorded."
+            lines = [f"  {s:>3}: [{len(m['commands'])} cmds] {m['name']}"
+                     for s, m in sorted(macro_pool.items())]
+            rec = _macro_recording["slot"]
+            suffix = f"\n  (recording macro {rec}...)" if rec is not None else ""
+            return "Macros:\n" + "\n".join(lines) + suffix
+        if t1 == 'DELETE':
+            try:
+                slot = int(tokens[2])
+            except (IndexError, ValueError):
+                return "Usage: MACRO DELETE <n>"
+            if slot not in macro_pool:
+                return f"MACRO DELETE: slot {slot} empty"
+            del macro_pool[slot]
+            ShowFile.save_macros(macro_pool)
+            return f"Macro {slot} deleted"
+        # MACRO <n> — playback
+        try:
+            slot = int(t1)
+        except ValueError:
+            return f"MACRO: unknown subcommand '{t1}'"
+        if slot not in macro_pool:
+            return f"MACRO {slot}: empty slot"
+        cmds = macro_pool[slot]["commands"]
+        results = []
+        for c in cmds:
+            r = run_command(c)
+            if r:
+                results.append(r)
+        return f"MACRO {slot} '{macro_pool[slot]['name']}' — {len(cmds)} cmd(s) played\n" + "\n".join(results)
+
     if t0 == 'FREEZE':
         off = len(tokens) > 1 and tokens[1] in ('OFF', 'RELEASE')
         if off or output_state.freeze_mode:
@@ -15283,8 +15406,23 @@ def run_command(cmd_str):
             save_show()
             return f"{sub} {n} → \"{new_name}\""
 
+        # RENAME MACRO <n> <name>
+        if sub == 'MACRO':
+            try:
+                n = int(tokens[2])
+            except ValueError:
+                return f"RENAME MACRO: bad number '{tokens[2]}'"
+            if n not in macro_pool:
+                return f"Macro slot {n} is empty"
+            new_name = _name_after(raw, 3)
+            if not new_name:
+                return "RENAME MACRO: provide a new name"
+            macro_pool[n]["name"] = new_name
+            ShowFile.save_macros(macro_pool)
+            return f"Macro {n} → \"{new_name}\""
+
         return (f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, "
-                "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL")
+                "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO")
 
     # ── COPY CUE / COPY CS ────────────────────────────────────────────────────
     # COPY CUE <src> TO <dst>               — within active cuestack
@@ -16694,6 +16832,33 @@ if STUDIO_HEADLESS:
         _check("PATCH MOVE updates sub address",
                _first_sub_51 is not None and _first_sub_51.outputs[0]['address'] == 50)
         del patch.fixtures[51]
+
+        # ── MACRO RECORD / PLAYBACK TESTS ────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1")
+        run_command("MACRO RECORD 99 SmokeTest")
+        _check("MACRO RECORD starts recording", _macro_recording["slot"] == 99)
+        run_command("AT FULL")          # captured inside macro
+        run_command("AT R 200")         # captured inside macro
+        r_ms = run_command("MACRO STOP")
+        _check("MACRO STOP saves macro to pool", 99 in macro_pool)
+        _check("MACRO STOP records correct command count",
+               len(macro_pool.get(99, {}).get("commands", [])) == 2)
+        _check("MACRO STOP ends recording", _macro_recording["slot"] is None)
+        prog.clear_programmer()
+        run_command("1")
+        r_mb = run_command("MACRO 99")
+        _check("MACRO playback result mentions commands played", "cmd" in r_mb)
+        _check("MACRO playback restores dim",
+               abs(prog.data.get('1', {}).get('dim', 0) - 1.0) < 0.01)
+        _check("MACRO playback restores red channel",
+               prog.data.get('1.1', {}).get('red') == 200)
+        run_command("RENAME MACRO 99 Renamed")
+        _check("RENAME MACRO changes name",
+               macro_pool.get(99, {}).get("name") == "Renamed")
+        run_command("MACRO DELETE 99")
+        _check("MACRO DELETE removes slot", 99 not in macro_pool)
+        prog.clear_programmer()
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
