@@ -7536,6 +7536,8 @@ class GUIEngine:
                 ("RECORD FORM 6 Wave 0,0 0.5,1 1,0",  "Record custom waveform"),
                 ("RECORD RATE 3 Name 120","Record 120 BPM to rate pool slot 3"),
                 ("RECORD CUESTACK 2 Name","Create a new named cuestack on fader 2"),
+                ("LOAD CUE 5",            "Copy cue 5's data into the programmer for editing and re-recording"),
+                ("LOAD CUE 5 CS 2",       "Load cue 5 from cuestack 2 into programmer"),
             ]),
             ("RENAME / COPY / DELETE", [
                 ("RENAME CUESTACK 2 Tour","Rename cuestack 2 — all cues kept"),
@@ -14158,6 +14160,32 @@ def run_command(cmd_str):
             return save_show_as(name)
         save_show()
         return "Show saved."
+
+    # LOAD CUE <n> [CS <stack_n>]  — copy cue data into programmer for editing
+    if t0 == 'LOAD' and len(tokens) >= 3 and tokens[1] == 'CUE':
+        try:
+            cue_num = float(tokens[2])
+        except ValueError:
+            return f"LOAD CUE: bad cue number '{tokens[2]}'"
+        cs = None
+        if 'CS' in tokens:
+            cs_idx = tokens.index('CS')
+            try: cs = cuestack_pool.get(int(tokens[cs_idx + 1]))
+            except (IndexError, ValueError): pass
+        if cs is None:
+            cs = _active_stack()
+        if not cs:
+            return "LOAD CUE: no active cuestack"
+        cue = cs.cues.get(cue_num)
+        if not cue:
+            return f"LOAD CUE: cue {cue_num:.0f} not found in {cs.name}"
+        prog._push_undo()
+        for fid, vals in cue.data.items():
+            if fid not in prog.data:
+                prog.data[fid] = {}
+            prog.data[fid].update(copy.deepcopy(vals))
+        prog._print_programmer()
+        return f"Loaded cue {cue_num:.0f} '{cue.name}' into programmer"
 
     if t0 == 'LOAD' and len(tokens) >= 2 and tokens[1] == 'SHOW':
         if len(tokens) < 3:
