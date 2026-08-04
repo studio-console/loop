@@ -7814,6 +7814,7 @@ class GUIEngine:
                 ("CS 2 INFO",             "Detailed status of cuestack 2: cue list, current cue, loop/wrap, assigned faders"),
                 ("CUESTACK MERGE 2 INTO 1", "Append all cues from CS 2 into CS 1 (renumbered after CS 1's last cue)"),
                 ("CS 1 REVERSE",           "Reverse cue playback order in cuestack 1 (renumbers 1-N from last to first)"),
+                ("CS 1 COMPRESS",          "Renumber cues to sequential integers 1, 2, 3… — collapses gaps left by deletions"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
@@ -13203,6 +13204,27 @@ def run_command(cmd_str):
                 cs.cues[float(new_num)] = cue
             save_show()
             return f"CS {n} '{cs.name}': reversed — {len(rev_cues)} cues renumbered 1–{len(rev_cues)}"
+        # CS n COMPRESS — renumber cues to 1, 2, 3, … (collapse gaps)
+        if len(tokens) >= 3 and tokens[2].upper() == 'COMPRESS':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            sorted_nums = cs._sorted_cue_numbers()
+            if not sorted_nums:
+                return f"Cuestack {n} is empty"
+            ordered = [cs.cues[num] for num in sorted_nums]
+            old_current = cs.current
+            cs.cues.clear()
+            new_current = None
+            for new_num, cue in enumerate(ordered, start=1):
+                if old_current is not None and cue.cue_number == old_current:
+                    new_current = float(new_num)
+                cue.cue_number = float(new_num)
+                cs.cues[float(new_num)] = cue
+            cs.current = new_current
+            save_show()
+            return (f"CS {n} '{cs.name}': compressed — "
+                    f"{len(ordered)} cues renumbered 1–{len(ordered)}")
         # CS n WRAP ON/OFF — clean restart at top after last cue
         if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
             cs = cuestack_pool.get(n)
@@ -17633,6 +17655,21 @@ if STUDIO_HEADLESS:
         _check("CS REVERSE reverses cue order", _rev_names == list(reversed(_orig_names)))
         _check("CS REVERSE returns confirmation", "reversed" in r_rev)
         _check("CS REVERSE resets current position to None", _cs94.current is None)
+
+        # CS COMPRESS
+        run_command("RECORD CUESTACK 95 CompTest")
+        run_command("CUESTACK 95")
+        run_command("1 FULL"); run_command("RECORD CUE 1 Cue1")
+        run_command("1 OUT");  run_command("RECORD CUE 5 Cue5")   # gap: 1, 5
+        run_command("1 AT R 200"); run_command("RECORD CUE 10 Cue10")  # cues 1,5,10
+        _cs95 = cuestack_pool.get(95)
+        r_cmp = run_command("CS 95 COMPRESS")
+        _cmp_nums = _cs95._sorted_cue_numbers()
+        _check("CS COMPRESS renumbers cues to 1,2,3 (collapses gaps)",
+               _cmp_nums == [1.0, 2.0, 3.0])
+        _check("CS COMPRESS preserves cue names in order",
+               [_cs95.cues[n].name for n in _cmp_nums] == ["Cue1", "Cue5", "Cue10"])
+        _check("CS COMPRESS returns 'compressed' confirmation", "compressed" in r_cmp)
 
         # CUESTACK MERGE
         run_command("RECORD CUESTACK 91 MergeSrc")
