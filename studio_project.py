@@ -7798,7 +7798,13 @@ class GUIEngine:
     # ── FX Editor popup ────────────────────────────────────────
 
     _FX_WAVEFORMS = ['sine', 'ramp', 'pulse', 'square', 'triangle', 'sawtooth', 'flicker']
-    _FX_CHANNELS  = ['red', 'green', 'blue', 'dim']
+    _FX_CHANNELS  = [
+        'dim', 'red', 'green', 'blue',
+        'pan', 'tilt', 'pan_fine', 'tilt_fine',
+        'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot',
+        'zoom', 'focus', 'iris', 'shutter1',
+        'color', 'prism', 'frost', 'animation', 'control', 'macro', 'dimmer',
+    ]
 
     def _build_fx_editor_popup(self):
         """Floating FX preset editor — hidden by default, opened via FX ED button."""
@@ -10166,6 +10172,13 @@ class GUIEngine:
             else:
                 fx_lbl = "—"
 
+            # Attribute channels present in programmer (for movers)
+            _ATTR_ABBREV = [('pan','P'), ('tilt','T'), ('gobo','G'), ('zoom','Z'),
+                            ('focus','Fc'), ('iris','Ir'), ('color','Co'), ('dimmer','D')]
+            attr_parts = [f"{abbr}:{s_vals[ch]}" for ch, abbr in _ATTR_ABBREV if ch in s_vals]
+            has_attr = bool(attr_parts)
+            attr_str = ' '.join(attr_parts)
+
             try:
                 dpg.configure_item(f"prog_name_{fid}", color=txt_col)
                 dpg.set_value(f"prog_r_{fid}",   str(r)         if has_data else "—")
@@ -10176,16 +10189,23 @@ class GUIEngine:
                 dpg.configure_item(f"prog_b_{fid}", color=b_col)
                 dpg.set_value(f"prog_dim_{fid}", f"{dim:.0%}"   if dim is not None else "—")
                 dpg.configure_item(f"prog_dim_{fid}", color=txt_col)
-                dpg.set_value(f"prog_fx_{fid}",  fx_lbl)
+                # Append attr summary to fx column when attribute channels are in programmer
+                fx_display = fx_lbl
+                if has_attr:
+                    fx_display = f"{attr_str}  {fx_lbl}" if has_fx else attr_str
+                dpg.set_value(f"prog_fx_{fid}",  fx_display)
                 dpg.configure_item(f"prog_fx_{fid}",
-                                   color=_C_ACCENT if has_fx else _C_DIM)
+                                   color=_C_ACCENT if (has_fx or has_attr) else _C_DIM)
                 brightness = (r + g + b) / (3 * 255) * float(dim if dim is not None else 1.0)
-                # When only FX is in programmer, show a fixed partial bar so it's visible
-                bar_val = max(brightness, 0.25) if (has_fx and not (r or g or b)) else brightness
+                # When only FX or attr channels in programmer, show partial bar
+                bar_val = max(brightness, 0.25) if ((has_fx or has_attr) and not (r or g or b)) else brightness
                 dpg.set_value(f"prog_bar_{fid}", min(1.0, bar_val) if has_data else 0.0)
-                fx_tag   = f"  ~FX" if has_fx else ""
-                dpg.configure_item(f"prog_bar_{fid}",
-                                   overlay=f"R{r} G{g} B{b}{fx_tag}" if has_data else "")
+                fx_tag = "  ~FX" if has_fx else ""
+                if has_attr and not (r or g or b):
+                    bar_overlay = f"{attr_str}{fx_tag}" if has_data else ""
+                else:
+                    bar_overlay = f"R{r} G{g} B{b}{fx_tag}" if has_data else ""
+                dpg.configure_item(f"prog_bar_{fid}", overlay=bar_overlay)
                 # Tint programmer bar to match RGB color
                 _pcached = self._prog_bar_themes.get(fid)
                 if has_data and (r > 0 or g > 0 or b > 0):
@@ -10238,13 +10258,22 @@ class GUIEngine:
                 g = min(255, int(cue_sub.get('green', 0)) + int(fx_sub.get('green', 0)))
                 b = min(255, int(cue_sub.get('blue',  0)) + int(fx_sub.get('blue',  0)))
 
+            # Attribute channels (for movers with no RGB)
+            _OUT_ATTR = [('pan','P'), ('tilt','T'), ('gobo','G'), ('zoom','Z'), ('focus','Fc')]
+            _merged_sub = {**cue_sub, **pl_sub}
+            out_attr_parts = [f"{abbr}:{_merged_sub[ch]}" for ch, abbr in _OUT_ATTR
+                              if ch in _merged_sub]
+            has_out_attr = bool(out_attr_parts) and not (r or g or b)
+
             dpg.set_value(f"out_r_{fid}",   str(r))
             dpg.set_value(f"out_g_{fid}",   str(g))
             dpg.set_value(f"out_b_{fid}",   str(b))
             dpg.set_value(f"out_dim_{fid}", f"{dim:.0%}")
             brightness = (r + g + b) / (3 * 255) * float(dim)
-            dpg.set_value(f"out_bar_{fid}", min(1.0, brightness))
-            dpg.configure_item(f"out_bar_{fid}", overlay=f"R{r} G{g} B{b}")
+            out_bar_val = max(brightness, 0.3) if has_out_attr else brightness
+            dpg.set_value(f"out_bar_{fid}", min(1.0, out_bar_val))
+            out_overlay = ' '.join(out_attr_parts) if has_out_attr else f"R{r} G{g} B{b}"
+            dpg.configure_item(f"out_bar_{fid}", overlay=out_overlay)
             # Tint output bar to match actual RGB color
             _ocached = self._out_bar_themes.get(fid)
             if r > 0 or g > 0 or b > 0:
