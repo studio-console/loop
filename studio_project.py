@@ -4221,13 +4221,15 @@ class OutputState:
                             if highlight:
                                 ch_resolved[ch] = int(255 * gm)
                             else:
-                                # Explicit 'dimmer' stored on sub wins; otherwise use master dim
+                                # Explicit 'dimmer' stored on sub wins; otherwise use master dim.
+                                # sub_dim already folds in dim FX modulation, so use it in both paths.
                                 base_val = prog_vals.get('dimmer', audio_vals.get('dimmer',
                                            cue_vals.get('dimmer', None)))
                                 if base_val is not None:
-                                    ch_resolved[ch] = max(0, min(255, int(base_val * gm)))
+                                    fx_ratio = (sub_dim / _base_dim) if _base_dim > 0.0001 else 1.0
+                                    ch_resolved[ch] = max(0, min(255, int(base_val * fx_ratio * gm)))
                                 else:
-                                    ch_resolved[ch] = max(0, min(255, int(_base_dim * gm * 255)))
+                                    ch_resolved[ch] = max(0, min(255, int(sub_dim * gm * 255)))
                         else:
                             # Attribute channel: LTP, no dimmer, FX envelope-blend additive
                             base_val = prog_vals.get(ch, audio_vals.get(ch, cue_vals.get(ch, 0)))
@@ -5636,7 +5638,7 @@ class GUIEngine:
         # ── Programmer + Selection status bar ──────────────────
         with dpg.group(horizontal=True):
             dpg.add_text("●", tag="sb_prog_dot",   color=_C_DIM)
-            dpg.add_text("PROGRAMMER", tag="sb_prog_lbl", color=_C_DIM)
+            dpg.add_text("programmer", tag="sb_prog_lbl", color=_C_DIM)
             dpg.add_spacer(width=20)
             dpg.add_button(label="blind", tag="sb_blind_lbl",
                            width=54, height=16,
@@ -5650,11 +5652,11 @@ class GUIEngine:
                            width=36, height=16,
                            callback=self._on_highlight_toggle)
             dpg.add_spacer(width=20)
-            dpg.add_button(label="PT", tag="sb_pt_lbl",
+            dpg.add_button(label="pt", tag="sb_pt_lbl",
                            width=36, height=16,
                            callback=self._on_pt_toggle)
             dpg.add_spacer(width=20)
-            dpg.add_text("SEL", color=_C_DIM)
+            dpg.add_text("sel", color=_C_DIM)
             dpg.add_spacer(width=4)
             # One clickable chip per patched fixture — click to select, Shift+click to add
             if self._patch:
@@ -5689,11 +5691,11 @@ class GUIEngine:
                 dpg.add_group(tag="cue_list_group")
             dpg.add_separator()
             with dpg.group(horizontal=True):
-                dpg.add_button(label=" ◀ BACK ", tag="back_btn", width=106,
+                dpg.add_button(label=" ◀ back ", tag="back_btn", width=106,
                                callback=lambda: self._back())
-                dpg.add_button(label=" ↺ RELOAD ", width=120,
+                dpg.add_button(label=" ↺ reload ", width=120,
                                callback=lambda: self._reload() if self._reload else None)
-                dpg.add_button(label="  GO ▶  ", tag="go_btn", width=106,
+                dpg.add_button(label="  go ▶  ", tag="go_btn", width=106,
                                callback=lambda: self._go())
 
             dpg.add_spacer(height=4)
@@ -5719,24 +5721,24 @@ class GUIEngine:
             _htw = 108   # two drag_floats + labels per row, fits inside the
                          # 349px content width left after left_col's scrollbar
             with dpg.group(horizontal=True):
-                dpg.add_drag_float(tag="cue_fade_input", label="Fade s",
+                dpg.add_drag_float(tag="cue_fade_input", label="fade s",
                                    default_value=0.0, min_value=0.0, max_value=30.0,
                                    speed=0.05, format="%.2f", width=_htw,
                                    callback=self._on_cue_fade_edit)
-                dpg.add_drag_float(tag="cue_delay_input", label="Dly  s",
+                dpg.add_drag_float(tag="cue_delay_input", label="dly  s",
                                    default_value=0.0, min_value=0.0, max_value=30.0,
                                    speed=0.05, format="%.2f", width=_htw,
                                    callback=self._on_cue_delay_edit)
             with dpg.group(horizontal=True):
-                dpg.add_drag_float(tag="cue_follow_input", label="Auto→s",
+                dpg.add_drag_float(tag="cue_follow_input", label="auto→s",
                                    default_value=0.0, min_value=0.0, max_value=300.0,
                                    speed=0.05, format="%.2f", width=_htw,
                                    callback=self._on_cue_follow_edit)
-                dpg.add_drag_float(tag="cue_fxoutfade_input", label="FXOut s",
+                dpg.add_drag_float(tag="cue_fxoutfade_input", label="fxout s",
                                    default_value=0.0, min_value=0.0, max_value=30.0,
                                    speed=0.05, format="%.2f", width=_htw,
                                    callback=self._on_cue_fxoutfade_edit)
-            dpg.add_input_text(tag="cue_note_input", label="Note",
+            dpg.add_input_text(tag="cue_note_input", label="note",
                                hint="production note...", width=_tw,
                                callback=self._on_cue_note_edit)
 
@@ -5750,15 +5752,15 @@ class GUIEngine:
                 dpg.add_text("", tag="fx_tap_label", color=_C_DIM)
             dpg.add_separator()
             _sw = _W - 120
-            dpg.add_slider_float(label="Rate BPM", tag="fx_rate",
+            dpg.add_slider_float(label="rate bpm", tag="fx_rate",
                                  default_value=60.0, min_value=10.0,
                                  max_value=480.0, width=_sw,
                                  callback=self._on_fx_rate)
-            dpg.add_slider_float(label="Size    ", tag="fx_size",
+            dpg.add_slider_float(label="size    ", tag="fx_size",
                                  default_value=100.0, min_value=0.0,
                                  max_value=100.0, width=_sw,
                                  callback=self._on_fx_size)
-            dpg.add_slider_float(label="Spread  ", tag="fx_spread",
+            dpg.add_slider_float(label="spread  ", tag="fx_spread",
                                  default_value=0.0, min_value=0.0,
                                  max_value=100.0, width=_sw,
                                  callback=self._on_fx_spread)
@@ -6071,7 +6073,7 @@ class GUIEngine:
             # ── Quick action row 1: cue / record / FX ──────────
             with dpg.group(horizontal=True):
                 for label, ud in [
-                    ("REC CUE", "RECORD CUE "), ("UPD CUE", "UPDATE CUE "),
+                    ("rec cue", "RECORD CUE "), ("upd cue", "UPDATE CUE "),
                     ("cue",     "CUE "),         ("rec fx",  "RECORD FX "),
                     ("fx",      "FX "),           ("rec grp", "RECORD GROUP "),
                     ("group",   "GROUP "),        ("snap",    "SNAPSHOT "),
@@ -6089,7 +6091,7 @@ class GUIEngine:
                                    callback=self._numpad_append, user_data=ud)
                 dpg.add_spacer(width=6)
                 for label, ud in [
-                    ("CLEAR", "CLEAR"), ("reload", "RELOAD"),
+                    ("clear", "CLEAR"), ("reload", "RELOAD"),
                     ("go",    "GO"),    ("back",   "BACK"),
                     ("undo",  "UNDO"),
                 ]:
@@ -6261,7 +6263,7 @@ class GUIEngine:
                               border=True, no_scrollbar=True,
                               no_scroll_with_mouse=True):
             with dpg.group(horizontal=True):
-                dpg.add_text("MASTER", color=_C_ACCENT)
+                dpg.add_text("master", color=_C_ACCENT)
                 dpg.add_slider_int(
                     tag="stage_master_fader",
                     default_value=100, min_value=0, max_value=100,
@@ -6361,6 +6363,9 @@ class GUIEngine:
                     mc  = cue_merged.get(fid, {})
                     fxm = self._out.fx_layer.get(fid, {})
                     fdr = fxm.get('dim')
+                    # pixel-scope dim FX lives under the sub fixture ID, not master
+                    if fdr is None:
+                        fdr = fx_s.get('dim')
                     ron = any(fx_s.get(f'_env_{c}', 0.0) > 0.001
                               for c in ('red', 'green', 'blue'))
                     if fdr is not None:
@@ -6377,8 +6382,13 @@ class GUIEngine:
                          master.fixture_id in self._out.highlight_fids)
             if hl_active:
                 fill = (255, 255, 255, 255)
+            elif r or g or b:
+                fill = (r, g, b, 255)
+            elif dim > 0:
+                grey = max(0, min(255, int(dim * gm * 200)))
+                fill = (grey, grey, grey, 255)
             else:
-                fill = (r, g, b, 255) if (r or g or b) else (8, 6, 18, 255)
+                fill = (8, 6, 18, 255)
             sel_masters = {f.fixture_id for f in self._prog.selection
                            if isinstance(f, MasterFixture)}
             border_col = (162, 115, 255, 255) if master.fixture_id in sel_masters else (38, 26, 78, 255)
@@ -6433,6 +6443,9 @@ class GUIEngine:
                 mc   = cue_merged.get(fid, {})
                 fxm  = self._out.fx_layer.get(fid, {})
                 fdr  = fxm.get('dim')
+                # pixel-scope dim FX lives under the sub fixture ID, not master
+                if fdr is None:
+                    fdr = fs.get('dim')
                 ron  = any(fs.get(f'_env_{c}', 0.0) > 0.001 for c in ('red', 'green', 'blue'))
                 if fdr is not None:
                     sdim = max(0.0, min(1.0, mp.get('dim', mc.get('dim', master.virtual_dimmer)) * (fdr / 255.0)))
@@ -6446,8 +6459,13 @@ class GUIEngine:
                 sb2 = max(0, min(255, int(sb2 * sdim * gm)))
                 if hl_active:
                     sfill = (255, 255, 255, 255)
+                elif sr or sg or sb2:
+                    sfill = (sr, sg, sb2, 255)
+                elif sdim > 0:
+                    sgrey = max(0, min(255, int(sdim * gm * 200)))
+                    sfill = (sgrey, sgrey, sgrey, 255)
                 else:
-                    sfill = (sr, sg, sb2, 255) if (sr or sg or sb2) else (8, 6, 18, 255)
+                    sfill = (8, 6, 18, 255)
                 try:
                     dpg.configure_item(f"stage_sub_{i}_{j}",
                                        pmin=(sx0, sy0), pmax=(sx0 + dot, sy0 + dot),
@@ -6496,20 +6514,20 @@ class GUIEngine:
                         with dpg.popup(f"grp_btn_{n}", mousebutton=1):
                             dpg.add_text(f"Group {n}", color=_C_P_GROUPS)
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Record Group Here",
+                            dpg.add_menu_item(label="record group here",
                                 callback=self._ctx_prefill,
                                 user_data=f"RECORD GROUP {n} ")
-                            dpg.add_menu_item(label="Recall Group",
+                            dpg.add_menu_item(label="recall group",
                                 callback=self._ctx_exec,
                                 user_data=f"GROUP {n}")
-                            dpg.add_menu_item(label="Rename...",
+                            dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME GROUP {n} ")
-                            dpg.add_menu_item(label="Copy to slot...",
+                            dpg.add_menu_item(label="copy to slot...",
                                 callback=self._ctx_prefill,
                                 user_data=f"COPY GROUP {n} TO ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Clear Group",
+                            dpg.add_menu_item(label="clear group",
                                 callback=self._ctx_exec,
                                 user_data=f"CLEAR GROUP {n}")
 
@@ -6533,20 +6551,20 @@ class GUIEngine:
                         with dpg.popup(f"col_btn_{n}", mousebutton=1):
                             dpg.add_text(f"Color {n}", color=_C_P_COLORS)
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Record Color Here",
+                            dpg.add_menu_item(label="record color here",
                                 callback=self._ctx_prefill,
                                 user_data=f"RECORD COLOR {n} ")
-                            dpg.add_menu_item(label="Apply Color",
+                            dpg.add_menu_item(label="apply color",
                                 callback=self._ctx_exec,
                                 user_data=f"COLOR {n}")
-                            dpg.add_menu_item(label="Rename...",
+                            dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME COLOR {n} ")
-                            dpg.add_menu_item(label="Copy to slot...",
+                            dpg.add_menu_item(label="copy to slot...",
                                 callback=self._ctx_prefill,
                                 user_data=f"COPY COLOR {n} TO ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Clear Color",
+                            dpg.add_menu_item(label="clear color",
                                 callback=self._ctx_exec,
                                 user_data=f"CLEAR COLOR {n}")
 
@@ -6570,20 +6588,20 @@ class GUIEngine:
                         with dpg.popup(f"dim_btn_{n}", mousebutton=1):
                             dpg.add_text(f"Dim {n}", color=_C_P_DIMS)
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Record Dim Here",
+                            dpg.add_menu_item(label="record dim here",
                                 callback=self._ctx_prefill,
                                 user_data=f"RECORD DIM {n} ")
-                            dpg.add_menu_item(label="Apply Dim",
+                            dpg.add_menu_item(label="apply dim",
                                 callback=self._ctx_exec,
                                 user_data=f"DIM {n}")
-                            dpg.add_menu_item(label="Rename...",
+                            dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME DIM {n} ")
-                            dpg.add_menu_item(label="Copy to slot...",
+                            dpg.add_menu_item(label="copy to slot...",
                                 callback=self._ctx_prefill,
                                 user_data=f"COPY DIM {n} TO ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Clear Dim",
+                            dpg.add_menu_item(label="clear dim",
                                 callback=self._ctx_exec,
                                 user_data=f"CLEAR DIM {n}")
 
@@ -6669,20 +6687,20 @@ class GUIEngine:
                         with dpg.popup(f"cs_btn_{n}", mousebutton=1):
                             dpg.add_text(f"Cuestack {n}", color=_C_P_CS)
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Select / Activate",
+                            dpg.add_menu_item(label="select / activate",
                                 callback=self._on_cuestack_click,
                                 user_data=n)
-                            dpg.add_menu_item(label="Create / Rename...",
+                            dpg.add_menu_item(label="create / rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RECORD CUESTACK {n} ")
-                            dpg.add_menu_item(label="Rename...",
+                            dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME CUESTACK {n} ")
-                            dpg.add_menu_item(label="Assign to Executor...",
+                            dpg.add_menu_item(label="assign to fader...",
                                 callback=self._ctx_prefill,
                                 user_data=f"ASSIGN CS {n} TO FADER ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Delete Cuestack",
+                            dpg.add_menu_item(label="delete cuestack",
                                 callback=self._ctx_exec,
                                 user_data=f"DELETE CUESTACK {n}")
 
@@ -6706,20 +6724,20 @@ class GUIEngine:
                         with dpg.popup(f"cue_btn_{n}", mousebutton=1):
                             dpg.add_text(f"Cue {n}", color=_C_P_CUES)
                             dpg.add_separator()
-                            dpg.add_menu_item(label="GO to Cue",
+                            dpg.add_menu_item(label="go to cue",
                                 callback=self._on_cue_click,
                                 user_data=n)
-                            dpg.add_menu_item(label="Record Cue Here",
+                            dpg.add_menu_item(label="record cue here",
                                 callback=self._ctx_prefill,
                                 user_data=f"RECORD CUE {n} ")
-                            dpg.add_menu_item(label="Update Cue",
+                            dpg.add_menu_item(label="update cue",
                                 callback=self._ctx_exec,
                                 user_data=f"UPDATE CUE {n}")
-                            dpg.add_menu_item(label="Rename...",
+                            dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME CUE {n} ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Delete Cue",
+                            dpg.add_menu_item(label="delete cue",
                                 callback=self._ctx_exec,
                                 user_data=f"DELETE CUE {n}")
 
@@ -6778,20 +6796,20 @@ class GUIEngine:
                         with dpg.popup(f"fx_btn_{n}", mousebutton=1):
                             dpg.add_text(f"FX Preset {n}", color=_C_P_FX)
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Fire FX",
+                            dpg.add_menu_item(label="fire fx",
                                 callback=self._ctx_exec,
                                 user_data=f"FIRE FX {n}")
-                            dpg.add_menu_item(label="Record FX Here",
+                            dpg.add_menu_item(label="record fx here",
                                 callback=self._ctx_prefill,
                                 user_data=f"RECORD FX {n} ")
-                            dpg.add_menu_item(label="Rename...",
+                            dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME FX {n} ")
-                            dpg.add_menu_item(label="Copy to slot...",
+                            dpg.add_menu_item(label="copy to slot...",
                                 callback=self._ctx_prefill,
                                 user_data=f"COPY FX {n} TO ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label="Clear FX Preset",
+                            dpg.add_menu_item(label="clear fx preset",
                                 callback=self._ctx_exec,
                                 user_data=f"CLEAR FX {n}")
 
@@ -6827,10 +6845,10 @@ class GUIEngine:
                             dpg.add_menu_item(label=f"Apply {attr_name.title()}",
                                 callback=self._ctx_exec,
                                 user_data=f"{attr_name.upper()} {n}")
-                            dpg.add_menu_item(label="Rename...",
+                            dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
                                 user_data=f"RENAME {attr_name.upper()} {n} ")
-                            dpg.add_menu_item(label="Copy to slot...",
+                            dpg.add_menu_item(label="copy to slot...",
                                 callback=self._ctx_prefill,
                                 user_data=f"COPY {attr_name.upper()} {n} TO ")
                             dpg.add_separator()
@@ -6849,11 +6867,11 @@ class GUIEngine:
 
     def _build_attr_popup(self):
         """Floating attribute pool panel — hidden by default, opened via header button."""
-        with dpg.window(tag="attr_window", label="Attribute Pools",
+        with dpg.window(tag="attr_window", label="attribute pools",
                         width=1902, height=290, show=False,
                         pos=(10, 80), no_collapse=False):
             dpg.add_text("position / gobo / zoom / focus / beam / control", color=_C_ACCENT)
-            dpg.add_text("Moving-light attributes — not used by the 6 LT-200 pixel tubes "
+            dpg.add_text("moving-light attributes — not used by the 6 lt-200 pixel tubes "
                          "in this rig, but recalled the same way as color/dim presets "
                          "for any fixture patched with these channels.", color=_C_DIM, wrap=1860)
             dpg.add_separator()
@@ -6876,7 +6894,7 @@ class GUIEngine:
         popup-for-pool pattern already used for attribute pools and speed
         masters."""
         _POOL_BTN = 90
-        with dpg.window(tag="fx_params_window", label="Rate / Size / Spread Pools",
+        with dpg.window(tag="fx_params_window", label="rate / size / spread pools",
                         width=420, height=190, show=False,
                         pos=(600, 80), no_collapse=False):
             dpg.add_text("rate", color=_C_DIM)
@@ -6890,19 +6908,19 @@ class GUIEngine:
                     with dpg.popup(f"rate_btn_{n}", mousebutton=1):
                         dpg.add_text(f"Rate {n}", color=_C_DIM)
                         dpg.add_separator()
-                        dpg.add_menu_item(label="Recall Rate",
+                        dpg.add_menu_item(label="recall rate",
                             callback=self._ctx_exec, user_data=f"RATE {n}")
-                        dpg.add_menu_item(label="Record Rate Here...",
+                        dpg.add_menu_item(label="record rate here...",
                             callback=self._ctx_prefill,
                             user_data=f"RECORD RATE {n} ")
-                        dpg.add_menu_item(label="Rename...",
+                        dpg.add_menu_item(label="rename...",
                             callback=self._ctx_prefill,
                             user_data=f"RENAME RATE {n} ")
-                        dpg.add_menu_item(label="Copy to slot...",
+                        dpg.add_menu_item(label="copy to slot...",
                             callback=self._ctx_prefill,
                             user_data=f"COPY RATE {n} TO ")
                         dpg.add_separator()
-                        dpg.add_menu_item(label="Delete Rate",
+                        dpg.add_menu_item(label="delete rate",
                             callback=self._ctx_exec, user_data=f"DELETE RATE {n}")
             dpg.add_text("size", color=_C_DIM)
             with dpg.group(horizontal=True):
@@ -6915,19 +6933,19 @@ class GUIEngine:
                     with dpg.popup(f"size_btn_{n}", mousebutton=1):
                         dpg.add_text(f"Size {n}", color=_C_DIM)
                         dpg.add_separator()
-                        dpg.add_menu_item(label="Recall Size",
+                        dpg.add_menu_item(label="recall size",
                             callback=self._ctx_exec, user_data=f"SIZEP {n}")
-                        dpg.add_menu_item(label="Record Size Here...",
+                        dpg.add_menu_item(label="record size here...",
                             callback=self._ctx_prefill,
                             user_data=f"RECORD SIZEP {n} ")
-                        dpg.add_menu_item(label="Rename...",
+                        dpg.add_menu_item(label="rename...",
                             callback=self._ctx_prefill,
                             user_data=f"RENAME SIZEP {n} ")
-                        dpg.add_menu_item(label="Copy to slot...",
+                        dpg.add_menu_item(label="copy to slot...",
                             callback=self._ctx_prefill,
                             user_data=f"COPY SIZEP {n} TO ")
                         dpg.add_separator()
-                        dpg.add_menu_item(label="Delete Size",
+                        dpg.add_menu_item(label="delete size",
                             callback=self._ctx_exec, user_data=f"DELETE SIZEP {n}")
             dpg.add_text("spread", color=_C_DIM)
             with dpg.group(horizontal=True):
@@ -6940,19 +6958,19 @@ class GUIEngine:
                     with dpg.popup(f"spread_btn_{n}", mousebutton=1):
                         dpg.add_text(f"Spread {n}", color=_C_DIM)
                         dpg.add_separator()
-                        dpg.add_menu_item(label="Recall Spread",
+                        dpg.add_menu_item(label="recall spread",
                             callback=self._ctx_exec, user_data=f"SPREADP {n}")
-                        dpg.add_menu_item(label="Record Spread Here...",
+                        dpg.add_menu_item(label="record spread here...",
                             callback=self._ctx_prefill,
                             user_data=f"RECORD SPREADP {n} ")
-                        dpg.add_menu_item(label="Rename...",
+                        dpg.add_menu_item(label="rename...",
                             callback=self._ctx_prefill,
                             user_data=f"RENAME SPREADP {n} ")
-                        dpg.add_menu_item(label="Copy to slot...",
+                        dpg.add_menu_item(label="copy to slot...",
                             callback=self._ctx_prefill,
                             user_data=f"COPY SPREADP {n} TO ")
                         dpg.add_separator()
-                        dpg.add_menu_item(label="Delete Spread",
+                        dpg.add_menu_item(label="delete spread",
                             callback=self._ctx_exec, user_data=f"DELETE SPREADP {n}")
 
     def _on_fx_params_toggle(self, *_):
@@ -6991,14 +7009,14 @@ class GUIEngine:
                             with dpg.popup(f"form_btn_{n}", mousebutton=1):
                                 dpg.add_text(f"Form {n}", color=_C_P_FORMS)
                                 dpg.add_separator()
-                                dpg.add_menu_item(label="Use Form",
+                                dpg.add_menu_item(label="use form",
                                     callback=self._ctx_exec,
                                     user_data=f"FX FORM {n}")
-                                dpg.add_menu_item(label="Rename...",
+                                dpg.add_menu_item(label="rename...",
                                     callback=self._ctx_prefill,
                                     user_data=f"RENAME FORM {n} ")
                                 dpg.add_separator()
-                                dpg.add_menu_item(label="Delete Form",
+                                dpg.add_menu_item(label="delete form",
                                     callback=self._ctx_exec,
                                     user_data=f"DELETE FORM {n}")
 
@@ -7431,7 +7449,7 @@ class GUIEngine:
 
     def _build_osc_popup(self):
         """Floating OSC target manager — add/remove output destinations without typing commands."""
-        with dpg.window(tag="osc_window", label="OSC targets",
+        with dpg.window(tag="osc_window", label="osc targets",
                         width=620, height=360, show=False,
                         pos=(200, 150), no_collapse=False):
             dpg.add_text("osc output targets", color=_C_ACCENT)
@@ -7554,9 +7572,9 @@ class GUIEngine:
                            height=200):
                 dpg.add_table_column(label="ch",      width_fixed=True, init_width_or_weight=32)
                 dpg.add_table_column(label="cc/note", width_fixed=True, init_width_or_weight=65)
-                dpg.add_table_column(label="Type",    width_fixed=True, init_width_or_weight=45)
-                dpg.add_table_column(label="Name",    width_stretch=True)
-                dpg.add_table_column(label="Status",  width_fixed=True, init_width_or_weight=90)
+                dpg.add_table_column(label="type",    width_fixed=True, init_width_or_weight=45)
+                dpg.add_table_column(label="name",    width_stretch=True)
+                dpg.add_table_column(label="status",  width_fixed=True, init_width_or_weight=90)
                 dpg.add_table_column(label="del",     width_fixed=True, init_width_or_weight=36)
                 dpg.add_table_column(label="rsn",     width_fixed=True, init_width_or_weight=36)
 
@@ -7575,7 +7593,7 @@ class GUIEngine:
                                callback=self._on_apply_reassign)
 
             dpg.add_separator()
-            dpg.add_text("Add mapping:", color=_C_DIM)
+            dpg.add_text("add mapping:", color=_C_DIM)
             with dpg.group(horizontal=True):
                 dpg.add_radio_button(items=["CC", "Note"],
                                      tag="learn_type_radio",
@@ -7591,12 +7609,12 @@ class GUIEngine:
                           tag="learn_target",
                           default_value=target_names[0] if target_names else "",
                           width=300)
-            dpg.add_text("Click LEARN, then move the control (CC) or press a key/pad (Note).", color=_C_DIM)
+            dpg.add_text("click learn, then move the control (cc) or press a key/pad (note).", color=_C_DIM)
 
             # ── Direct entry (no physical MIDI needed) ────────
             with dpg.group(horizontal=True):
                 dpg.add_text("direct:", color=_C_DIM)
-                dpg.add_text("CH", color=_C_DIM)
+                dpg.add_text("ch", color=_C_DIM)
                 dpg.add_input_int(tag="direct_ch",   label="", width=42,
                                   default_value=1, min_value=1, max_value=16,
                                   step=0, step_fast=0)
@@ -7640,7 +7658,7 @@ class GUIEngine:
                 dpg.add_text("", tag="flash_learn_status", color=_C_ACCENT)
 
             dpg.add_separator()
-            dpg.add_text("GO/BACK a specific executor via note:", color=_C_DIM)
+            dpg.add_text("go/back a specific fader via note:", color=_C_DIM)
             with dpg.group(horizontal=True):
                 dpg.add_text("exec", color=_C_DIM)
                 dpg.add_input_int(tag="midi_exec_gb_num", label="", width=46,
@@ -7656,7 +7674,7 @@ class GUIEngine:
     def _build_patch_popup(self):
         """Floating patch editor — hidden by default, opened via header PATCH button."""
         profiles = list(self._library.profiles.keys()) if self._library else ["SGM_RGB_54"]
-        with dpg.window(tag="patch_window", label="Patch Editor",
+        with dpg.window(tag="patch_window", label="patch editor",
                         width=780, height=460, show=False,
                         pos=(160, 120), no_collapse=False):
             dpg.add_text("patch editor", color=_C_ACCENT)
@@ -7668,18 +7686,18 @@ class GUIEngine:
                            borders_innerV=True, borders_outerV=True,
                            row_background=True, scrollY=True, height=220):
                 dpg.add_table_column(label="id",       width_fixed=True,  init_width_or_weight=36)
-                dpg.add_table_column(label="Name",     width_fixed=True,  init_width_or_weight=110)
-                dpg.add_table_column(label="Profile",  width_fixed=True,  init_width_or_weight=130)
-                dpg.add_table_column(label="Univ",     width_fixed=True,  init_width_or_weight=44)
-                dpg.add_table_column(label="Start",    width_fixed=True,  init_width_or_weight=52)
-                dpg.add_table_column(label="Channels", width_fixed=True,  init_width_or_weight=70)
-                dpg.add_table_column(label="End",      width_fixed=True,  init_width_or_weight=52)
+                dpg.add_table_column(label="name",     width_fixed=True,  init_width_or_weight=110)
+                dpg.add_table_column(label="profile",  width_fixed=True,  init_width_or_weight=130)
+                dpg.add_table_column(label="univ",     width_fixed=True,  init_width_or_weight=44)
+                dpg.add_table_column(label="start",    width_fixed=True,  init_width_or_weight=52)
+                dpg.add_table_column(label="channels", width_fixed=True,  init_width_or_weight=70)
+                dpg.add_table_column(label="end",      width_fixed=True,  init_width_or_weight=52)
                 dpg.add_table_column(label="",         width_stretch=True)
 
             self._refresh_patch_table()
 
             dpg.add_separator()
-            dpg.add_text("Add fixture:", color=_C_DIM)
+            dpg.add_text("add fixture:", color=_C_DIM)
             with dpg.group(horizontal=True):
                 dpg.add_input_int(tag="patch_add_id",    label="", width=46,
                                   default_value=1, min_value=1, max_value=999,
@@ -7688,27 +7706,27 @@ class GUIEngine:
                 dpg.add_spacer(width=4)
                 dpg.add_input_text(tag="patch_add_name",  label="", width=110,
                                    default_value="Fixture")
-                dpg.add_text("Name", color=_C_DIM)
+                dpg.add_text("name", color=_C_DIM)
                 dpg.add_spacer(width=4)
                 dpg.add_combo(tag="patch_add_profile", label="", width=130,
                               items=profiles,
                               default_value=profiles[0] if profiles else "")
-                dpg.add_text("Profile", color=_C_DIM)
+                dpg.add_text("profile", color=_C_DIM)
             with dpg.group(horizontal=True):
                 dpg.add_input_int(tag="patch_add_univ",  label="", width=46,
                                   default_value=1, min_value=1, max_value=64,
                                   step=0, step_fast=0)
-                dpg.add_text("Universe", color=_C_DIM)
+                dpg.add_text("universe", color=_C_DIM)
                 dpg.add_spacer(width=4)
                 dpg.add_input_int(tag="patch_add_addr",  label="", width=60,
                                   default_value=1, min_value=1, max_value=512,
                                   step=0, step_fast=0)
-                dpg.add_text("Start Addr", color=_C_DIM)
+                dpg.add_text("start addr", color=_C_DIM)
                 dpg.add_spacer(width=4)
                 dpg.add_input_int(tag="patch_add_clone_src", label="", width=46,
                                   default_value=0, min_value=0, max_value=999,
                                   step=0, step_fast=0)
-                dpg.add_text("Clone from (0=none)", color=_C_DIM)
+                dpg.add_text("clone from (0=none)", color=_C_DIM)
                 dpg.add_spacer(width=8)
                 dpg.add_button(label="add fixture", width=110,
                                callback=self._on_patch_add)
@@ -7718,19 +7736,19 @@ class GUIEngine:
                 dpg.add_button(label="save patch", width=110,
                                callback=self._on_patch_save)
                 dpg.add_spacer(width=8)
-                dpg.add_text("Changes are live. Re-open console to rebuild monitors.",
+                dpg.add_text("changes are live. re-open console to rebuild monitors.",
                              color=_C_DIM)
 
             dpg.add_separator()
             dpg.add_text("sACN Network", color=_C_ACCENT)
             with dpg.group(horizontal=True):
-                dpg.add_text("Bind IP:", color=_C_DIM)
+                dpg.add_text("bind ip:", color=_C_DIM)
                 _saved_bind, _saved_univs = ShowFile.load_network()
                 dpg.add_input_text(tag="net_bind_input", label="", width=160,
                                    default_value=_saved_bind or network.bind_address or "",
                                    hint="e.g. 192.168.1.161")
                 dpg.add_spacer(width=8)
-                dpg.add_text("Universes:", color=_C_DIM)
+                dpg.add_text("universes:", color=_C_DIM)
                 _univ_str = " ".join(str(u) for u in (_saved_univs or network.universes))
                 dpg.add_input_text(tag="net_univs_input", label="", width=120,
                                    default_value=_univ_str,
@@ -7738,7 +7756,7 @@ class GUIEngine:
                 dpg.add_spacer(width=8)
                 dpg.add_button(label="save network", width=110,
                                callback=self._on_net_save)
-            dpg.add_text("Saved settings apply on next console restart.",
+            dpg.add_text("saved settings apply on next console restart.",
                          color=_C_DIM)
 
     def _on_net_save(self, *_):
@@ -7776,7 +7794,7 @@ class GUIEngine:
                 dpg.add_text(str(primary["address"]))
                 dpg.add_text(str(total_ch))
                 dpg.add_text(str(end_addr))
-                dpg.add_button(label="Remove", width=70,
+                dpg.add_button(label="remove", width=70,
                                callback=self._on_patch_remove,
                                user_data=master.fixture_id)
 
@@ -8264,7 +8282,7 @@ class GUIEngine:
             ]),
         ]
 
-        with dpg.window(tag="keys_window", label="Keyboard & Command Reference (manual)",
+        with dpg.window(tag="keys_window", label="keyboard & command reference",
                         width=720, height=560, show=False,
                         pos=(240, 80), no_collapse=False):
             dpg.add_text("command reference", color=_C_ACCENT)
@@ -8298,7 +8316,7 @@ class GUIEngine:
 
     def _build_changelog_popup(self):
         """Floating changelog viewer — hidden by default, opened via 'log' button."""
-        with dpg.window(tag="changelog_window", label="Changelog",
+        with dpg.window(tag="changelog_window", label="changelog",
                         width=760, height=560, show=False,
                         pos=(260, 90), no_collapse=False):
             dpg.add_text("what's changed", color=_C_ACCENT)
@@ -8544,7 +8562,7 @@ class GUIEngine:
 
             # ── Name + actions row ────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("Name:", color=_C_DIM)
+                dpg.add_text("name:", color=_C_DIM)
                 dpg.add_input_text(tag="fxed_name", label="", width=200,
                                    default_value="")
                 dpg.add_spacer(width=8)
@@ -8560,7 +8578,7 @@ class GUIEngine:
 
             # ── Target selector ───────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("Target:", color=_C_DIM)
+                dpg.add_text("target:", color=_C_DIM)
                 dpg.add_combo(tag="fxed_target", label="", width=240,
                               items=["Selection", "All Fixtures"],
                               default_value="Selection")
@@ -8571,29 +8589,29 @@ class GUIEngine:
             dpg.add_separator()
 
             # ── Layer list ────────────────────────────────────
-            dpg.add_text("Layers:", color=_C_DIM)
+            dpg.add_text("layers:", color=_C_DIM)
             with dpg.child_window(tag="fxed_layers_win",
                                   width=-1, height=270, border=True):
                 with dpg.table(tag="fxed_layer_table", header_row=True,
                                borders_innerV=False, borders_outerV=False,
                                borders_innerH=False, borders_outerH=False,
                                policy=dpg.mvTable_SizingFixedFit):
-                    dpg.add_table_column(label="Waveform", width_fixed=True, init_width_or_weight=94)
-                    dpg.add_table_column(label="Channel",  width_fixed=True, init_width_or_weight=74)
-                    dpg.add_table_column(label="BPM",      width_fixed=True, init_width_or_weight=64)
-                    dpg.add_table_column(label="Size",     width_fixed=True, init_width_or_weight=64)
-                    dpg.add_table_column(label="Spread",   width_fixed=True, init_width_or_weight=59)
-                    dpg.add_table_column(label="Phase",    width_fixed=True, init_width_or_weight=59)
-                    dpg.add_table_column(label="Group",    width_fixed=True, init_width_or_weight=96)
-                    dpg.add_table_column(label="Color",    width_fixed=True, init_width_or_weight=96)
-                    dpg.add_table_column(label="Dim",      width_fixed=True, init_width_or_weight=96)
-                    dpg.add_table_column(label="SPD",      width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="waveform", width_fixed=True, init_width_or_weight=94)
+                    dpg.add_table_column(label="channel",  width_fixed=True, init_width_or_weight=74)
+                    dpg.add_table_column(label="bpm",      width_fixed=True, init_width_or_weight=64)
+                    dpg.add_table_column(label="size",     width_fixed=True, init_width_or_weight=64)
+                    dpg.add_table_column(label="spread",   width_fixed=True, init_width_or_weight=59)
+                    dpg.add_table_column(label="phase",    width_fixed=True, init_width_or_weight=59)
+                    dpg.add_table_column(label="group",    width_fixed=True, init_width_or_weight=96)
+                    dpg.add_table_column(label="color",    width_fixed=True, init_width_or_weight=96)
+                    dpg.add_table_column(label="dim",      width_fixed=True, init_width_or_weight=96)
+                    dpg.add_table_column(label="spd",      width_fixed=True, init_width_or_weight=50)
                     dpg.add_table_column(label="",         width_fixed=True, init_width_or_weight=30)
 
             dpg.add_separator()
 
             # ── Add layer form ────────────────────────────────
-            dpg.add_text("Add Layer:", color=_C_DIM)
+            dpg.add_text("add layer:", color=_C_DIM)
             with dpg.group(horizontal=True):
                 dpg.add_combo(tag="fxed_add_wave",    label="", width=90,
                               items=self._FX_WAVEFORMS,
@@ -8605,15 +8623,15 @@ class GUIEngine:
                 dpg.add_input_float(tag="fxed_add_bpm",    label="", width=60,
                                     default_value=60.0, min_value=1.0, max_value=999.0,
                                     step=0, format="%.1f")
-                dpg.add_text("Size", color=_C_DIM)
+                dpg.add_text("size", color=_C_DIM)
                 dpg.add_input_float(tag="fxed_add_size",   label="", width=60,
                                     default_value=100.0, min_value=0.0, max_value=100.0,
                                     step=0, format="%.0f")
-                dpg.add_text("Spread", color=_C_DIM)
+                dpg.add_text("spread", color=_C_DIM)
                 dpg.add_input_float(tag="fxed_add_spread", label="", width=55,
                                     default_value=0.0, min_value=0.0, max_value=100.0,
                                     step=0, format="%.1f")
-                dpg.add_text("Phase", color=_C_DIM)
+                dpg.add_text("phase", color=_C_DIM)
                 dpg.add_input_float(tag="fxed_add_phase",  label="", width=55,
                                     default_value=0.0, min_value=0.0, max_value=1.0,
                                     step=0, format="%.3f")
@@ -8794,7 +8812,7 @@ class GUIEngine:
                               default_value="—" if _sid is None else str(_sid))
                 dpg.set_value(f"fxed_r{i}_spd", "—" if _sid is None else str(_sid))
 
-                dpg.add_button(label="X", width=24, height=20,
+                dpg.add_button(label="x", width=24, height=20,
                                callback=self._fxed_remove_layer,
                                user_data=i)
             self._fxed_row_ids.append(row_id)
@@ -9213,24 +9231,24 @@ class GUIEngine:
             )
             dpg.add_separator()
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Apply",  width=90, height=26,
+                dpg.add_button(label="apply",  width=90, height=26,
                                callback=self._on_cpick_apply)
                 dpg.add_spacer(width=6)
-                dpg.add_button(label="White",  width=70, height=26,
+                dpg.add_button(label="white",  width=70, height=26,
                                callback=lambda: self._cpick_set(255, 255, 255))
                 dpg.add_spacer(width=6)
-                dpg.add_button(label="Off",    width=60, height=26,
+                dpg.add_button(label="off",    width=60, height=26,
                                callback=lambda: self._cpick_set(0, 0, 0))
             # Quick color swatches
             _QUICK_COLS = [
-                ("Red",     (255,   0,   0)),
-                ("Green",   (  0, 255,   0)),
-                ("Blue",    (  0,   0, 255)),
-                ("Amber",   (255, 140,   0)),
-                ("Cyan",    (  0, 200, 200)),
-                ("Magenta", (255,   0, 200)),
-                ("Warm",    (255, 180,  60)),
-                ("UV",      ( 80,   0, 200)),
+                ("red",     (255,   0,   0)),
+                ("green",   (  0, 255,   0)),
+                ("blue",    (  0,   0, 255)),
+                ("amber",   (255, 140,   0)),
+                ("cyan",    (  0, 200, 200)),
+                ("magenta", (255,   0, 200)),
+                ("warm",    (255, 180,  60)),
+                ("uv",      ( 80,   0, 200)),
             ]
             with dpg.group(horizontal=True):
                 for name, (r, g, b) in _QUICK_COLS[:4]:
@@ -9335,7 +9353,7 @@ class GUIEngine:
                         width=560, height=340, show=False,
                         pos=(600, 300), no_collapse=False,
                         on_close=self._on_speed_master_close):
-            dpg.add_text("Speed Masters  (20–480 BPM)", color=_C_ACCENT)
+            dpg.add_text("speed masters  (20–480 bpm)", color=_C_ACCENT)
             dpg.add_separator()
             # 4 columns × 4 rows of 16 slots
             for row in range(4):
@@ -9611,13 +9629,13 @@ class GUIEngine:
                                    borders_innerV=True, borders_outerV=True,
                                    borders_outerH=True, row_background=True,
                                    width=768, scrollY=False):
-                        dpg.add_table_column(label="Fixture", width_fixed=True, init_width_or_weight=110)
-                        dpg.add_table_column(label="R",   width_fixed=True, init_width_or_weight=42)
-                        dpg.add_table_column(label="G",   width_fixed=True, init_width_or_weight=42)
-                        dpg.add_table_column(label="B",   width_fixed=True, init_width_or_weight=42)
-                        dpg.add_table_column(label="Dim", width_fixed=True, init_width_or_weight=56)
+                        dpg.add_table_column(label="fixture", width_fixed=True, init_width_or_weight=110)
+                        dpg.add_table_column(label="r",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="g",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="b",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="dim", width_fixed=True, init_width_or_weight=56)
                         dpg.add_table_column(label="fx",  width_stretch=True)
-                        dpg.add_table_column(label="Bar", width_fixed=True, init_width_or_weight=130)
+                        dpg.add_table_column(label="bar", width_fixed=True, init_width_or_weight=130)
 
                         for master in self._patch.all_fixtures():
                             fid = str(master.fixture_id)
@@ -9641,12 +9659,12 @@ class GUIEngine:
                                    borders_innerV=True, borders_outerV=True,
                                    borders_outerH=True, row_background=True,
                                    scrollY=False):
-                        dpg.add_table_column(label="Fixture", width_fixed=True, init_width_or_weight=110)
-                        dpg.add_table_column(label="R",   width_fixed=True, init_width_or_weight=42)
-                        dpg.add_table_column(label="G",   width_fixed=True, init_width_or_weight=42)
-                        dpg.add_table_column(label="B",   width_fixed=True, init_width_or_weight=42)
-                        dpg.add_table_column(label="Dim", width_fixed=True, init_width_or_weight=56)
-                        dpg.add_table_column(label="Bar", width_stretch=True)
+                        dpg.add_table_column(label="fixture", width_fixed=True, init_width_or_weight=110)
+                        dpg.add_table_column(label="r",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="g",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="b",   width_fixed=True, init_width_or_weight=42)
+                        dpg.add_table_column(label="dim", width_fixed=True, init_width_or_weight=56)
+                        dpg.add_table_column(label="bar", width_stretch=True)
 
                         for master in self._patch.all_fixtures():
                             fid = str(master.fixture_id)
@@ -9696,7 +9714,7 @@ class GUIEngine:
                 dpg.add_button(label="prompts", width=70,
                                callback=self._on_ai_prompts_toggle)
             if not (self._ai and self._ai._enabled):
-                dpg.add_text("ANTHROPIC_API_KEY not set — requests will no-op",
+                dpg.add_text("anthropic_api_key not set — requests will no-op",
                              color=_C_DIM)
             dpg.add_separator()
             with dpg.group():
@@ -9894,7 +9912,7 @@ class GUIEngine:
             # Already armed — cancel
             self._learn_armed = False
             self._midi.cancel_learn()
-            dpg.set_item_label("learn_btn", "LEARN")
+            dpg.set_item_label("learn_btn", "learn")
             dpg.set_value("learn_status", "cancelled")
             return
         target_name = dpg.get_value("learn_target")
@@ -9986,7 +10004,7 @@ class GUIEngine:
             self._midi.map_note(ch, number, entry[0], name=name)
         dpg.set_value("go_cue_status", f"CH{ch} Note{number} → {name}")
         try:
-            dpg.set_item_label("learn_btn", "LEARN")
+            dpg.set_item_label("learn_btn", "learn")
         except Exception:
             pass
         self._pending_table_refresh = True
@@ -10012,16 +10030,16 @@ class GUIEngine:
         if armed_type == 'cc':
             self._midi.map_cc(ch, number, cb,
                               name=target_name, soft_takeover=soft_takeover)
-            type_label = "CC"
+            type_label = "cc"
         else:
             self._midi.map_note(ch, number, cb, off_cb, name=target_name)
-            type_label = "Note"
+            type_label = "note"
 
         # set_value is thread-safe; item rebuild deferred to main thread
         dpg.set_value("learn_status",
                       f"CH{ch} {type_label}{number} → {target_name}")
         try:
-            dpg.set_item_label("learn_btn", "LEARN")
+            dpg.set_item_label("learn_btn", "learn")
         except Exception:
             pass
         self._pending_table_refresh = True
@@ -10198,7 +10216,7 @@ class GUIEngine:
             with dpg.table_row(tag=row_tag, parent="midi_table"):
                 dpg.add_text(str(ch))
                 dpg.add_text(str(note))
-                dpg.add_text("Note", color=_C_P_BEAM)
+                dpg.add_text("note", color=_C_P_BEAM)
                 dpg.add_text(m.name, tag=f"mr_name_note_{ch}_{note}")
                 dpg.add_text("—")
                 dpg.add_button(label="del",
@@ -10729,7 +10747,7 @@ class GUIEngine:
                 if self._go_theme:
                     dpg.bind_item_theme("sb_pt_lbl", self._go_theme)
             else:
-                dpg.configure_item("sb_pt_lbl", label="PT")
+                dpg.configure_item("sb_pt_lbl", label="pt")
                 if self._dim_btn_theme:
                     dpg.bind_item_theme("sb_pt_lbl", self._dim_btn_theme)
         except Exception:
