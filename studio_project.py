@@ -874,7 +874,7 @@ class Programmer:
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
-                             'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP'}
+                             'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP', 'MIRROR'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1203,6 +1203,26 @@ class Programmer:
                     sfid = str(sub.fixture_id)
                     cur = self.data.get(sfid, {}).get(ch, 0)
                     self.data.setdefault(sfid, {})[ch] = max(0, min(255, 255 - int(cur)))
+            return
+
+        # MIRROR <ch>  — reverse channel values across the fixture selection
+        # The value of fixture N becomes the value of fixture (last-N).
+        # Useful for symmetric rigs: mirror R creates a left-right flip.
+        if tokens[0] == 'MIRROR' and len(tokens) >= 2:
+            ch = _CH.get(tokens[1])
+            if ch:
+                masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                # Collect per-master: average value across all subs of that master
+                cur_vals = []
+                for master in masters:
+                    subs = master.all_subs()
+                    vals = [self.data.get(str(s.fixture_id), {}).get(ch, 0) for s in subs]
+                    cur_vals.append(vals)
+                self._push_undo()
+                rev_vals = list(reversed(cur_vals))
+                for master, new_sub_vals in zip(masters, rev_vals):
+                    for sub, new_v in zip(master.all_subs(), new_sub_vals):
+                        self.data.setdefault(str(sub.fixture_id), {})[ch] = int(new_v)
             return
 
         # STEP <ch> <step>  — add step*index to each master fixture in selection order
@@ -7646,6 +7666,7 @@ class GUIEngine:
                 ("1 THRU 6 AT AVERAGE R",   "Stamp the mean red value across selection to all fixtures"),
                 ("1 THRU 6 AT CLAMP R 50 200", "Restrict each fixture's red to the range 50–200 (clamps values outside)"),
                 ("1 THRU 6 AT STEP R 10",   "Staircase red: each fixture adds 10 more than the previous (1→+0, 2→+10, ...)"),
+                ("1 THRU 6 AT MIRROR R",    "Mirror red across selection: fixture 1 ↔ fixture 6, fixture 2 ↔ fixture 5, ..."),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -7888,6 +7909,7 @@ class GUIEngine:
             ]),
             ("MACROS", [
                 ("MACRO RECORD 1 LookA",  "Start recording commands to slot 1 (name is optional)"),
+                ("MACRO RENAME 1 PreShow", "Rename macro slot 1 without re-recording it"),
                 ("MACRO STOP",            "Stop recording and save the macro"),
                 ("MACRO ABORT",           "Discard recording without saving"),
                 ("MACRO 1",               "Play back macro slot 1"),
@@ -14711,6 +14733,19 @@ def run_command(cmd_str):
             del macro_pool[slot]
             ShowFile.save_macros(macro_pool)
             return f"Macro {slot} deleted"
+        if t1 == 'RENAME':
+            try:
+                slot = int(tokens[2])
+            except (IndexError, ValueError):
+                return "Usage: MACRO RENAME <n> <new name>"
+            if slot not in macro_pool:
+                return f"MACRO RENAME: slot {slot} empty"
+            raw_parts = raw.split(None, 3)
+            if len(raw_parts) < 4:
+                return "MACRO RENAME: provide a new name"
+            macro_pool[slot]["name"] = raw_parts[3].strip()
+            ShowFile.save_macros(macro_pool)
+            return f"Macro {slot} renamed to '{macro_pool[slot]['name']}'"
         # MACRO <n> — playback
         try:
             slot = int(t1)
@@ -17845,6 +17880,20 @@ if STUDIO_HEADLESS:
         _check("AT STEP R fixture 1 unchanged (offset 0)", _st_vals[0] == 50)
         _check("AT STEP R fixture 2 offset +20 (70)",      _st_vals[1] == 70)
         _check("AT STEP R fixture 3 offset +40 (90)",      _st_vals[2] == 90)
+
+        # ── AT MIRROR ─────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT R 10")   # fixture 1 = red 10
+        run_command("2 AT R 100")  # fixture 2 = red 100
+        run_command("3 AT R 200")  # fixture 3 = red 200
+        run_command("1 THRU 3 AT MIRROR R")  # should swap 1↔3, keep 2 (symmetric)
+        _mir_r1 = prog.data.get("1.1", {}).get('red')
+        _mir_r2 = prog.data.get("2.1", {}).get('red')
+        _mir_r3 = prog.data.get("3.1", {}).get('red')
+        _check("AT MIRROR R swaps first ↔ last (fixture 1 gets fixture 3's value)",
+               _mir_r1 == 200)
+        _check("AT MIRROR R middle fixture gets its own mirror (fixture 3 gets fixture 1's value)",
+               _mir_r3 == 10)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
@@ -17928,6 +17977,12 @@ if STUDIO_HEADLESS:
                macro_pool.get(99, {}).get("name") == "Renamed")
         run_command("MACRO DELETE 99")
         _check("MACRO DELETE removes slot", 99 not in macro_pool)
+        # Also test MACRO RENAME <n> <name> (alternative order)
+        macro_pool[98] = {"name": "TestMacro", "commands": ["1 FULL"]}
+        r_mrn = run_command("MACRO RENAME 98 RenamedViaMAcroRename")
+        _check("MACRO RENAME <n> <name> renames macro",
+               macro_pool.get(98, {}).get("name") == "RenamedViaMAcroRename")
+        del macro_pool[98]
         prog.clear_programmer()
 
         # ── MACRO RECURSION GUARD TESTS ───────────────────────────────────────
