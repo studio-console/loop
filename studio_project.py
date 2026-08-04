@@ -3730,6 +3730,7 @@ class OutputState:
         self.blind            = False  # when True, programmer layer is suppressed from DMX output
         self.highlight_mode   = False  # when True, selected fixtures go full-white at 100%
         self.highlight_fids   = set()  # set of master fixture_id ints to highlight
+        self.direct_dmx       = {}    # {universe: {address(1-512): value(0-255)}}
         self._lock            = threading.Lock()
 
     def link_programmer(self, programmer):
@@ -3897,6 +3898,10 @@ class OutputState:
                             if addr + offset > 511:
                                 break
                             dmx[addr + offset] = ch_resolved.get(ch, 0)
+            # Direct DMX overrides — highest priority, applied last
+            for addr1, val in self.direct_dmx.get(universe, {}).items():
+                if 1 <= addr1 <= 512:
+                    dmx[addr1 - 1] = max(0, min(255, int(val)))
         return tuple(dmx)
 
 
@@ -7631,6 +7636,13 @@ class GUIEngine:
                 ("IMPORT PRESETS <file>", "Merge a preset bundle JSON into live pools"),
                 ("CLONE 1 TO 7",          "Copy fixture 1's presets / cue data to fixture 7"),
                 ("CLONE 1 TO 7 THRU 9",   "Clone to a range of destinations"),
+            ]),
+            ("DIRECT DMX", [
+                ("DMX 100 255",            "Set DMX address 100 to value 255 (universe 1)"),
+                ("DMX 100 255 UNIVERSE 2", "Set universe 2 address 100 to 255"),
+                ("DMX LIST",               "List all active direct DMX overrides"),
+                ("CLEAR DMX",              "Remove all direct DMX overrides (all universes)"),
+                ("CLEAR DMX UNIVERSE 2",   "Remove overrides on universe 2 only"),
             ]),
             ("NETWORK / sACN", [
                 ("NETWORK STATUS",         "Show current sACN bind address and universe list"),
@@ -14317,6 +14329,33 @@ def run_command(cmd_str):
             return "MIDI clock sync OFF"
         return "MIDI CLOCK ON | OFF"
 
+    # ── DIRECT DMX ───────────────────────────────────────────
+    # DMX <addr> <val> [UNIVERSE <n>]  — bypass fixture system, write raw
+    # CLEAR DMX [UNIVERSE <n>]         — remove all or per-universe overrides
+    if t0 == 'DMX':
+        if len(tokens) >= 2 and tokens[1] == 'LIST':
+            if not output_state.direct_dmx:
+                return "Direct DMX: no overrides active"
+            lines = ["Direct DMX overrides:"]
+            for univ in sorted(output_state.direct_dmx):
+                for addr, val in sorted(output_state.direct_dmx[univ].items()):
+                    lines.append(f"  U{univ}:{addr:3d} = {val}")
+            return "\n".join(lines)
+        try:
+            addr = int(tokens[1])
+            val  = int(tokens[2])
+        except (IndexError, ValueError):
+            return "Usage: DMX <addr> <val> [UNIVERSE <n>]  |  DMX LIST  |  CLEAR DMX"
+        if not (1 <= addr <= 512 and 0 <= val <= 255):
+            return "DMX: addr 1-512, val 0-255"
+        univ = 1
+        if 'UNIVERSE' in tokens:
+            ui = tokens.index('UNIVERSE')
+            try: univ = int(tokens[ui + 1])
+            except (IndexError, ValueError): pass
+        output_state.direct_dmx.setdefault(univ, {})[addr] = val
+        return f"Direct DMX U{univ}:{addr} = {val}"
+
     # ── STATUS overview ──────────────────────────────────────
     if t0 in ('STATUS', 'STATE'):
         lines = ["=== Console Status ==="]
@@ -15360,6 +15399,19 @@ def run_command(cmd_str):
             prog.data[fid]['fx_kill'] = True
         return (f"FX killed for {len(masters)} fixture(s) — "
                 "record into cue to make permanent, or CLEAR to release")
+
+    if t0 == 'CLEAR' and len(tokens) >= 2 and tokens[1] == 'DMX':
+        univ = None
+        if 'UNIVERSE' in tokens:
+            ui = tokens.index('UNIVERSE')
+            try: univ = int(tokens[ui + 1])
+            except (IndexError, ValueError): pass
+        if univ is not None:
+            removed = len(output_state.direct_dmx.pop(univ, {}))
+            return f"Cleared {removed} direct DMX override(s) on universe {univ}"
+        count = sum(len(v) for v in output_state.direct_dmx.values())
+        output_state.direct_dmx.clear()
+        return f"Cleared {count} direct DMX override(s)"
 
     if t0 == 'CLEAR' and len(tokens) == 2 and tokens[1] == 'FX':
         _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
