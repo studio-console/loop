@@ -4788,6 +4788,7 @@ class GUIEngine:
         self._reassign_pending = None
         self._ai_history       = []   # list of {ts, prompt, summary, actions}
         self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
+        self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows exec (page-1)*15+N
 
     # ── Popup layout persistence ─────────────────────────────
 
@@ -4962,7 +4963,7 @@ class GUIEngine:
 
     def _build_header(self):
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.19", color=_C_ACCENT)
+            dpg.add_text("studio console  v0.20", color=_C_ACCENT)
             dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
             dpg.add_text("   |   ", color=_C_DIM)
@@ -7259,10 +7260,13 @@ class GUIEngine:
                 ("COPY COLOR 2 TO 5 Warm","Copy with a new name"),
                 ("COPY DIM 1 TO 3",       "Same pattern for DIM, GROUP, FX"),
                 ("COPY RATE 1 TO 5",      "Same pattern for RATE, SIZEP, SPREADP"),
+                ("COPY FORM 5 TO 6",      "Copy a custom form (destination must be slot ≥5; built-ins 1-4 protected)"),
                 ("COPY POSITION 1 TO 2",  "Same pattern for all 6 attr pool types"),
                 ("COPY CUE 3 TO 5",       "Copy cue 3 → cue 5 (active cuestack)"),
                 ("COPY CUE 3 TO 5 Intro", "Copy with new name"),
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack copy"),
+                ("MOVE CUE 3 TO 5",       "Move (rename in place) cue 3 → cue 5, active cuestack"),
+                ("MOVE CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack move — removes cue from source"),
                 ("DELETE CUE 3",          "Delete cue 3 from active cuestack (saves show)"),
                 ("DELETE CUE 3 CS 2",     "Delete cue 3 from cuestack 2"),
                 ("DELETE CUESTACK 5",     "Delete cuestack 5 and stop its executor"),
@@ -7273,7 +7277,10 @@ class GUIEngine:
                 ("CLEAR DIM 2",           "Delete dim preset 2 from the pool (saves show)"),
                 ("CLEAR GROUP 1",         "Delete group 1 from the pool (saves show)"),
                 ("CLEAR FX 3",            "Delete FX preset 3 from the pool (saves show)"),
+                ("CLEAR RATE 2 / CLEAR SIZEP 2 / CLEAR SPREADP 2", "Delete rate/size/spread pool slot"),
+                ("CLEAR FORM 7",          "Delete custom form 7 (built-ins 1-4 protected)"),
                 ("CLEAR POSITION 1",      "Delete position preset 1 (works for all 6 attr types)"),
+                ("RATE 3 / SIZEP 2 / SPREADP 1", "Recall a rate/size/spread preset onto the live BPM/size/spread"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
@@ -7414,6 +7421,7 @@ class GUIEngine:
                 ("ai button",             "Open the AI prompt pool (only shown when ANTHROPIC_API_KEY is set)"),
                 ("log button",            "Open the changelog popup (studio_data/changelog.json)"),
                 ("spd button",            "Open the speed master panel (16 live BPM faders, MA-style)"),
+                ("fdrs button",           "Open the 15-slot fader page panel — ◀/▶ page through banks of 15 executors (page 2 = execs 16-30, etc.)"),
                 ("color button",          "Open the HSV colour wheel for RGB control"),
             ]),
             ("STATUS BAR & QUICK CONTROLS", [
@@ -8517,14 +8525,38 @@ class GUIEngine:
     _FPG_BTN_W  = 66     # button width inside slot
     _FPG_BTN_H  = 22     # button height
 
+    @staticmethod
+    def _fpg_exec_for_slot(page, slot):
+        """Map a fader-page slot (1.._FPG_SLOTS) on the given page to its
+        underlying executor id, MA-style: page 2 slot 1 = executor 16."""
+        return (int(page) - 1) * GUIEngine._FPG_SLOTS + int(slot)
+
+    @staticmethod
+    def _fpg_slot_for_exec(page, exec_id):
+        """Inverse of _fpg_exec_for_slot — the slot (1.._FPG_SLOTS) that
+        would display exec_id on the given page, or None if it's off-page."""
+        slot = int(exec_id) - (int(page) - 1) * GUIEngine._FPG_SLOTS
+        return slot if 1 <= slot <= GUIEngine._FPG_SLOTS else None
+
     def _build_fader_page_popup(self):
         """15-slot MA-style fader page — floating, hidden by default."""
         _win_w = self._FPG_SLOTS * (self._FPG_SLOT_W + 4) + 22
-        _win_h = self._FPG_SLOT_H + 50
+        _win_h = self._FPG_SLOT_H + 80
 
-        with dpg.window(tag="fader_page_window", label="fader page  [page 1]",
+        with dpg.window(tag="fader_page_window",
+                        label=f"fader page  [page {self._fpg_page}]",
                         width=_win_w, height=_win_h, show=False,
                         pos=(100, 100), no_collapse=False):
+            with dpg.group(horizontal=True):
+                dpg.add_text("page:", color=_C_DIM)
+                dpg.add_button(label="◀", width=26, callback=self._on_fpg_page_prev)
+                dpg.add_text(f"{self._fpg_page}", tag="fpg_page_lbl", color=_C_ACCENT)
+                dpg.add_button(label="▶", width=26, callback=self._on_fpg_page_next)
+                dpg.add_spacer(width=8)
+                dpg.add_text(f"execs {self._fpg_exec_for_slot(self._fpg_page, 1)}"
+                            f"-{self._fpg_exec_for_slot(self._fpg_page, self._FPG_SLOTS)}",
+                            tag="fpg_range_lbl", color=_C_DIM)
+            dpg.add_separator()
             with dpg.group(horizontal=True):
                 for n in range(1, self._FPG_SLOTS + 1):
                     with dpg.child_window(
@@ -8564,39 +8596,70 @@ class GUIEngine:
         except Exception:
             pass
 
+    def _fpg_step_page(self, delta):
+        """Pure page-number update (no dpg calls) — clamped to >= 1. Split out
+        from the prev/next callbacks so it's exercisable without a live dpg
+        context (e.g. from the headless smoke test)."""
+        self._fpg_page = max(1, self._fpg_page + int(delta))
+        return self._fpg_page
+
+    def _on_fpg_page_prev(self, *_):
+        self._fpg_step_page(-1)
+        self._fpg_page_changed()
+
+    def _on_fpg_page_next(self, *_):
+        self._fpg_step_page(1)
+        self._fpg_page_changed()
+
+    def _fpg_page_changed(self):
+        """Update the page label/title/range display and re-sync all slots
+        after the page number changes — otherwise slots would keep showing
+        stale data from the previously-displayed bank of executors."""
+        try:
+            dpg.set_value("fpg_page_lbl", f"{self._fpg_page}")
+            dpg.configure_item("fader_page_window",
+                               label=f"fader page  [page {self._fpg_page}]")
+            dpg.set_value("fpg_range_lbl",
+                          f"execs {self._fpg_exec_for_slot(self._fpg_page, 1)}"
+                          f"-{self._fpg_exec_for_slot(self._fpg_page, self._FPG_SLOTS)}")
+        except Exception:
+            pass
+        self._fpg_refresh_all()
+
     def _fpg_refresh_all(self):
         """Sync all fader page slot labels and fader positions from executor pool."""
         if not self._executor_pool:
             return
         for n in range(1, self._FPG_SLOTS + 1):
-            ex = self._executor_pool.executors.get(n)
-            if not ex:
-                continue
+            eid = self._fpg_exec_for_slot(self._fpg_page, n)
+            ex = self._executor_pool.executors.get(eid)
             try:
-                if ex.cuestack:
+                if ex and ex.cuestack:
                     dpg.set_value(f"fpg_name_{n}", ex.cuestack.name[:9])
                 else:
                     dpg.set_value(f"fpg_name_{n}", "—")
-                dpg.set_value(f"fpg_fader_{n}", ex.level)
+                dpg.set_value(f"fpg_fader_{n}", ex.level if ex else 1.0)
             except Exception:
                 pass
 
     def _on_fpg_fader(self, _sender, value, user_data):
         n = int(user_data)
         if self._executor_pool:
-            ex = self._executor_pool.executors.get(n)
+            eid = self._fpg_exec_for_slot(self._fpg_page, n)
+            ex = self._executor_pool.executors.get(eid)
             if ex:
                 ex.level = max(0.0, min(1.0, float(value)))
 
     def _on_fpg_btn(self, _sender, _app_data, user_data):
         n, slot = user_data
-        ex = self._executor_pool.executors.get(n) if self._executor_pool else None
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
         if not ex or not self._cmd:
             return
         fn = getattr(ex, f'btn_{slot}', 'GO')
         if fn == 'FLASH':
             return  # hold polling handled by tick loop
-        self._cmd(f"EXEC {n} {fn}")
+        self._cmd(f"EXEC {eid} {fn}")
 
     def _tick_fader_page(self):
         """Update fader page slot labels + FLASH polling (called from _tick)."""
@@ -8605,14 +8668,13 @@ class GUIEngine:
         if not self._executor_pool:
             return
         for n in range(1, self._FPG_SLOTS + 1):
-            ex = self._executor_pool.executors.get(n)
-            if not ex:
-                continue
+            eid = self._fpg_exec_for_slot(self._fpg_page, n)
+            ex = self._executor_pool.executors.get(eid)
             try:
                 # Name and cue labels
-                name = ex.cuestack.name[:9] if ex.cuestack else "—"
+                name = ex.cuestack.name[:9] if (ex and ex.cuestack) else "—"
                 dpg.set_value(f"fpg_name_{n}", name)
-                if ex.cuestack and ex.cuestack.current is not None:
+                if ex and ex.cuestack and ex.cuestack.current is not None:
                     cur = ex.cuestack.current
                     cue = ex.cuestack.cues.get(cur)
                     cue_lbl = f"▶{cur:.0f}" + (f":{cue.name[:4]}" if cue else "")
@@ -8621,10 +8683,10 @@ class GUIEngine:
                 dpg.set_value(f"fpg_cue_{n}", cue_lbl)
                 # Sync fader only when not actively dragged
                 if not dpg.is_item_active(f"fpg_fader_{n}"):
-                    dpg.set_value(f"fpg_fader_{n}", ex.level)
+                    dpg.set_value(f"fpg_fader_{n}", ex.level if ex else 1.0)
                 # Button labels from configurable function
                 for _s, _tag in (('a', f"fpg_btna_{n}"), ('b', f"fpg_btnb_{n}"), ('c', f"fpg_btnc_{n}")):
-                    fn = getattr(ex, f'btn_{_s}', 'GO')
+                    fn = getattr(ex, f'btn_{_s}', 'GO') if ex else {'a': 'GO', 'b': 'BACK', 'c': 'STOP'}[_s]
                     dpg.set_item_label(_tag, fn.lower())
             except Exception:
                 pass
@@ -9745,13 +9807,13 @@ class GUIEngine:
             for eid in active_eids:
                 ex = self._executor_pool.executors[eid]
                 # Find which slots are configured as FLASH — check both playbacks panel and fader page
-                _fpg_map = {'a': 'a', 'b': 'b', 'c': 'c'}
                 flash_tags = []
+                _fpg_slot = self._fpg_slot_for_exec(self._fpg_page, eid)
                 for _s in ('a', 'b', 'c'):
                     if getattr(ex, f'btn_{_s}', '') == 'FLASH':
                         flash_tags.append(f"ebtn_{_s}_{eid}")
-                        if 1 <= eid <= self._FPG_SLOTS:
-                            flash_tags.append(f"fpg_btn{_s}_{eid}")
+                        if _fpg_slot is not None:
+                            flash_tags.append(f"fpg_btn{_s}_{_fpg_slot}")
                 held = False
                 for _ftag in flash_tags:
                     try:
@@ -14870,7 +14932,7 @@ def run_command(cmd_str):
     #         [0]   [1]  [2] [3] [4]  [5+]
     if t0 == 'COPY' and len(tokens) >= 5 and tokens[3] == 'TO':
         sub = tokens[1]
-        if sub in ('COLOR', 'COLOUR', 'DIM', 'GROUP', 'FX',
+        if sub in ('COLOR', 'COLOUR', 'DIM', 'GROUP', 'FX', 'FORM',
                    'RATE', 'SIZEP', 'SIZE', 'SPREADP', 'SPREAD',
                    'POSITION', 'GOBO', 'ZOOM', 'FOCUS', 'BEAM', 'CONTROL'):
             try:
@@ -14916,6 +14978,18 @@ def run_command(cmd_str):
                 fx_pool.presets[dst_n] = dst
                 save_show()
                 return f"Copied FX {src_n} '{src.name}' → FX {dst_n} '{dst.name}'"
+            if sub == 'FORM':
+                if dst_n < FormPool.FIRST_CUSTOM_SLOT:
+                    return (f"COPY FORM: destination {dst_n} is built-in — "
+                            f"only slot ≥ {FormPool.FIRST_CUSTOM_SLOT} can be a copy target")
+                src = form_pool.get(src_n)
+                if not src: return f"Form {src_n} is empty"
+                dst = copy.deepcopy(src)
+                dst.form_id = dst_n
+                dst.name    = new_name or f"{src.name} (copy)"
+                form_pool.forms[dst_n] = dst
+                save_show()
+                return f"Copied Form {src_n} '{src.name}' → Form {dst_n} '{dst.name}'"
             if sub == 'RATE':
                 src = rate_pool.get(src_n)
                 if not src: return f"Rate {src_n} is empty"
@@ -15061,6 +15135,32 @@ def run_command(cmd_str):
                 save_show()
                 return f"FX Preset {slot} cleared (show saved)"
             return f"FX Preset {slot} is already empty"
+        if sub == 'FORM':
+            if slot < FormPool.FIRST_CUSTOM_SLOT:
+                return f"Form {slot} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be cleared"
+            if slot in form_pool.forms:
+                del form_pool.forms[slot]
+                save_show()
+                return f"Form {slot} cleared (show saved)"
+            return f"Form {slot} is already empty"
+        if sub == 'RATE':
+            if slot in rate_pool.presets:
+                del rate_pool.presets[slot]
+                save_show()
+                return f"Rate Preset {slot} cleared (show saved)"
+            return f"Rate Preset {slot} is already empty"
+        if sub in ('SIZEP', 'SIZE'):
+            if slot in size_pool.presets:
+                del size_pool.presets[slot]
+                save_show()
+                return f"Size Preset {slot} cleared (show saved)"
+            return f"Size Preset {slot} is already empty"
+        if sub in ('SPREADP', 'SPREAD'):
+            if slot in spread_pool.presets:
+                del spread_pool.presets[slot]
+                save_show()
+                return f"Spread Preset {slot} cleared (show saved)"
+            return f"Spread Preset {slot} is already empty"
         _clear_attr_map = {
             'POSITION': position_pool,
             'GOBO':     gobo_pool,
@@ -15223,6 +15323,58 @@ if STUDIO_HEADLESS:
         run_command("RECORD DIM 5 CopySrc 75%")
         r_cp_dim = run_command("COPY DIM 5 TO 6 CopiedDim")
         _check("COPY DIM routes to pool handler", "Copied Dim" in r_cp_dim)
+
+        # CLEAR RATE / SIZEP / SPREADP / FORM — parity gap found by audit: every
+        # other pool type (COLOR/DIM/GROUP/FX/attr pools) already had CLEAR.
+        run_command("RECORD RATE 9 ClearMe 90")
+        r_clr_rate = run_command("CLEAR RATE 9")
+        _check("CLEAR RATE deletes the preset", "cleared" in r_clr_rate.lower())
+        _check("CLEAR RATE actually removed it", rate_pool.get(9) is None)
+        run_command("RECORD SIZEP 9 ClearMe 40")
+        r_clr_size = run_command("CLEAR SIZEP 9")
+        _check("CLEAR SIZEP deletes the preset", "cleared" in r_clr_size.lower())
+        run_command("RECORD SPREADP 9 ClearMe 40")
+        r_clr_spread = run_command("CLEAR SPREADP 9")
+        _check("CLEAR SPREADP deletes the preset", "cleared" in r_clr_spread.lower())
+        run_command('RECORD FORM 9 ClearMe 0,0 1,1')
+        r_clr_form = run_command("CLEAR FORM 9")
+        _check("CLEAR FORM deletes a custom form", "cleared" in r_clr_form.lower())
+        r_clr_form_builtin = run_command("CLEAR FORM 1")
+        _check("CLEAR FORM protects built-in slot 1", "built-in" in r_clr_form_builtin.lower())
+
+        # COPY FORM — the one pool type missing from COPY entirely (audit finding)
+        run_command('RECORD FORM 8 CopySrcForm 0,0 0.5,1 1,0')
+        r_cp_form = run_command("COPY FORM 8 TO 9 CopiedForm")
+        _check("COPY FORM routes to pool handler", "Copied Form" in r_cp_form)
+        _check("COPY FORM created the destination", form_pool.get(9) is not None)
+        r_cp_form_builtin = run_command("COPY FORM 8 TO 2 Overwrite")
+        _check("COPY FORM protects built-in destination slots",
+               "built-in" in r_cp_form_builtin.lower())
+
+        # Fader-page paging — GUIEngine._fpg_exec_for_slot/_fpg_slot_for_exec map
+        # a fixed 15-slot panel onto banks of executors (page 2 slot 1 = exec 16).
+        # Pure functions, no dpg context needed, so they're smoke-testable headless.
+        _check("fpg slot->exec page 1 slot 1 == exec 1",
+               GUIEngine._fpg_exec_for_slot(1, 1) == 1)
+        _check("fpg slot->exec page 2 slot 1 == exec 16",
+               GUIEngine._fpg_exec_for_slot(2, 1) == 16)
+        _check("fpg slot->exec page 3 slot 15 == exec 45",
+               GUIEngine._fpg_exec_for_slot(3, 15) == 45)
+        _check("fpg exec->slot inverse holds for on-page exec",
+               GUIEngine._fpg_slot_for_exec(2, 16) == 1)
+        _check("fpg exec->slot returns None for off-page exec",
+               GUIEngine._fpg_slot_for_exec(1, 16) is None)
+        # _fpg_step_page is the pure half of _on_fpg_page_prev/next (the dpg-
+        # touching half needs a live GUI context, so it's exercised only by
+        # hand — dpg calls segfault the process outright when no context is
+        # active, rather than raising a catchable exception).
+        gui._fpg_page = 1
+        gui._fpg_step_page(-1)
+        _check("fader page cannot go below page 1", gui._fpg_page == 1)
+        gui._fpg_step_page(1)
+        gui._fpg_step_page(1)
+        _check("fader page increments normally", gui._fpg_page == 3)
+        gui._fpg_page = 1  # reset so later state (e.g. SAVE) isn't affected
 
         # TAP command — pre-seed _tap_times to avoid sleep; two taps → BPM
         _tap_times.clear()
