@@ -1918,6 +1918,8 @@ class CueStack:
         self.current         = None      # Current cue number (float) or None
         self.allow_exec_time = True      # False = ignore executor time override for this stack
         self.wrap            = False     # True = fire cue 1 clean on wrap-around (no LTP bleed)
+        self.bounce          = False     # True = reverse direction at ends (ping-pong)
+        self._bounce_dir     = 1        # 1 = forward, -1 = backward (runtime, not saved)
         self.note            = ""        # Production annotation (saved, optional)
 
     def _sorted_cue_numbers(self):
@@ -2916,6 +2918,28 @@ def _cuestack_go(self, patch, fade_engine, executor):
     numbers = self._sorted_cue_numbers()
     if not numbers:
         return "CueStack is empty"
+    if getattr(self, 'bounce', False):
+        if self.current is None:
+            self._bounce_dir = 1
+            return _cuestack_fire_cue(self, numbers[0], patch, fade_engine, executor)
+        try:
+            idx = numbers.index(self.current)
+        except ValueError:
+            self._bounce_dir = 1
+            return _cuestack_fire_cue(self, numbers[0], patch, fade_engine, executor)
+        d = getattr(self, '_bounce_dir', 1)
+        next_idx = idx + d
+        if next_idx >= len(numbers):
+            self._bounce_dir = -1
+            next_idx = idx - 1
+            if next_idx < 0:
+                next_idx = 0
+        elif next_idx < 0:
+            self._bounce_dir = 1
+            next_idx = idx + 1
+            if next_idx >= len(numbers):
+                next_idx = len(numbers) - 1
+        return _cuestack_fire_cue(self, numbers[next_idx], patch, fade_engine, executor)
     wrap_occurred = False
     if self.current is None:
         next_num = numbers[0]
@@ -7968,6 +7992,10 @@ class GUIEngine:
                 ("FADER 1 TIME OFF",        "Remove fader 1 time override"),
                 ("FADER 1 TIMELOCK OFF",    "Lock cuestack on fader 1 to its own times"),
                 ("FADER 1 TIMELOCK ON",     "Re-enable fader time override for cuestack"),
+                ("CS 1 BOUNCE ON",          "CS 1: ping-pong — reverse direction at last/first cue instead of looping"),
+                ("CS 1 BOUNCE OFF",         "CS 1: restore normal forward loop (default)"),
+                ("FADER 1 BOUNCE ON",       "Same as CS BOUNCE ON but addressed through the fader slot"),
+                ("FADER 1 BOUNCE OFF",      "Disable ping-pong on the cuestack assigned to fader 1"),
                 ("CS 1 WRAP ON",            "CS 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
                 ("CS 1 WRAP OFF",           "CS 1: restore normal LTP tracking across wrap-around (default)"),
                 ("CS 1 NOTE",               "View production note on cuestack 1 (blank if none set)"),
@@ -11315,6 +11343,8 @@ class ShowFile:
                 "wrap":            stack.wrap,
                 "cues":            cues_out,
             }
+            if getattr(stack, 'bounce', False):
+                entry_cs["bounce"] = True
             if getattr(stack, 'note', ''):
                 entry_cs["note"] = stack.note
             doc["cuestacks"][str(sid)] = entry_cs
@@ -11543,6 +11573,7 @@ class ShowFile:
             stack = CueStack(sid, sdata["name"])
             stack.allow_exec_time = bool(sdata.get("allow_exec_time", True))
             stack.wrap            = bool(sdata.get("wrap", False))
+            stack.bounce          = bool(sdata.get("bounce", False))
             stack.note            = sdata.get("note", "")
             for num_str, cdata in sdata["cues"].items():
                 num      = float(num_str)
@@ -13485,6 +13516,23 @@ def run_command(cmd_str):
             save_show()
             return f"CS {n} '{cs.name}' note set: {note_text}"
 
+        # CS n BOUNCE ON/OFF — ping-pong playback (reverse direction at each end)
+        if len(tokens) >= 4 and tokens[2].upper() == 'BOUNCE':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            state = tokens[3].upper()
+            if state == 'ON':
+                cs.bounce = True
+                cs._bounce_dir = 1
+                save_show()
+                return f"CS {n} '{cs.name}': BOUNCE ON — reverses at last/first cue (ping-pong)"
+            elif state == 'OFF':
+                cs.bounce = False
+                cs._bounce_dir = 1
+                save_show()
+                return f"CS {n} '{cs.name}': BOUNCE OFF — normal forward loop"
+            return "BOUNCE: use ON or OFF"
         # CS n WRAP ON/OFF — clean restart at top after last cue
         if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
             cs = cuestack_pool.get(n)
@@ -13501,7 +13549,7 @@ def run_command(cmd_str):
                 return f"CS {n} '{cs.name}': WRAP OFF — LTP tracking across loop"
             return "WRAP: use ON or OFF"
         if t0 == 'CS':
-            return f"Usage: CS <n> WRAP ON|OFF"
+            return f"Usage: CS <n> BOUNCE ON|OFF | WRAP ON|OFF"
         if cuestack_pool.get(n):
             active_executor[0] = n
             cs = cuestack_pool.get(n)
@@ -13729,6 +13777,22 @@ def run_command(cmd_str):
             save_show()
             return (f"Fader {ex_n} label → '{label_text}'"
                     if label_text else f"Fader {ex_n} label cleared")
+        elif verb == 'BOUNCE' and len(tokens) >= 4:
+            cs = ex.cuestack
+            if not cs:
+                return f"Fader {ex_n} has no cuestack assigned"
+            state = tokens[3].upper()
+            if state == 'ON':
+                cs.bounce = True
+                cs._bounce_dir = 1
+                save_show()
+                return f"Fader {ex_n} BOUNCE ON — CS '{cs.name}' ping-pongs at each end"
+            elif state == 'OFF':
+                cs.bounce = False
+                cs._bounce_dir = 1
+                save_show()
+                return f"Fader {ex_n} BOUNCE OFF — CS '{cs.name}' normal forward loop"
+            return "FADER BOUNCE: use ON or OFF"
         elif verb == 'LOOP' and len(tokens) >= 4:
             cs = ex.cuestack
             if not cs:
@@ -18855,6 +18919,49 @@ if STUDIO_HEADLESS:
         _note_view = run_command("CS 99 NOTE")
         _check("CS NOTE view returns the note text", "Dark Moody Show" in _note_view)
         _csnote_cs.note = ""
+
+        # ── CS BOUNCE ─────────────────────────────────────────────────────────
+        # Verify ping-pong direction logic using a fresh 3-cue cuestack
+        _bcs_id = 102
+        cuestack_pool.create(_bcs_id, "BounceTest")
+        _bcs = cuestack_pool.get(_bcs_id)
+        _bcs.cues.clear()
+        _bcs.current = None
+        # Build 3 minimal cues directly (cue_pool.store returns None, so assign separately)
+        def _mk_cue(num, dim_frac):
+            prog.data["1"] = {"dim": dim_frac}
+            c = Cue(float(num), f"C{num}")
+            c.record(prog)
+            prog.data.clear()
+            _bcs.cues[float(num)] = c
+        _mk_cue(1, 0.33)
+        _mk_cue(2, 0.66)
+        _mk_cue(3, 1.0)
+        _check("BOUNCE: cuestack has 3 cues", len(_bcs.cues) == 3)
+        run_command(f"CS {_bcs_id} BOUNCE ON")
+        _check("CS BOUNCE ON sets .bounce = True", _bcs.bounce is True)
+        # Use a minimal stub executor — bounce logic only needs .layer dict
+        _bex = executor_pool.get(_bcs_id)
+        _bex.assign(_bcs)
+        _bcs.current = None
+        _bcs._bounce_dir = 1
+        _bcs.go(patch, fade_engine, _bex)   # fires cue 1
+        _check("BOUNCE GO 1: at cue 1", _bcs.current == 1.0)
+        _bcs.go(patch, fade_engine, _bex)   # fires cue 2
+        _check("BOUNCE GO 2: at cue 2", _bcs.current == 2.0)
+        _bcs.go(patch, fade_engine, _bex)   # fires cue 3
+        _check("BOUNCE GO 3: at cue 3", _bcs.current == 3.0)
+        _bcs.go(patch, fade_engine, _bex)   # hits end → reverses → fires cue 2
+        _check("BOUNCE GO 4: reverses at last cue → cue 2", _bcs.current == 2.0)
+        _check("BOUNCE GO 4: direction flipped to -1", _bcs._bounce_dir == -1)
+        _bcs.go(patch, fade_engine, _bex)   # fires cue 1
+        _check("BOUNCE GO 5: at cue 1", _bcs.current == 1.0)
+        _bcs.go(patch, fade_engine, _bex)   # hits start → reverses → fires cue 2
+        _check("BOUNCE GO 6: reverses at first cue → cue 2", _bcs.current == 2.0)
+        _check("BOUNCE GO 6: direction flipped to +1", _bcs._bounce_dir == 1)
+        run_command(f"CS {_bcs_id} BOUNCE OFF")
+        _check("CS BOUNCE OFF sets .bounce = False", _bcs.bounce is False)
+        cuestack_pool.stacks.pop(_bcs_id, None)
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
