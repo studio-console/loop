@@ -3969,32 +3969,6 @@ class OutputState:
                     else:
                         sub_dim = _base_dim
 
-                    # Base priority for non-FX channels: programmer > audio > cue
-                    base_r = prog_vals.get('red',   audio_vals.get('red',   cue_vals.get('red',   0)))
-                    base_g = prog_vals.get('green', audio_vals.get('green', cue_vals.get('green', 0)))
-                    base_b = prog_vals.get('blue',  audio_vals.get('blue',  cue_vals.get('blue',  0)))
-
-                    # Envelope-blended merge:
-                    #   output = base*(1-env) + fx_val
-                    # where fx_val is already amplitude-scaled by env.
-                    # At env=0: output = base  (base passes through, no FX jump)
-                    # At env=1: output = fx_val (full FX replaces base)
-                    if 'red' in fx_vals:
-                        env_r = fx_vals.get('_env_red', 1.0)
-                        r = max(0, min(255, int(base_r * (1.0 - env_r) + fx_vals['red'])))
-                    else:
-                        r = base_r
-                    if 'green' in fx_vals:
-                        env_g = fx_vals.get('_env_green', 1.0)
-                        g = max(0, min(255, int(base_g * (1.0 - env_g) + fx_vals['green'])))
-                    else:
-                        g = base_g
-                    if 'blue' in fx_vals:
-                        env_b = fx_vals.get('_env_blue', 1.0)
-                        b = max(0, min(255, int(base_b * (1.0 - env_b) + fx_vals['blue'])))
-                    else:
-                        b = base_b
-
                     gm        = self.master_level
                     highlight = (self.highlight_mode and
                                  master.fixture_id in self.highlight_fids)
