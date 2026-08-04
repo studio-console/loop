@@ -7869,6 +7869,7 @@ class GUIEngine:
                 ("LOAD SHOW <name>",      "Restore a snapshot (cuestacks/presets reload live)"),
                 ("LIST SHOWS",            "List all saved show snapshots"),
                 ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
+                ("PROGRAMMER SHOW",       "Print a human-readable dump of all programmer values (fixture names + channels)"),
                 ("PROGRAMMER STATS",      "Show how many fixtures/sub-fixtures and channels are active in programmer"),
                 ("EXPORT PRESETS",        "Bundle colors/dims/fx/forms to preset_export_YYYYMMDD.json"),
                 ("EXPORT PRESETS colors", "Export only color presets"),
@@ -16573,6 +16574,27 @@ def run_command(cmd_str):
     if t0 == 'UNDO':
         return prog.undo()
 
+    # ── PROGRAMMER SHOW — human-readable programmer contents ──────────────────
+    if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('SHOW', 'PRINT', 'DUMP'):
+        lines = ["Programmer:"]
+        for fid in sorted(patch.fixtures, key=int):
+            master = patch.fixtures[fid]
+            m_data = prog.data.get(str(fid), {})
+            subs_data = {k: v for k, v in prog.data.items()
+                         if k.startswith(f"{fid}.") and v}
+            if not m_data and not subs_data:
+                continue
+            name_s = master.name
+            dim_s = (f"  Dim={m_data['dim']:.0%}" if 'dim' in m_data else "")
+            lines.append(f"  [{fid}] {name_s}{dim_s}")
+            for sfid, vals in sorted(subs_data.items()):
+                sub_idx = sfid.split('.')[1]
+                pairs = "  ".join(f"{k}={v}" for k, v in sorted(vals.items()))
+                lines.append(f"       sub {sub_idx}: {pairs}")
+        if len(lines) == 1:
+            lines.append("  (empty)")
+        return "\n".join(lines)
+
     # ── PROGRAMMER STATS ──────────────────────────────────────────────────────
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('STATS', 'STATUS', 'INFO'):
         m_count   = sum(1 for k in prog.data if '.' not in k and prog.data[k])
@@ -16731,6 +16753,17 @@ if STUDIO_HEADLESS:
         r_ps_empty = run_command("PROGRAMMER STATS")
         _check("PROGRAMMER STATS shows 0 params when clear",
                "Total params    : 0" in r_ps_empty or "0" in r_ps_empty)
+
+        # PROGRAMMER SHOW
+        run_command("1 AT R 200")
+        r_pshow = run_command("PROGRAMMER SHOW")
+        _f1_master = patch.get(1)
+        _check("PROGRAMMER SHOW lists active fixture name",
+               _f1_master is not None and _f1_master.name in r_pshow)
+        _check("PROGRAMMER SHOW shows channel value", "200" in r_pshow or "red" in r_pshow.lower())
+        prog.clear_programmer()
+        r_pshow_empty = run_command("PROGRAMMER SHOW")
+        _check("PROGRAMMER SHOW shows (empty) when clear", "empty" in r_pshow_empty)
 
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
