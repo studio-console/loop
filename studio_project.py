@@ -2048,6 +2048,10 @@ class CueStack:
         self.bounce          = False     # True = reverse direction at ends (ping-pong)
         self._bounce_dir     = 1        # 1 = forward, -1 = backward (runtime, not saved)
         self.note            = ""        # Production annotation (saved, optional)
+        # Chase mode — auto-advance through cues at a fixed BPM
+        self.chase_enabled  = False
+        self.chase_bpm      = 120.0
+        self.chase_speed_id = None   # SpeedMaster slot (overrides chase_bpm when set)
 
     def _sorted_cue_numbers(self):
         """Returns cue numbers in ascending order."""
@@ -2268,7 +2272,8 @@ class Executor:
         self.time_override_fade  = None   # float seconds or None
         self.time_override_delay = None   # float seconds or None
         self.time_override_on    = False  # master enable for this executor's override
-        self._follow_at          = None   # monotonic time to auto-GO (None = manual)
+        self._follow_at          = None   # monotonic time to auto-GO via FOLLOW
+        self._chase_next_at      = None   # monotonic time for next chase GO
         # Three assignable action buttons per fader slot
         self.btn_a = 'GO'    # GO / BACK / STOP / FLASH / RATE+ / RATE-
         self.btn_b = 'BACK'
@@ -8187,6 +8192,10 @@ class GUIEngine:
                 ("CS 1 WRAP OFF",           "CS 1: restore normal LTP tracking across wrap-around (default)"),
                 ("CS 1 NOTE",               "View production note on cuestack 1 (blank if none set)"),
                 ("CS 1 NOTE Dark Moody",    "Set a freeform production note on cuestack 1 (saved to ShowFile)"),
+                ("CS 1 CHASE ON BPM 120",   "Auto-advance CS 1 through cues at 120 BPM (chase mode)"),
+                ("CS 1 CHASE OFF",          "Disable chase mode — cuestack returns to manual GO"),
+                ("CS 1 CHASE BPM 90",       "Change chase speed to 90 BPM while chase is running"),
+                ("CS 1 CHASE SPEED 2",      "Link CS 1 chase tempo to Speed Master 2"),
                 ("PROG TIME 2",             "Programmer time: all cues fade at 2s"),
                 ("PROG TIME OFF",           "Disable programmer time override"),
             ]),
@@ -10931,6 +10940,29 @@ class GUIEngine:
                     except Exception:
                         pass
 
+        # Auto-chase: fire GO on executors whose cuestack is in chase mode
+        if self._executor_pool and self._cmd:
+            _now_ch = time.monotonic()
+            for ex in self._executor_pool.executors.values():
+                cs = ex.cuestack
+                if not (cs and cs.chase_enabled and cs.cues):
+                    ex._chase_next_at = None
+                    continue
+                # Resolve BPM: speed master > inline
+                _sm = None
+                if cs.chase_speed_id is not None and self._speed_pool:
+                    _sm = self._speed_pool.get(cs.chase_speed_id)
+                bpm = (_sm.bpm if _sm else None) or cs.chase_bpm or 120.0
+                beat_s = 60.0 / bpm
+                if ex._chase_next_at is None:
+                    ex._chase_next_at = _now_ch + beat_s
+                elif _now_ch >= ex._chase_next_at:
+                    ex._chase_next_at = _now_ch + beat_s
+                    try:
+                        self._cmd(f"FADER {ex.exec_id} GO")
+                    except Exception:
+                        pass
+
         # FLASH button hold detection — poll is_item_active on any ebtn_* slot
         # whose configured function is FLASH (any assigned executor).
         if self._executor_pool and self._cmd:
@@ -11563,6 +11595,12 @@ class ShowFile:
                 entry_cs["bounce"] = True
             if getattr(stack, 'note', ''):
                 entry_cs["note"] = stack.note
+            if getattr(stack, 'chase_enabled', False):
+                entry_cs["chase_enabled"] = True
+            if getattr(stack, 'chase_bpm', 120.0) != 120.0:
+                entry_cs["chase_bpm"] = stack.chase_bpm
+            if getattr(stack, 'chase_speed_id', None) is not None:
+                entry_cs["chase_speed_id"] = stack.chase_speed_id
             doc["cuestacks"][str(sid)] = entry_cs
         _write_file(ShowFile.CUESTACKS, doc)
         total = sum(len(s.cues) for s in cuestack_pool.stacks.values())
@@ -11794,6 +11832,9 @@ class ShowFile:
             stack.wrap            = bool(sdata.get("wrap", False))
             stack.bounce          = bool(sdata.get("bounce", False))
             stack.note            = sdata.get("note", "")
+            stack.chase_enabled   = bool(sdata.get("chase_enabled", False))
+            stack.chase_bpm       = float(sdata.get("chase_bpm", 120.0))
+            stack.chase_speed_id  = sdata.get("chase_speed_id")
             for num_str, cdata in sdata["cues"].items():
                 num      = float(num_str)
                 cue      = Cue(num, cdata["name"],
@@ -13561,6 +13602,7 @@ def run_command(cmd_str):
             lines = [f"Cuestack {n}: {cs.name}",
                      f"  Cues      : {len(sorted_nums)}",
                      f"  Loop/Wrap : {'ON' if getattr(cs, 'wrap', False) else 'OFF'}",
+                     f"  Chase     : {'ON  ' + str(round(getattr(cs,'chase_bpm',120.0),1)) + ' BPM' if getattr(cs,'chase_enabled',False) else 'OFF'}",
                      f"  Faders    : {', '.join(faders) or '(none)'}"]
             if cs.current is not None:
                 cue = cs.cues.get(cs.current)
@@ -13781,8 +13823,55 @@ def run_command(cmd_str):
                 save_show()
                 return f"CS {n} '{cs.name}': WRAP OFF — LTP tracking across loop"
             return "WRAP: use ON or OFF"
+
+        # CS n CHASE ON [BPM x] / CS n CHASE OFF / CS n CHASE BPM x / CS n CHASE SPEED k
+        if len(tokens) >= 4 and tokens[2].upper() == 'CHASE':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            sub = tokens[3].upper()
+            if sub == 'ON':
+                if len(tokens) >= 6 and tokens[4].upper() == 'BPM':
+                    try:
+                        cs.chase_bpm = max(1.0, min(600.0, float(tokens[5])))
+                    except ValueError:
+                        return f"CHASE ON: bad BPM '{tokens[5]}'"
+                cs.chase_enabled = True
+                save_show()
+                bpm_s = f"{cs.chase_bpm:.1f} BPM"
+                return f"CS {n} '{cs.name}': chase ON — auto-GO every {60000/cs.chase_bpm:.0f}ms ({bpm_s})"
+            elif sub == 'OFF':
+                cs.chase_enabled = False
+                # Clear chase timer on any executor holding this cuestack
+                for ex in executor_pool.executors.values():
+                    if ex.cuestack is cs:
+                        ex._chase_next_at = None
+                save_show()
+                return f"CS {n} '{cs.name}': chase OFF"
+            elif sub == 'BPM' and len(tokens) >= 5:
+                try:
+                    cs.chase_bpm = max(1.0, min(600.0, float(tokens[4])))
+                except ValueError:
+                    return f"CHASE BPM: bad value '{tokens[4]}'"
+                save_show()
+                return f"CS {n} '{cs.name}': chase BPM → {cs.chase_bpm:.1f}"
+            elif sub == 'SPEED' and len(tokens) >= 5:
+                try:
+                    sid = int(tokens[4])
+                except ValueError:
+                    return f"CHASE SPEED: bad slot '{tokens[4]}'"
+                cs.chase_speed_id = sid if sid > 0 else None
+                save_show()
+                return (f"CS {n} '{cs.name}': chase linked to Speed Master {sid}"
+                        if sid > 0 else f"CS {n} '{cs.name}': chase speed link cleared")
+            else:
+                bpm_s = f"{cs.chase_bpm:.1f} BPM"
+                state = "ON" if cs.chase_enabled else "OFF"
+                return (f"CS {n} '{cs.name}': chase {state} ({bpm_s})\n"
+                        f"  CS {n} CHASE ON [BPM x]  |  CHASE OFF  |  CHASE BPM x  |  CHASE SPEED k")
+
         if t0 == 'CS':
-            return f"Usage: CS <n> BOUNCE ON|OFF | WRAP ON|OFF"
+            return f"Usage: CS <n> BOUNCE ON|OFF | WRAP ON|OFF | CHASE ON|OFF|BPM|SPEED"
         if cuestack_pool.get(n):
             active_executor[0] = n
             cs = cuestack_pool.get(n)
@@ -19727,6 +19816,41 @@ if STUDIO_HEADLESS:
             for _m in patch.all_fixtures():
                 _m.set_dimmer(1.0)
             prog.clear_programmer()
+
+        # ── CS CHASE MODE ─────────────────────────────────────────────────
+        _ch_cs = cuestack_pool.create(103, "ChaseTest")
+        if _ch_cs:
+            _ch_cs.cues.clear()
+            prog.data["1"] = {"dim": 0.5}
+            for _cn in (1, 2, 3):
+                _c = Cue(float(_cn), f"Ch{_cn}"); _c.record(prog); _ch_cs.cues[float(_cn)] = _c
+            prog.data.clear()
+        r_ch_on = run_command("CS 103 CHASE ON BPM 120")
+        _ch = cuestack_pool.get(103)
+        _check("CS CHASE ON enables chase_enabled", _ch is not None and _ch.chase_enabled is True)
+        _check("CS CHASE ON BPM sets chase_bpm", _ch is not None and abs(_ch.chase_bpm - 120.0) < 0.1)
+        _check("CS CHASE ON returns confirmation", "chase" in r_ch_on.lower())
+        r_ch_bpm = run_command("CS 103 CHASE BPM 90")
+        _check("CS CHASE BPM updates chase_bpm", _ch is not None and abs(_ch.chase_bpm - 90.0) < 0.1)
+        r_ch_off = run_command("CS 103 CHASE OFF")
+        _check("CS CHASE OFF disables chase_enabled", _ch is not None and _ch.chase_enabled is False)
+        _check("CS CHASE OFF returns confirmation", "chase" in r_ch_off.lower())
+        # CS INFO shows chase state
+        r_ch_info = run_command("CS 103 INFO")
+        _check("CS INFO shows chase field", "Chase" in r_ch_info or "chase" in r_ch_info.lower())
+        # Save/load round-trip
+        _ch.chase_enabled = True; _ch.chase_bpm = 77.0
+        ShowFile.save_cuestacks(cuestack_pool)
+        _ch2 = CueStack(103, "ChaseTest")
+        _tmp_pool = CueStackPool(); _tmp_pool.store(103, _ch2)
+        ShowFile.load_cuestacks(_tmp_pool, CuePool())
+        _reloaded_ch = _tmp_pool.get(103)
+        _check("CS CHASE save/load preserves chase_enabled",
+               _reloaded_ch is not None and _reloaded_ch.chase_enabled is True)
+        _check("CS CHASE save/load preserves chase_bpm",
+               _reloaded_ch is not None and abs(_reloaded_ch.chase_bpm - 77.0) < 0.1)
+        _ch.chase_enabled = False
+        cuestack_pool.stacks.pop(103, None)
 
         # ── FADER SIZE — per-executor FX amplitude multiplier ────────────
         _sz_ex = executor_pool.get(3)
