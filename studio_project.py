@@ -7918,6 +7918,7 @@ class GUIEngine:
                 ("LOAD CUE 5 CS 2",       "Load cue 5 from cuestack 2 into programmer"),
             ]),
             ("RENAME / COPY / DELETE", [
+                ("RENAME FIXTURE 3 Bar L","Rename fixture 3's display label (saved to patch file)"),
                 ("RENAME CUESTACK 2 Tour","Rename cuestack 2 — all cues kept"),
                 ("RENAME CUE 3 Intro",    "Rename cue 3 in active cuestack"),
                 ("RENAME CS 2 CUE 5 End", "Rename cue 5 in cuestack 2"),
@@ -16812,8 +16813,25 @@ def run_command(cmd_str):
             ShowFile.save_macros(macro_pool)
             return f"Macro {n} → \"{new_name}\""
 
+        # RENAME FIXTURE <n> <name>
+        if sub == 'FIXTURE':
+            try:
+                n = int(tokens[2])
+            except ValueError:
+                return f"RENAME FIXTURE: bad fixture ID '{tokens[2]}'"
+            master = patch.get(n)
+            if not master:
+                return f"RENAME FIXTURE: fixture {n} not in patch"
+            new_name = _name_after(raw, 3)
+            if not new_name:
+                return "RENAME FIXTURE: provide a new name"
+            old_name = master.name
+            master.name = new_name
+            ShowFile.save_patch(patch)
+            return f"Fixture {n}: \"{old_name}\" → \"{new_name}\""
+
         return (f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, "
-                "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO")
+                "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO, FIXTURE")
 
     # ── COPY FIXTURE <src> TO <dst1> [dst2 ...] ──────────────────────────────
     # Clone programmer values from one fixture to one or more destinations.
@@ -19070,6 +19088,20 @@ if STUDIO_HEADLESS:
             # Fixture not in any group scenario
             _fg_not_found = run_command("FIXTURE GROUPS 9999")
             _check("FIXTURE GROUPS: bad fixture returns error", "not patched" in _fg_not_found.lower())
+
+        # ── RENAME FIXTURE ────────────────────────────────────────────────────
+        _rf_fid = next(iter(sorted(patch.fixtures)), None)
+        if _rf_fid is not None:
+            _rf_master = patch.fixtures[_rf_fid]
+            _rf_orig = _rf_master.name
+            _rf_result = run_command(f"RENAME FIXTURE {_rf_fid} TempTestName")
+            _check("RENAME FIXTURE: changes master.name", _rf_master.name == "TempTestName")
+            _check("RENAME FIXTURE: includes old→new in response",
+                   "TempTestName" in _rf_result)
+            run_command(f"RENAME FIXTURE {_rf_fid} {_rf_orig}")  # restore
+            _check("RENAME FIXTURE: name restored", _rf_master.name == _rf_orig)
+        _rf_bad = run_command("RENAME FIXTURE 9999 X")
+        _check("RENAME FIXTURE: bad ID returns error", "not in patch" in _rf_bad)
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
