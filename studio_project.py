@@ -570,6 +570,7 @@ class Programmer:
         self._last_clear_time = 0.0
         self._undo_stack      = []  # list of (data_snapshot, selection_ids) dicts
         self._UNDO_MAX        = 20
+        self.live_fades       = []  # [{fid,channel,src,dst,start,duration}, ...] for AT…IN fades
 
     def _push_undo(self):
         """Snapshot current programmer state onto the undo stack."""
@@ -894,7 +895,69 @@ class Programmer:
             self.select(selected)
 
         if action_tokens:
-            self._parse_action(action_tokens)
+            # Detect trailing "IN <seconds>" for live programmer fade
+            _fade_dur = None
+            _act = list(action_tokens)
+            if len(_act) >= 2 and _act[-2] == 'IN':
+                try:
+                    _fade_dur = float(_act[-1])
+                    _act = _act[:-2]
+                except ValueError:
+                    pass
+
+            if _fade_dur is not None and _fade_dur > 0 and self.selection:
+                import time as _t
+                # Snapshot pre-action programmer state for the selection
+                _pre = {}
+                for f in self.selection:
+                    fid = str(f.fixture_id)
+                    if fid in self.data:
+                        _pre[fid] = dict(self.data[fid])
+                    if isinstance(f, MasterFixture):
+                        for sub in f.all_subs():
+                            sfid = str(sub.fixture_id)
+                            if sfid in self.data:
+                                _pre[sfid] = dict(self.data[sfid])
+                # Apply action to learn the target values
+                self._parse_action(_act)
+                # Read post-action state for the selection
+                _now = _t.monotonic()
+                for f in self.selection:
+                    fid = str(f.fixture_id)
+                    for ch, dst_val in list(self.data.get(fid, {}).items()):
+                        src_val = _pre.get(fid, {}).get(ch, dst_val)
+                        if src_val != dst_val:
+                            self.live_fades.append({
+                                'fid': fid, 'channel': ch,
+                                'src': src_val, 'dst': dst_val,
+                                'start': _now, 'duration': _fade_dur,
+                            })
+                    if isinstance(f, MasterFixture):
+                        for sub in f.all_subs():
+                            sfid = str(sub.fixture_id)
+                            for ch, dst_val in list(self.data.get(sfid, {}).items()):
+                                src_val = _pre.get(sfid, {}).get(ch, dst_val)
+                                if src_val != dst_val:
+                                    self.live_fades.append({
+                                        'fid': sfid, 'channel': ch,
+                                        'src': src_val, 'dst': dst_val,
+                                        'start': _now, 'duration': _fade_dur,
+                                    })
+                # Revert programmer to pre-action state; fades will fill in the values
+                for fid, vals in _pre.items():
+                    self.data[fid] = dict(vals)
+                # Also remove keys that didn't exist in pre but now do (set to dst immediately via fade)
+                for f in self.selection:
+                    fid = str(f.fixture_id)
+                    if fid not in _pre:
+                        self.data.pop(fid, None)
+                    if isinstance(f, MasterFixture):
+                        for sub in f.all_subs():
+                            sfid = str(sub.fixture_id)
+                            if sfid not in _pre:
+                                self.data.pop(sfid, None)
+            else:
+                self._parse_action(_act if _fade_dur is not None else action_tokens)
 
     def _parse_channel_token(self, token):
         """Maps command token to internal channel name."""
@@ -3796,7 +3859,13 @@ def _expand_color_fx(fx_defs_by_fid, color_pool):
                             sub['size']    = (val / 255.0) * base_size
                             out.append(sub)
                 else:
-                    print(f"FX color_id {cid} not found — skipping rgb layer for fixture {fid}")
+                    # color preset empty — use white fallback so FX is visible immediately
+                    base_size = ld.get('size', 100.0)
+                    for ch in ('red', 'green', 'blue'):
+                        sub = dict(ld)
+                        sub['channel'] = ch
+                        sub['size']    = base_size
+                        out.append(sub)
             else:
                 out.append(ld)
         if out:
@@ -7910,6 +7979,10 @@ class GUIEngine:
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
                 ("COL 3  /  COLOR 3",     "Apply colour preset to selection"),
                 ("DIM 2",                 "Apply dim preset to selection"),
+                ("1 THRU 6 AT 0 IN 5",   "Live programmer fade: fade selection to 0% over 5 seconds"),
+                ("1 THRU 6 AT FULL IN 3","Live fade to full over 3 seconds"),
+                ("1 THRU 6 AT WHITE IN 2","Live fade to white over 2 seconds"),
+                ("PROG FADE CLEAR",       "Cancel all active live programmer fades immediately"),
             ]),
             ("MOVING LIGHTS / ATTRIBUTES", [
                 ("1 AT PAN 127 TILT 64",  "Set pan and tilt (0–255 raw DMX)"),
@@ -10629,6 +10702,29 @@ class GUIEngine:
                     dpg.set_value("cmd_error_flash", "")
                 except Exception:
                     pass
+
+        # Advance live programmer fades (AT … IN <seconds>)
+        if self._prog and self._prog.live_fades:
+            import time as _t
+            _now = _t.monotonic()
+            _still_active = []
+            for _fade in self._prog.live_fades:
+                _elapsed = _now - _fade['start']
+                _dur     = _fade['duration']
+                _fid     = _fade['fid']
+                _ch      = _fade['channel']
+                _src     = _fade['src']
+                _dst     = _fade['dst']
+                if _elapsed >= _dur:
+                    # Fade complete — write final value
+                    self._prog.data.setdefault(_fid, {})[_ch] = _dst
+                else:
+                    # Interpolate
+                    _frac = _elapsed / _dur
+                    _val  = _src + (_dst - _src) * _frac
+                    self._prog.data.setdefault(_fid, {})[_ch] = _val
+                    _still_active.append(_fade)
+            self._prog.live_fades = _still_active
 
         self._tick_pools()
         self._tick_stage()
@@ -14050,6 +14146,12 @@ def run_command(cmd_str):
         delay_str = f"  delay {delay_t}s" if delay_t else ""
         return f"Programmer time → {fade_t}s{delay_str}"
 
+    # PROG FADE CLEAR — cancel all live programmer fades immediately
+    if t0 == 'PROG' and len(tokens) >= 3 and tokens[1] == 'FADE' and tokens[2] == 'CLEAR':
+        n = len(prog.live_fades)
+        prog.live_fades.clear()
+        return f"Prog fades cleared ({n} active)"
+
     # ── EXECUTOR <n> — switch active executor ─────────────────
     if t0 in ('FADER_SELECT', 'EXECUTOR') and len(tokens) == 2:
         try:
@@ -15057,7 +15159,12 @@ def run_command(cmd_str):
         ref_s = f" [{', '.join(ref_parts)}]" if ref_parts else ""
         verb  = "Added FX" if add_mode else "Applied FX"
         disp_ch = "rgb" if channel == 'rgb' else channel
-        return f"{verb}: {waveform} {disp_ch}{ref_s} → {len(sel_fids)} fixture(s)"
+        lines = [f"{verb}: {waveform} {disp_ch}{ref_s} → {len(sel_fids)} fixture(s)"]
+        if color_id is not None and channel == 'rgb':
+            cp = color_pool.get(color_id) if color_pool else None
+            if not cp:
+                lines.append(f"⚠ color preset {color_id} is empty — running white until you RECORD COLOR {color_id}")
+        return "\n".join(lines)
 
     # RECORD FX <n> [name]  — snapshot programmer FX defs into the pool
     if t0 == 'RECORD' and len(tokens) >= 3 and tokens[1] == 'FX':
@@ -19574,6 +19681,29 @@ if STUDIO_HEADLESS:
             for _m in patch.all_fixtures():
                 _m.set_dimmer(1.0)
             prog.clear_programmer()
+
+        # ── AT … IN <seconds> LIVE PROGRAMMER FADE ────────────────────────
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT FULL")                     # establish a src dim=1.0
+        _pre_fade_dim = prog.data.get("1", {}).get("dim")
+        run_command("AT 0 IN 5")                   # fade dim 1.0→0.0 over 5s
+        _check("AT … IN creates a live_fade entry",
+               len(prog.live_fades) >= 1)
+        _fade_entry = next(
+            (f for f in prog.live_fades if f['fid'] == '1' and f['channel'] == 'dim'),
+            None)
+        _check("live_fade entry has correct dst (0.0)",
+               _fade_entry is not None and abs(_fade_entry['dst'] - 0.0) < 0.01)
+        _check("live_fade entry has correct duration (5.0)",
+               _fade_entry is not None and abs(_fade_entry['duration'] - 5.0) < 0.01)
+        _check("live_fade entry has a non-zero src",
+               _fade_entry is not None and (_fade_entry['src'] or 0) > 0.0)
+        # PROG FADE CLEAR should purge all active fades
+        r_pfc = run_command("PROG FADE CLEAR")
+        _check("PROG FADE CLEAR empties live_fades list", len(prog.live_fades) == 0)
+        _check("PROG FADE CLEAR returns confirmation", "clear" in r_pfc.lower())
+        prog.clear_programmer()
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
