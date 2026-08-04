@@ -7799,6 +7799,7 @@ class GUIEngine:
                 ("RATE 3 / SIZEP 2 / SPREADP 1", "Recall a rate/size/spread preset onto the live BPM/size/spread"),
                 ("CS 2 INFO",             "Detailed status of cuestack 2: cue list, current cue, loop/wrap, assigned faders"),
                 ("CUESTACK MERGE 2 INTO 1", "Append all cues from CS 2 into CS 1 (renumbered after CS 1's last cue)"),
+                ("CS 1 REVERSE",           "Reverse cue playback order in cuestack 1 (renumbers 1-N from last to first)"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
@@ -13171,6 +13172,22 @@ def run_command(cmd_str):
                 if len(sorted_nums) > 10:
                     lines.append(f"    … ({len(sorted_nums) - 10} more cues)")
             return "\n".join(lines)
+        # CS n REVERSE — reverse the cue order (renumbers from 1)
+        if len(tokens) >= 3 and tokens[2].upper() == 'REVERSE':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            sorted_nums = cs._sorted_cue_numbers()
+            if not sorted_nums:
+                return f"Cuestack {n} is empty"
+            rev_cues = [cs.cues[num] for num in reversed(sorted_nums)]
+            cs.cues.clear()
+            cs.current = None
+            for new_num, cue in enumerate(rev_cues, start=1):
+                cue.cue_number = float(new_num)
+                cs.cues[float(new_num)] = cue
+            save_show()
+            return f"CS {n} '{cs.name}': reversed — {len(rev_cues)} cues renumbered 1–{len(rev_cues)}"
         # CS n WRAP ON/OFF — clean restart at top after last cue
         if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
             cs = cuestack_pool.get(n)
@@ -17577,6 +17594,20 @@ if STUDIO_HEADLESS:
         _check("CS INFO shows wrap/loop state", "Wrap" in r_csi or "Loop" in r_csi)
         r_csi_bad = run_command("CS 9999 INFO")
         _check("CS INFO rejects unknown cuestack", "not found" in r_csi_bad)
+
+        # CS REVERSE
+        run_command("RECORD CUESTACK 94 RevTest")
+        run_command("CUESTACK 94")
+        run_command("1 FULL");   run_command("RECORD CUE 1 First")
+        run_command("1 OUT");    run_command("RECORD CUE 2 Second")
+        run_command("1 AT R 200"); run_command("RECORD CUE 3 Third")
+        _cs94 = cuestack_pool.get(94)
+        _orig_names = [_cs94.cues[n].name for n in _cs94._sorted_cue_numbers()]
+        r_rev = run_command("CS 94 REVERSE")
+        _rev_names = [_cs94.cues[n].name for n in _cs94._sorted_cue_numbers()]
+        _check("CS REVERSE reverses cue order", _rev_names == list(reversed(_orig_names)))
+        _check("CS REVERSE returns confirmation", "reversed" in r_rev)
+        _check("CS REVERSE resets current position to None", _cs94.current is None)
 
         # CUESTACK MERGE
         run_command("RECORD CUESTACK 91 MergeSrc")
