@@ -875,7 +875,7 @@ class Programmer:
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
                              'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP', 'MIRROR',
-                             'INVERT', 'SCALE', 'WOBBLE', 'NORMALIZE'}
+                             'INVERT', 'SCALE', 'WOBBLE', 'NORMALIZE', 'COPY'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1351,6 +1351,42 @@ class Programmer:
                     if isinstance(f, MasterFixture):
                         for sub in f.all_subs():
                             self.data.pop(str(sub.fixture_id), None)
+            return
+
+        # COPY <fid> — paste all programmer values from fixture <fid> into each selected fixture
+        if tokens[0] == 'COPY' and len(tokens) >= 2:
+            try:
+                src_fid = int(tokens[1])
+            except ValueError:
+                return
+            if src_fid not in self.patch.fixtures:
+                return
+            src_master = self.patch.fixtures[src_fid]
+            src_dim_key = str(src_fid)
+            src_dim = self.data.get(src_dim_key, {}).get('dim')
+            src_sub_data = {}
+            for sub in src_master.all_subs():
+                sfid = str(sub.fixture_id)
+                if sfid in self.data:
+                    src_sub_data[sfid] = dict(self.data[sfid])
+            if src_dim is None and not src_sub_data:
+                return
+            self._push_undo()
+            for f in self.selection:
+                if not isinstance(f, MasterFixture):
+                    continue
+                dst_key = str(f.fixture_id)
+                if src_dim is not None:
+                    self.data.setdefault(dst_key, {})['dim'] = src_dim
+                for i, dst_sub in enumerate(f.all_subs()):
+                    src_subs = src_master.all_subs()
+                    if i >= len(src_subs):
+                        break
+                    src_sfid = str(src_subs[i].fixture_id)
+                    if src_sfid not in src_sub_data:
+                        continue
+                    dst_sfid = str(dst_sub.fixture_id)
+                    self.data.setdefault(dst_sfid, {}).update(src_sub_data[src_sfid])
             return
 
         if tokens[0] == 'FULL':
@@ -1882,6 +1918,7 @@ class CueStack:
         self.current         = None      # Current cue number (float) or None
         self.allow_exec_time = True      # False = ignore executor time override for this stack
         self.wrap            = False     # True = fire cue 1 clean on wrap-around (no LTP bleed)
+        self.note            = ""        # Production annotation (saved, optional)
 
     def _sorted_cue_numbers(self):
         """Returns cue numbers in ascending order."""
@@ -7753,6 +7790,7 @@ class GUIEngine:
                 ("1 THRU 6 AT NORMALIZE R","Scale red across selection so the highest value = 255 (preserves ratio, maximises brightness)"),
                 ("1 THRU 3 AT CLEAR R",   "Remove red channel from fixtures 1-3 in the programmer (keeps other channels)"),
                 ("1 THRU 3 AT CLEAR",     "Remove all programmer values for fixtures 1-3 (targeted partial-programmer clear)"),
+                ("1 THRU 6 AT COPY 3",    "Copy all programmer values from fixture 3 into each fixture in the selection (channel-by-channel clone)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -7932,6 +7970,8 @@ class GUIEngine:
                 ("FADER 1 TIMELOCK ON",     "Re-enable fader time override for cuestack"),
                 ("CS 1 WRAP ON",            "CS 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
                 ("CS 1 WRAP OFF",           "CS 1: restore normal LTP tracking across wrap-around (default)"),
+                ("CS 1 NOTE",               "View production note on cuestack 1 (blank if none set)"),
+                ("CS 1 NOTE Dark Moody",    "Set a freeform production note on cuestack 1 (saved to ShowFile)"),
                 ("PROG TIME 2",             "Programmer time: all cues fade at 2s"),
                 ("PROG TIME OFF",           "Disable programmer time override"),
             ]),
@@ -11269,12 +11309,15 @@ class ShowFile:
                 if getattr(cue, 'note', ''):
                     entry["note"] = cue.note
                 cues_out[str(num)] = entry
-            doc["cuestacks"][str(sid)] = {
+            entry_cs = {
                 "name":            stack.name,
                 "allow_exec_time": stack.allow_exec_time,
                 "wrap":            stack.wrap,
                 "cues":            cues_out,
             }
+            if getattr(stack, 'note', ''):
+                entry_cs["note"] = stack.note
+            doc["cuestacks"][str(sid)] = entry_cs
         _write_file(ShowFile.CUESTACKS, doc)
         total = sum(len(s.cues) for s in cuestack_pool.stacks.values())
         print(f"  Saved cuestacks → {len(cuestack_pool.stacks)} stack(s), {total} cue(s)")
@@ -11500,6 +11543,7 @@ class ShowFile:
             stack = CueStack(sid, sdata["name"])
             stack.allow_exec_time = bool(sdata.get("allow_exec_time", True))
             stack.wrap            = bool(sdata.get("wrap", False))
+            stack.note            = sdata.get("note", "")
             for num_str, cdata in sdata["cues"].items():
                 num      = float(num_str)
                 cue      = Cue(num, cdata["name"],
@@ -13426,6 +13470,21 @@ def run_command(cmd_str):
             save_show()
             return (f"CS {n} '{cs.name}': compressed — "
                     f"{len(ordered)} cues renumbered 1–{len(ordered)}")
+        # CS n NOTE [text] — view or set a production note on this cuestack
+        if len(tokens) >= 3 and tokens[2].upper() == 'NOTE':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            if len(tokens) == 3:
+                note_val = getattr(cs, 'note', '')
+                if note_val:
+                    return f"CS {n} '{cs.name}' note: {note_val}"
+                return f"CS {n} '{cs.name}' has no note — set with: CS {n} NOTE <text>"
+            note_text = _name_after(raw, 3)
+            cs.note = note_text
+            save_show()
+            return f"CS {n} '{cs.name}' note set: {note_text}"
+
         # CS n WRAP ON/OFF — clean restart at top after last cue
         if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
             cs = cuestack_pool.get(n)
@@ -18764,6 +18823,38 @@ if STUDIO_HEADLESS:
         _check("AT NORMALIZE R: highest value becomes 255", _nrm_r[2] == 255)
         _check("AT NORMALIZE R: proportional scale (50→64, 100→128)", _nrm_r[0] == 64 and _nrm_r[1] == 128)
         prog.clear_programmer()
+
+        # ── AT COPY ───────────────────────────────────────────────────────────
+        run_command("1")                        # select fixture 1
+        run_command("1 AT DIM 80 R 200 G 50")  # set source values on fixture 1
+        run_command("2 3")                      # select fixtures 2 & 3
+        run_command("2 3 AT COPY 1")            # copy fixture 1 values into 2 & 3
+        _cp_dim2  = prog.data.get("2", {}).get('dim')
+        _cp_dim3  = prog.data.get("3", {}).get('dim')
+        _cp_r2    = prog.data.get("2.1", {}).get('red')
+        _cp_r3    = prog.data.get("3.1", {}).get('red')
+        _cp_g2    = prog.data.get("2.1", {}).get('green')
+        _check("AT COPY: dimmer copied to fixture 2", abs((_cp_dim2 or 0) - 0.8) < 0.01)
+        _check("AT COPY: dimmer copied to fixture 3", abs((_cp_dim3 or 0) - 0.8) < 0.01)
+        _check("AT COPY: red channel copied to fixture 2", _cp_r2 == 200)
+        _check("AT COPY: red channel copied to fixture 3", _cp_r3 == 200)
+        _check("AT COPY: green channel copied to fixture 2", _cp_g2 == 50)
+        prog.clear_programmer()
+
+        # ── CS NOTE ───────────────────────────────────────────────────────────
+        _csnote_cs = cuestack_pool.get(99)
+        if _csnote_cs is None:
+            cuestack_pool.create(99, "NoteTestStack")
+            _csnote_cs = cuestack_pool.get(99)
+        _csnote_cs.note = ""
+        _no_note_msg = run_command("CS 99 NOTE")
+        _check("CS NOTE view returns has-no-note message when blank",
+               "no note" in _no_note_msg.lower() or "set with" in _no_note_msg.lower())
+        run_command("CS 99 NOTE Dark Moody Show")
+        _check("CS NOTE set stores text",  _csnote_cs.note == "Dark Moody Show")
+        _note_view = run_command("CS 99 NOTE")
+        _check("CS NOTE view returns the note text", "Dark Moody Show" in _note_view)
+        _csnote_cs.note = ""
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
