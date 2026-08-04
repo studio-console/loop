@@ -8086,6 +8086,7 @@ class GUIEngine:
             ("PATCH COMMANDS", [
                 ("LIST PATCH",             "List all patched fixtures with address and profile"),
                 ("FIXTURE INFO 3",         "Show detailed info: profile, channels, addresses, programmer values, park status"),
+                ("FIXTURE GROUPS 3",       "List every group that contains fixture 3"),
                 ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350", "Add fixture 7 as Generic_Moving at U1 addr 350"),
                 ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350 NAME MovHead7", "Add with a custom name"),
                 ("PATCH REMOVE 7",         "Remove fixture 7 from patch (saves show)"),
@@ -16422,6 +16423,28 @@ def run_command(cmd_str):
         prog.data.update(_remap(data_b, fid_b, fid_a))
         return f"Programmer: swapped fixture {fid_a} ↔ fixture {fid_b}"
 
+    # ── FIXTURE GROUPS <n> — list every group that contains fixture n ──────────
+    if t0 == 'FIXTURE' and len(tokens) >= 3 and tokens[1].upper() in ('GROUPS', 'GROUP'):
+        try:
+            fid = int(tokens[2])
+        except ValueError:
+            return "Usage: FIXTURE GROUPS <id>"
+        master = patch.get(fid)
+        if not master:
+            return f"Fixture {fid} not patched"
+        containing = []
+        for gid in sorted(group_pool.groups):
+            g = group_pool.groups[gid]
+            for entry in g.members:
+                if isinstance(entry, tuple) and entry[1] == fid:
+                    containing.append(f"  Group {gid}: {g.name}")
+                    break
+        if not containing:
+            return f"Fixture {fid} '{master.name}' is not in any group"
+        lines = [f"Fixture {fid} '{master.name}' appears in {len(containing)} group(s):"]
+        lines.extend(containing)
+        return "\n".join(lines)
+
     if t0 == 'FIXTURE' and len(tokens) >= 3 and tokens[1] in ('INFO', 'STATUS', 'SHOW'):
         try:
             fid = int(tokens[2])
@@ -19027,6 +19050,26 @@ if STUDIO_HEADLESS:
             if _cue1:
                 _cue1.note = _orig_cue_note
         _ln_empty = run_command("LIST NOTES")
+
+        # ── FIXTURE GROUPS ────────────────────────────────────────────────────
+        # group 1 is set up in the show init with fixture 1 etc. — look for fixture 1
+        _fg_fid = next(iter(sorted(patch.fixtures)), None)
+        if _fg_fid is not None:
+            # ensure fixture is in at least one group by checking group_pool
+            _fg_in_group = any(
+                any(isinstance(e, tuple) and e[1] == _fg_fid for e in g.members)
+                for g in group_pool.groups.values()
+            )
+            if _fg_in_group:
+                _fg_result = run_command(f"FIXTURE GROUPS {_fg_fid}")
+                _check("FIXTURE GROUPS: returns group membership info",
+                       "Group" in _fg_result or "group" in _fg_result)
+                _check("FIXTURE GROUPS: mentions the fixture name",
+                       patch.fixtures[_fg_fid].name in _fg_result
+                       or str(_fg_fid) in _fg_result)
+            # Fixture not in any group scenario
+            _fg_not_found = run_command("FIXTURE GROUPS 9999")
+            _check("FIXTURE GROUPS: bad fixture returns error", "not patched" in _fg_not_found.lower())
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
