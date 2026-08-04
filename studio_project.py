@@ -1796,26 +1796,26 @@ class Executor:
 
     def go(self, patch, fade_engine):
         if not self.cuestack:
-            return f"Executor {self.exec_id}: no cuestack assigned"
+            return f"Fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.go(patch, fade_engine, self)
 
     def back(self, patch, fade_engine):
         if not self.cuestack:
-            return f"Executor {self.exec_id}: no cuestack assigned"
+            return f"Fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.back(patch, fade_engine, self)
 
     def goto(self, num, patch, fade_engine):
         if not self.cuestack:
-            return f"Executor {self.exec_id}: no cuestack assigned"
+            return f"Fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.goto(num, patch, fade_engine, self)
 
     def reload(self, patch, fade_engine):
         """Re-fire the current cue from scratch without advancing."""
         if not self.cuestack:
-            return f"Executor {self.exec_id}: no cuestack assigned"
+            return f"Fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.reload(patch, fade_engine, self)
 
@@ -1828,7 +1828,7 @@ class Executor:
         a separate instant-fire path.
         """
         if not self.cuestack:
-            return f"Executor {self.exec_id}: no cuestack assigned"
+            return f"Fader {self.exec_id}: no cuestack assigned"
         prev_override = (self.time_override_on, self.time_override_fade, self.time_override_delay)
         self.time_override_on    = True
         self.time_override_fade  = 0.0
@@ -2402,7 +2402,7 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
         getattr(executor, 'dim_pool',      None),
         getattr(executor, 'attr_pools',    None),
     )
-    print(f"\nGO → {cue}  [exec {executor.exec_id}]")
+    print(f"\nGO → {cue}  [fader {executor.exec_id}]")
 
     # Resolve time override: executor override wins; programmer time is fallback
     ov_fade = ov_delay = None
@@ -4197,15 +4197,15 @@ Return a JSON array of action objects. Each action is one of:
 Rules:
 - "group_select" selects all fixtures in group N as the programmer selection.
 - "fx_stop" stops FX on one channel; omit "channel" to stop all.
-- "exec_level" sets executor master fader (level 0.0–1.0).
+- "exec_level" sets a fader's master level (level 0.0–1.0).
 - "cue_fire" is an alias for goto_cue (fires the named cue immediately).
 - "fade_time" only affects the next cue_go/cue_back/goto_cue/cue_fire action
   in this same array — put it immediately before the cue action it should
   apply to (e.g. a slow fade into a cue: [{"action":"fade_time","seconds":5},
   {"action":"goto_cue","stack":1,"num":2}]). It does not change any other
   timing and is not a standing default.
-- "stack" identifies a cuestack by id, not an executor slot — it is resolved
-  to whichever executor that cuestack is currently assigned to.
+- "stack" identifies a cuestack by id, not a fader slot — it is resolved
+  to whichever fader that cuestack is currently assigned to.
 - Only return the JSON array. No explanation, no markdown.
 """
 
@@ -4478,7 +4478,7 @@ Rules:
                         self._fx.clear()
                 elif act == "exec_level":
                     if self._executor_pool and self._cmd:
-                        self._cmd(f"EXEC {a.get('exec', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
+                        self._cmd(f"FADER {a.get('exec', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
                 elif act == "fx_clear":
                     # Route through the real FX CLEAR handler — it both stops
                     # the FX engine layers *and* clears the programmer's
@@ -6106,7 +6106,7 @@ class GUIEngine:
                                 user_data=f"RENAME CUESTACK {n} ")
                             dpg.add_menu_item(label="Assign to Executor...",
                                 callback=self._ctx_prefill,
-                                user_data=f"ASSIGN CS {n} TO EXEC ")
+                                user_data=f"ASSIGN CS {n} TO FADER ")
                             dpg.add_separator()
                             dpg.add_menu_item(label="Delete Cuestack",
                                 callback=self._ctx_exec,
@@ -6956,7 +6956,7 @@ class GUIEngine:
                 dpg.add_text("", tag="go_cue_status", color=_C_ACCENT)
 
             dpg.add_separator()
-            dpg.add_text("flash an executor while a pad is held:", color=_C_DIM)
+            dpg.add_text("flash a fader while a pad is held:", color=_C_DIM)
             with dpg.group(horizontal=True):
                 dpg.add_text("exec", color=_C_DIM)
                 dpg.add_input_int(tag="midi_flash_exec", label="", width=46,
@@ -7204,7 +7204,7 @@ class GUIEngine:
                 ("FIRE FX 3 GROUP 2",     "Fire preset 3, override target to group 2"),
                 ("FX LIST",               "Show all programmer FX defs + pool contents"),
                 ("FX CLEAR RED",          "Clear red-channel FX from programmer (scoped to selection when active)"),
-                ("FX CLEAR",              "Clear all FX (programmer + executors); selection-scoped when fixtures are selected"),
+                ("FX CLEAR",              "Clear all FX (programmer + faders); selection-scoped when fixtures are selected"),
                 ("CLEAR FX",             "Clear FX from programmer only, keep colour/dim; selection-scoped when active"),
                 ("KILL FX",               "Stop all running FX immediately"),
                 ("STROBE 120",           "Shorthand: pulse dim FX at 120 BPM (fixture scope)"),
@@ -7214,7 +7214,7 @@ class GUIEngine:
                 ("RAINBOW CLEAR",         "Remove all FX layers (colour + dim)"),
             ]),
             ("LIST / INSPECT", [
-                ("STATUS",                "Console overview: GM, selection, active executors, FX"),
+                ("STATUS",                "Console overview: GM, selection, active faders, FX"),
                 ("CUES / STACK / LIST",   "Show all cues in active cuestack with fade times"),
                 ("LIST CUESTACKS",        "List all recorded cuestacks and cue counts"),
                 ("LIST COLOR",            "List all color presets with RGB sample"),
@@ -7223,7 +7223,7 @@ class GUIEngine:
                 ("LIST FX",               "List all FX presets with waveform/channel"),
                 ("LIST RATE / SIZE / SPREAD / FORM", "List pool presets"),
                 ("LIST POSITION / GOBO / ZOOM / FOCUS / BEAM / CONTROL", "List attr pool presets"),
-                ("LIST EXEC",             "List all executor assignments and active state"),
+                ("LIST FADER",             "List all fader assignments and active state"),
                 ("LIST MIDI",             "List all CC and note MIDI mappings"),
                 ("MIDI CC 1 7 Grandmaster Dim",  "Map CH1 CC7 → target (see MIDI TARGETS)"),
                 ("MIDI NOTE 10 36 GO",    "Map CH10 Note36 → GO"),
@@ -7232,7 +7232,7 @@ class GUIEngine:
                 ("MIDI TARGETS",          "List all assignable MIDI target names"),
                 ("LIST OSC",              "List registered OSC output targets"),
                 ("LIST PATCH",            "List patched fixtures with universe/address"),
-                ("FX LIST",               "Show active programmer/executor FX layers"),
+                ("FX LIST",               "Show active programmer/fader FX layers"),
                 ("PAGE LIST",             "Show all pages and cuestacks on each"),
             ]),
             ("RECORD", [
@@ -7247,7 +7247,7 @@ class GUIEngine:
                 ("RECORD DIM 3 75%",      "Record explicit level (no programmer needed)"),
                 ("RECORD FORM 6 Wave 0,0 0.5,1 1,0",  "Record custom waveform"),
                 ("RECORD RATE 3 Name 120","Record 120 BPM to rate pool slot 3"),
-                ("RECORD CUESTACK 2 Name","Create a new named cuestack on executor 2"),
+                ("RECORD CUESTACK 2 Name","Create a new named cuestack on fader 2"),
             ]),
             ("RENAME / COPY / DELETE", [
                 ("RENAME CUESTACK 2 Tour","Rename cuestack 2 — all cues kept"),
@@ -7269,7 +7269,7 @@ class GUIEngine:
                 ("MOVE CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack move — removes cue from source"),
                 ("DELETE CUE 3",          "Delete cue 3 from active cuestack (saves show)"),
                 ("DELETE CUE 3 CS 2",     "Delete cue 3 from cuestack 2"),
-                ("DELETE CUESTACK 5",     "Delete cuestack 5 and stop its executor"),
+                ("DELETE CUESTACK 5",     "Delete cuestack 5 and stop its fader"),
                 ("DELETE FORM 7",         "Delete custom form 7 (built-ins 1-4 protected)"),
                 ("DELETE RATE 2 / DELETE SIZEP 2 / DELETE SPREADP 2", "Delete rate/size/spread pool slot"),
                 ("DELETE POSITION 1 / DELETE GOBO 1 / ...", "Delete attr pool preset (all 6 types)"),
@@ -7290,34 +7290,34 @@ class GUIEngine:
                 ("CS 2 CUE 5 FADE 3",     "Set timing on cue 5 in cuestack 2"),
             ]),
             ("PLAYBACK", [
-                ("GO",                    "Advance to next cue on active executor"),
-                ("BACK",                  "Step to previous cue"),
-                ("GOTO 3",                "Jump directly to cue 3 (active cuestack)"),
-                ("CUESTACK 2",            "Switch active executor to slot 2"),
-                ("ASSIGN CS 2 TO EXEC 1", "Wire cuestack 2 to executor 1"),
-                ("RELEASE 2",             "Stop executor 2"),
-                ("RELEASE ALL",           "Stop all active executors"),
-                ("PRIORITY 2 HIGH",       "Set executor 2 to high priority (HI/NRM/LO)"),
-                ("EXEC 1 TIME 3",         "Override fade time on executor 1 to 3s"),
-                ("EXEC 1 TIME 3 DELAY 1", "Override fade + delay on executor 1"),
-                ("EXEC 1 TIME OFF",       "Remove executor 1 time override"),
-                ("EXEC 1 TIMELOCK OFF",   "Lock cuestack on exec 1 to its own times"),
-                ("EXEC 1 TIMELOCK ON",    "Re-enable executor time override for cuestack"),
-                ("CS 1 WRAP ON",          "CS 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
-                ("CS 1 WRAP OFF",         "CS 1: restore normal LTP tracking across wrap-around (default)"),
-                ("PROG TIME 2",           "Programmer time: all cues fade at 2s"),
-                ("PROG TIME OFF",         "Disable programmer time override"),
+                ("GO",                      "Advance to next cue on active fader"),
+                ("BACK",                    "Step to previous cue"),
+                ("GOTO 3",                  "Jump directly to cue 3 (active cuestack)"),
+                ("CUESTACK 2",              "Switch active fader to slot 2"),
+                ("ASSIGN CS 2 TO FADER 1",  "Wire cuestack 2 to fader 1"),
+                ("RELEASE 2",               "Stop fader 2"),
+                ("RELEASE ALL",             "Stop all active faders"),
+                ("PRIORITY 2 HIGH",         "Set fader 2 to high priority (HI/NRM/LO)"),
+                ("FADER 1 TIME 3",          "Override fade time on fader 1 to 3s"),
+                ("FADER 1 TIME 3 DELAY 1",  "Override fade + delay on fader 1"),
+                ("FADER 1 TIME OFF",        "Remove fader 1 time override"),
+                ("FADER 1 TIMELOCK OFF",    "Lock cuestack on fader 1 to its own times"),
+                ("FADER 1 TIMELOCK ON",     "Re-enable fader time override for cuestack"),
+                ("CS 1 WRAP ON",            "CS 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
+                ("CS 1 WRAP OFF",           "CS 1: restore normal LTP tracking across wrap-around (default)"),
+                ("PROG TIME 2",             "Programmer time: all cues fade at 2s"),
+                ("PROG TIME OFF",           "Disable programmer time override"),
             ]),
-            ("EXECUTORS & PAGES", [
-                ("EXEC 1 GO / BACK / STOP", "Direct executor control"),
-                ("EXEC 1 LEVEL 75",       "Set executor master fader to 75% (GUI slider also works)"),
-                ("EXEC 1 MODE FLASH",     "Set trigger mode: live only while held"),
-                ("EXEC 1 MODE TOGGLE",    "Set trigger mode: GO/BACK advance (default)"),
-                ("EXEC 1 FLASH ON",       "Fire instantly (0s), works regardless of mode"),
-                ("EXEC 1 FLASH OFF",      "Release a flash — fully stops the executor"),
-                ("EXEC 1 BTN A GO",       "Set executor 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH/RATE+/RATE-)"),
-                ("EXEC 1 RATE+ / RATE-",  "Nudge playback speed ×1.25 / ÷1.25 (divides fade times)"),
-                ("EXEC 1 RATE RESET",     "Restore normal playback speed (rate_factor → 1.0)"),
+            ("FADERS & PAGES", [
+                ("FADER 1 GO / BACK / STOP","Direct fader control"),
+                ("FADER 1 LEVEL 75",        "Set fader 1 master level to 75% (GUI slider also works)"),
+                ("FADER 1 MODE FLASH",      "Set trigger mode: live only while held"),
+                ("FADER 1 MODE TOGGLE",     "Set trigger mode: GO/BACK advance (default)"),
+                ("FADER 1 FLASH ON",        "Fire instantly (0s), works regardless of mode"),
+                ("FADER 1 FLASH OFF",       "Release a flash — fully stops the fader"),
+                ("FADER 1 BTN A GO",        "Set fader 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH/RATE+/RATE-)"),
+                ("FADER 1 RATE+ / RATE-",   "Nudge playback speed ×1.25 / ÷1.25 (divides fade times)"),
+                ("FADER 1 RATE RESET",      "Restore normal playback speed"),
                 ("PAGE 1 NAME Verses",    "Name page 1"),
                 ("PAGE 1 ADD CS 3",       "Add cuestack 3 to page 1"),
                 ("PAGE 1 REMOVE CS 3",    "Remove cuestack 3 from page 1"),
@@ -7421,7 +7421,7 @@ class GUIEngine:
                 ("ai button",             "Open the AI prompt pool (only shown when ANTHROPIC_API_KEY is set)"),
                 ("log button",            "Open the changelog popup (studio_data/changelog.json)"),
                 ("spd button",            "Open the speed master panel (16 live BPM faders, MA-style)"),
-                ("fdrs button",           "Open the 15-slot fader page panel — ◀/▶ page through banks of 15 executors (page 2 = execs 16-30, etc.)"),
+                ("fdrs button",           "Open the 15-slot fader page panel — ◀/▶ page through banks of 15 faders (page 2 = faders 16-30, etc.)"),
                 ("color button",          "Open the HSV colour wheel for RGB control"),
             ]),
             ("STATUS BAR & QUICK CONTROLS", [
@@ -7431,7 +7431,7 @@ class GUIEngine:
                 ("Shift + chip click",    "Add/remove that fixture from the current selection without clearing others"),
                 ("hl button",             "Toggle HIGHLIGHT — selected fixtures go full white at 100%; glows green when active"),
                 ("PT button",             "Toggle programmer time: click to set 2s fade on all cues; click again to turn off"),
-                ("flash button (executor)", "Hold for FLASH ON; release for FLASH OFF — button shows ■ FLASH while held"),
+                ("flash button (fader)",    "Hold for FLASH ON; release for FLASH OFF — button shows ■ FLASH while held"),
             ]),
             ("FIXTURE DIM PANEL (right column)", [
                 ("sliders",               "Per-fixture master dim — drag to set; writes directly into programmer layer"),
@@ -8659,7 +8659,7 @@ class GUIEngine:
         fn = getattr(ex, f'btn_{slot}', 'GO')
         if fn == 'FLASH':
             return  # hold polling handled by tick loop
-        self._cmd(f"EXEC {eid} {fn}")
+        self._cmd(f"FADER {eid} {fn}")
 
     def _tick_fader_page(self):
         """Update fader page slot labels + FLASH polling (called from _tick)."""
@@ -8981,9 +8981,9 @@ class GUIEngine:
             ex_n = int(dpg.get_value("midi_flash_exec"))
         except Exception:
             return
-        name    = f"Exec {ex_n} Flash"
-        on_cmd  = f"EXEC {ex_n} FLASH ON"
-        off_cmd = f"EXEC {ex_n} FLASH OFF"
+        name    = f"Fader {ex_n} Flash"
+        on_cmd  = f"FADER {ex_n} FLASH ON"
+        off_cmd = f"FADER {ex_n} FLASH OFF"
         on_cb   = (lambda c=on_cmd:  self._cmd(c)) if self._cmd else (lambda: None)
         off_cb  = (lambda c=off_cmd: self._cmd(c)) if self._cmd else (lambda: None)
         GUIEngine.target_registry[name] = (on_cb, False, True, off_cb)
@@ -9414,7 +9414,7 @@ class GUIEngine:
         fn = getattr(ex, f'btn_{slot}', 'GO')
         if fn == 'FLASH':
             return  # hold behavior — tick loop handles via is_item_active()
-        self._cmd(f"EXEC {eid} {fn}")
+        self._cmd(f"FADER {eid} {fn}")
 
     def _on_stop_executor(self, sender, app_data, user_data):
         exec_id = int(user_data)
@@ -9786,7 +9786,7 @@ class GUIEngine:
                 if fa and _now >= fa:
                     ex._follow_at = None
                     try:
-                        self._cmd(f"EXEC {ex.exec_id} GO")
+                        self._cmd(f"FADER {ex.exec_id} GO")
                     except Exception:
                         pass
 
@@ -9801,7 +9801,7 @@ class GUIEngine:
                 if eid not in active_eids:
                     if self._flash_held.pop(eid, False):
                         try:
-                            self._cmd(f"EXEC {eid} FLASH OFF")
+                            self._cmd(f"FADER {eid} FLASH OFF")
                         except Exception:
                             pass
             for eid in active_eids:
@@ -9825,12 +9825,12 @@ class GUIEngine:
                 was_held = self._flash_held.get(eid, False)
                 if held and not was_held:
                     try:
-                        self._cmd(f"EXEC {eid} FLASH ON")
+                        self._cmd(f"FADER {eid} FLASH ON")
                     except Exception:
                         pass
                 elif not held and was_held:
                     try:
-                        self._cmd(f"EXEC {eid} FLASH OFF")
+                        self._cmd(f"FADER {eid} FLASH OFF")
                     except Exception:
                         pass
                 self._flash_held[eid] = held
@@ -11597,10 +11597,10 @@ def _osc_fader(address, *args):
 def _osc_key(address, *args):
     """
     /gma3/key/PAGE/EXEC/TYPE  int(0/1)
-    Key press on an executor.  1=press, 0=release.
-    Page 1 Exec 1 Go/Back stay mapped to the active executor (legacy
-    behavior, kept for existing OSC templates). Any other page/exec fires
-    GO/BACK on that specific executor via the same "EXEC <n> GO|BACK"
+    Key press on a fader.  1=press, 0=release.
+    Page 1 Fader 1 Go/Back stay mapped to the active fader (legacy
+    behavior, kept for existing OSC templates). Any other page/fader fires
+    GO/BACK on that specific fader via the same "FADER <n> GO|BACK"
     command MIDI and the command line already use.
 
     TYPE "flash" is press-and-hold, same as a MIDI note's on/off pair or
@@ -11616,7 +11616,7 @@ def _osc_key(address, *args):
     key_type = parts[4] if len(parts) > 4 else "go"
     print(f"\n  OSC key P{page}/E{exec_num}/{key_type} {'▼' if pressed else '▲'}")
     if key_type.lower() == 'flash':
-        run_command(f"EXEC {exec_num} FLASH {'ON' if pressed else 'OFF'}")
+        run_command(f"FADER {exec_num} FLASH {'ON' if pressed else 'OFF'}")
         return
     if not pressed:
         return
@@ -11627,7 +11627,7 @@ def _osc_key(address, *args):
     if page == 1 and exec_num == 1:
         cue_go() if is_go else cue_back()
     else:
-        run_command(f"EXEC {exec_num} {'GO' if is_go else 'BACK'}")
+        run_command(f"FADER {exec_num} {'GO' if is_go else 'BACK'}")
 
 # Register MA3-style OSC handlers
 osc.map("/gma3/cmd",         _osc_cmd)
@@ -12178,7 +12178,7 @@ if _midi_doc:
             _mf = _re_midi.match(r'^Exec (\d+) Flash$', _name)
             if _mf:
                 _ex_n = int(_mf.group(1))
-                def _make_flash(on_c=f"EXEC {_ex_n} FLASH ON", off_c=f"EXEC {_ex_n} FLASH OFF"):
+                def _make_flash(on_c=f"FADER {_ex_n} FLASH ON", off_c=f"FADER {_ex_n} FLASH OFF"):
                     return (lambda: run_command(on_c)), (lambda: run_command(off_c))
                 _on_cb, _off_cb = _make_flash()
                 GUIEngine.target_registry[_name] = (_on_cb, False, True, _off_cb)
@@ -12307,7 +12307,7 @@ def run_command(cmd_str):
         if cuestack_pool.get(n):
             active_executor[0] = n
             cs = cuestack_pool.get(n)
-            return f"Active executor → Cuestack {n}: {cs.name}"
+            return f"Active fader → Cuestack {n}: {cs.name}"
         return f"Cuestack {n} is empty  (use: RECORD CUESTACK {n} My Show)"
 
     # RECORD CUESTACK N [name]  — create a new empty cuestack in slot N
@@ -12321,32 +12321,33 @@ def run_command(cmd_str):
         executor_pool.assign(n, cs)
         active_executor[0] = n
         save_show()
-        return f"Created: Cuestack {n} '{name}'  (now active on executor {n})"
+        return f"Created: Cuestack {n} '{name}'  (now active on fader {n})"
 
     # ── Navigation ───────────────────────────────────────────
-    # ── ASSIGN CS <n> TO EXEC <n> ────────────────────────────
-    # Wire a cuestack into an executor slot.
-    if t0 == 'ASSIGN' and 'CS' in tokens and 'TO' in tokens and 'EXEC' in tokens:
+    # ── ASSIGN CS <n> TO FADER <n> ────────────────────────────
+    # Wire a cuestack into a fader slot. EXEC accepted as alias.
+    _assign_kw = next((kw for kw in ('FADER', 'EXEC') if kw in tokens), None)
+    if t0 == 'ASSIGN' and 'CS' in tokens and 'TO' in tokens and _assign_kw:
         try:
             cs_idx   = tokens.index('CS')
-            exec_idx = tokens.index('EXEC')
+            exec_idx = tokens.index(_assign_kw)
             cs_n     = int(tokens[cs_idx   + 1])
             ex_n     = int(tokens[exec_idx + 1])
         except (ValueError, IndexError):
-            return "Usage: ASSIGN CS <n> TO EXEC <n>"
+            return "Usage: ASSIGN CS <n> TO FADER <n>"
         stack = cuestack_pool.get(cs_n)
         if not stack:
             return f"CueStack {cs_n} not found"
         executor_pool.assign(ex_n, stack)
         save_show()
-        return f"CS {cs_n} assigned to Executor {ex_n}  (saved)"
+        return f"CS {cs_n} assigned to fader {ex_n}  (saved)"
 
     # ── EXEC <n> GO / BACK / STOP ────────────────────────────
-    if t0 == 'EXEC' and len(tokens) >= 2:
+    if t0 in ('FADER', 'EXEC') and len(tokens) >= 2:
         try:
             ex_n = int(tokens[1])
         except ValueError:
-            return f"EXEC: bad executor number '{tokens[1]}'"
+            return f"FADER: bad fader number '{tokens[1]}'"
         ex  = executor_pool.get(ex_n)
         verb = tokens[2].upper() if len(tokens) > 2 else 'GO'
         if verb == 'GO':
@@ -12354,49 +12355,49 @@ def run_command(cmd_str):
             msg = ex.go(patch, fade_engine)
             if ex.cuestack:
                 _on_cue_fire(ex.cuestack.current)
-            return msg or f"Exec {ex_n} GO"
+            return msg or f"Fader {ex_n} GO"
         elif verb == 'BACK':
             executor_pool.bump_priority(ex_n)
             msg = ex.back(patch, fade_engine)
             if ex.cuestack:
                 _on_cue_fire(ex.cuestack.current)
-            return msg or f"Exec {ex_n} BACK"
+            return msg or f"Fader {ex_n} BACK"
         elif verb == 'STOP':
             ex.stop()
-            return f"Exec {ex_n} stopped"
+            return f"Fader {ex_n} stopped"
         elif verb == 'GOTO' and len(tokens) > 3:
             try:
                 num = float(tokens[3])
             except ValueError:
-                return f"EXEC GOTO: bad cue number '{tokens[3]}'"
+                return f"FADER GOTO: bad cue number '{tokens[3]}'"
             executor_pool.bump_priority(ex_n)
             msg = ex.goto(num, patch, fade_engine)
             if not msg or 'not found' not in msg:
                 _on_cue_fire(num)
-            return msg or f"Exec {ex_n} GOTO {num}"
+            return msg or f"Fader {ex_n} GOTO {num}"
         elif verb == 'TIME':
             # EXEC <n> TIME <fade> [DELAY <delay>]  |  EXEC <n> TIME OFF
             if len(tokens) > 3 and tokens[3] == 'OFF':
                 ex.time_override_on   = False
                 ex.time_override_fade  = None
                 ex.time_override_delay = None
-                return f"Exec {ex_n} time override OFF"
+                return f"Fader {ex_n} time override OFF"
             try:
                 fade_t = float(tokens[3]) if len(tokens) > 3 else None
             except ValueError:
-                return "EXEC TIME: usage  EXEC <n> TIME <seconds> [DELAY <seconds>]  or  OFF"
+                return "FADER TIME: usage  FADER <n> TIME <seconds> [DELAY <seconds>]  or  OFF"
             delay_t = None
             if 'DELAY' in tokens:
                 di = tokens.index('DELAY')
                 try:
                     delay_t = float(tokens[di + 1])
                 except (IndexError, ValueError):
-                    return "EXEC TIME: bad DELAY value"
+                    return "FADER TIME: bad DELAY value"
             ex.time_override_fade  = fade_t
             ex.time_override_delay = delay_t if delay_t is not None else 0.0
             ex.time_override_on    = True
             delay_str = f"  delay {delay_t}s" if delay_t else ""
-            return f"Exec {ex_n} time override → {fade_t}s{delay_str}"
+            return f"Fader {ex_n} time override → {fade_t}s{delay_str}"
         elif verb == 'TIMELOCK':
             # EXEC <n> TIMELOCK ON/OFF  — whether this executor's cuestack accepts overrides
             if len(tokens) < 4:
@@ -12404,13 +12405,13 @@ def run_command(cmd_str):
             state = tokens[3]
             cs = ex.cuestack
             if not cs:
-                return f"Exec {ex_n} has no cuestack"
+                return f"Fader {ex_n} has no cuestack"
             if state == 'ON':
                 cs.allow_exec_time = True
-                return f"Exec {ex_n}: executor time override ENABLED for '{cs.name}'"
+                return f"Fader {ex_n}: time override ENABLED for '{cs.name}'"
             elif state == 'OFF':
                 cs.allow_exec_time = False
-                return f"Exec {ex_n}: executor time override LOCKED OUT for '{cs.name}'"
+                return f"Fader {ex_n}: time override locked out for '{cs.name}'"
             return "TIMELOCK: use ON or OFF"
         elif verb == 'FLASH':
             # EXEC <n> FLASH ON | OFF  — instant on-while-held, for trigger_mode='flash'.
@@ -12423,10 +12424,10 @@ def run_command(cmd_str):
                 msg = ex.flash_on(patch, fade_engine)
                 if ex.cuestack:
                     _on_cue_fire(ex.cuestack.current)
-                return msg or f"Exec {ex_n} FLASH ON"
+                return msg or f"Fader {ex_n} FLASH ON"
             else:
                 ex.flash_off()
-                return f"Exec {ex_n} FLASH OFF"
+                return f"Fader {ex_n} FLASH OFF"
         elif verb == 'MODE':
             # EXEC <n> MODE TOGGLE | FLASH — how GUI/MIDI should trigger this executor.
             # 'toggle' = GO/BACK advance normally. 'flash' = live only while held
@@ -12434,12 +12435,12 @@ def run_command(cmd_str):
             if len(tokens) < 4 or tokens[3] not in ('TOGGLE', 'FLASH'):
                 return "Usage: EXEC <n> MODE TOGGLE | FLASH"
             ex.trigger_mode = tokens[3].lower()
-            return f"Exec {ex_n} trigger_mode → {ex.trigger_mode}"
+            return f"Fader {ex_n} trigger_mode → {ex.trigger_mode}"
         elif verb == 'BTN':
             # EXEC <n> BTN A|B|C GO|BACK|STOP|FLASH — assign action button function
             if len(tokens) < 4:
-                return (f"Exec {ex_n} buttons: A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}\n"
-                        f"  Usage: EXEC {ex_n} BTN A|B|C GO|BACK|STOP|FLASH")
+                return (f"Fader {ex_n} buttons: A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}\n"
+                        f"  Usage: FADER {ex_n} BTN A|B|C GO|BACK|STOP|FLASH|RATE+|RATE-")
             slot = tokens[3].upper()
             if slot not in ('A', 'B', 'C'):
                 return "BTN: slot must be A, B, or C"
@@ -12448,30 +12449,30 @@ def run_command(cmd_str):
                 return "BTN: function must be GO, BACK, STOP, FLASH, RATE+ or RATE-"
             setattr(ex, f'btn_{slot.lower()}', fn)
             save_show()
-            return f"Exec {ex_n} button {slot} → {fn}"
+            return f"Fader {ex_n} button {slot} → {fn}"
         elif verb == 'LEVEL':
             # EXEC <n> LEVEL <0-100>  — set master fader (0 = blackout, 100 = full)
             if len(tokens) < 4:
-                return f"Exec {ex_n} level: {ex.level * 100:.0f}%  (usage: EXEC {ex_n} LEVEL 0–100)"
+                return f"Fader {ex_n} level: {ex.level * 100:.0f}%  (usage: FADER {ex_n} LEVEL 0–100)"
             try:
                 pct = float(tokens[3])
             except ValueError:
-                return "EXEC LEVEL: usage  EXEC <n> LEVEL <0-100>"
+                return "FADER LEVEL: usage  FADER <n> LEVEL <0-100>"
             ex.level = max(0.0, min(1.0, pct / 100.0))
             save_show()
-            return f"Exec {ex_n} level → {ex.level * 100:.0f}%"
+            return f"Fader {ex_n} level → {ex.level * 100:.0f}%"
         elif verb in ('RATE+', 'RATE-'):
             # EXEC <n> RATE+ / RATE- — nudge playback speed by ×1.25 / ÷1.25
             step = 1.25 if verb == 'RATE+' else (1.0 / 1.25)
             ex.rate_factor = max(0.1, min(8.0, ex.rate_factor * step))
             save_show()
-            return f"Exec {ex_n} rate → ×{ex.rate_factor:.2f}"
+            return f"Fader {ex_n} rate → ×{ex.rate_factor:.2f}"
         elif verb == 'RATE' and len(tokens) >= 4 and tokens[3].upper() == 'RESET':
             ex.rate_factor = 1.0
             save_show()
-            return f"Exec {ex_n} rate reset → ×1.00"
+            return f"Fader {ex_n} rate reset → ×1.00"
         else:
-            return f"EXEC {ex_n}: unknown verb '{verb}'"
+            return f"FADER {ex_n}: unknown verb '{verb}'"
 
     # ── PAGE <n> NAME ... / ADD CS <m> / REMOVE CS <m> / DELETE / LIST ─
     if t0 == 'PAGE':
@@ -12556,15 +12557,15 @@ def run_command(cmd_str):
         return f"Programmer time → {fade_t}s{delay_str}"
 
     # ── EXECUTOR <n> — switch active executor ─────────────────
-    if t0 == 'EXECUTOR' and len(tokens) == 2:
+    if t0 in ('FADER_SELECT', 'EXECUTOR') and len(tokens) == 2:
         try:
             n = int(tokens[1])
         except ValueError:
-            return f"EXECUTOR: bad number '{tokens[1]}'"
+            return f"FADER: bad fader number '{tokens[1]}'"
         active_executor[0] = n
         ex = executor_pool.get(n)
         cs_name = ex.cuestack.name if ex.cuestack else "(no cuestack)"
-        return f"Active executor → {n}  [{cs_name}]"
+        return f"Active fader → {n}  [{cs_name}]"
 
     if t0 == 'GO' and len(tokens) == 1:
         cue_go()
@@ -13351,7 +13352,7 @@ def run_command(cmd_str):
                                 f"  Exec {eid}: {layer.waveform} {layer.channel} "
                                 f"BPM={layer.rate_bpm:.0f} size={layer.size:.0f}")
             if exec_fx_lines:
-                lines.append("Active executor FX:")
+                lines.append("Active fader FX:")
                 lines.extend(exec_fx_lines)
             # FX pool
             if fx_pool.presets:
@@ -14024,18 +14025,18 @@ def run_command(cmd_str):
             lines.append("  Selection: none")
         prog_active = any(v for v in prog.data.values() if v)
         lines.append("  Programmer: " + ("DIRTY" if prog_active else "clear"))
-        # Active executors
+        # Active faders
         active_exs = [ex for ex in executor_pool.executors.values()
                       if ex.is_active and ex.cuestack] if executor_pool else []
         if active_exs:
-            lines.append(f"  Active executors ({len(active_exs)}):")
+            lines.append(f"  Active faders ({len(active_exs)}):")
             for ex in active_exs:
                 cs = ex.cuestack
                 cur = f"cue {cs.current:.0f}" if cs.current is not None else "—"
                 lines.append(f"    [{ex.exec_id}] {cs.name[:14]}  {cur}  "
                              f"lv={ex.level*100:.0f}%")
         else:
-            lines.append("  Active executors: none")
+            lines.append("  Active faders: none")
         # FX
         n_fx = len(fx_engine._layers) if fx_engine else 0
         lines.append(f"  FX layers: {n_fx} active")
@@ -14049,7 +14050,7 @@ def run_command(cmd_str):
         cs = _active_stack()
         if not cs:
             return "No active cuestack"
-        lines = [f"Cuestack {cs.stack_id} — {cs.name}  [executor {active_executor[0]}]"]
+        lines = [f"Cuestack {cs.stack_id} — {cs.name}  [fader {active_executor[0]}]"]
         for n in cs._sorted_cue_numbers():
             c   = cs.cues[n]
             cur = " ◀" if n == cs.current else ""
@@ -14413,10 +14414,10 @@ def run_command(cmd_str):
                 p = pool.presets[pid]
                 lines.append(f"  {p}")
             return "\n".join(lines)
-        if sub in ('EXEC', 'EXECUTORS', 'EXECUTOR'):
+        if sub in ('FADER', 'FADERS', 'EXEC', 'EXECUTORS', 'EXECUTOR'):
             if not executor_pool.executors:
-                return "No executors configured"
-            lines = ["Executors:"]
+                return "No faders configured"
+            lines = ["Faders:"]
             for eid in sorted(executor_pool.executors):
                 ex = executor_pool.executors[eid]
                 cs = ex.cuestack
@@ -14478,7 +14479,7 @@ def run_command(cmd_str):
         ex = executor_pool.get(n)
         ex.priority = lvl_map[lvl_str]
         lbl = Executor.PRIORITY_LABELS[ex.priority]
-        return f"Executor {n} priority → {lbl}"
+        return f"Fader {n} priority → {lbl}"
 
     if t0 == 'RELEASE':
         if len(tokens) == 1 or (len(tokens) == 2 and tokens[1] == 'ALL'):
@@ -14487,7 +14488,7 @@ def run_command(cmd_str):
                 if ex.is_active:
                     ex.stop()
                     stopped.append(ex.exec_id)
-            return f"Released {len(stopped)} executor(s): {stopped}" if stopped else "No active executors"
+            return f"Released {len(stopped)} fader(s): {stopped}" if stopped else "No active faders"
         try:
             n = int(tokens[1])
         except (ValueError, IndexError):
@@ -14495,8 +14496,8 @@ def run_command(cmd_str):
         ex = executor_pool.get(n)
         if ex.is_active:
             ex.stop()
-            return f"Released executor {n}"
-        return f"Executor {n} was not running"
+            return f"Released fader {n}"
+        return f"Fader {n} was not running"
 
     # ── CUE timing editor (no programmer required) ─────────────
     # CUE <n> FADE/INFADE/OUTFADE <t> [DELAY <t>] [CFADE <t>] [DFADE <t>]
@@ -15263,7 +15264,7 @@ if STUDIO_HEADLESS:
         run_command("GO CS 1 CUE 5")
         time.sleep(0.25)   # let FadeEngine/FXEngine tick at least once
         ex = executor_pool.get(1)
-        _check("executor has active FX after GO", len(ex._fx_ids) > 0)
+        _check("fader has active FX after GO", len(ex._fx_ids) > 0)
 
         dmx = output_state.get_dmx_for_universe(1)
         _check("DMX output computes without exception", len(dmx) == 512)
@@ -15274,14 +15275,14 @@ if STUDIO_HEADLESS:
         r3 = run_command("PAGE LIST")
         _check("page created and cuestack added", "Test Page" in r3 and "[1]" in r3)
 
-        run_command("EXEC 1 MODE FLASH")
+        run_command("FADER 1 MODE FLASH")
         _check("trigger_mode set", executor_pool.get(1).trigger_mode == 'flash')
 
-        run_command("EXEC 1 FLASH ON")
+        run_command("FADER 1 FLASH ON")
         time.sleep(0.05)
         _check("executor active after FLASH ON", executor_pool.get(1).is_active)
 
-        run_command("EXEC 1 FLASH OFF")
+        run_command("FADER 1 FLASH OFF")
         _check("executor inactive after FLASH OFF", not executor_pool.get(1).is_active)
 
         # RECORD COLOR/DIM from programmer — verify no AttributeError
@@ -15479,18 +15480,18 @@ if STUDIO_HEADLESS:
                abs(_fader_dim[0] - 0.42) < 1e-6)
         _fader_dim[0] = _prev_fader_dim
 
-        # OSC page/exec addressing used to hard-gate all fader/key behavior
-        # on "page == 1 and exec_num == 1" — any other executor was parsed
-        # and logged but silently dropped. Exercise exec 3 (arbitrary, not
-        # exec 1) through the real dispatcher to confirm it now reaches
-        # that executor's own level/GO/BACK, same as "EXEC 3 LEVEL ..." /
-        # "EXEC 3 GO" typed on the command line.
+        # OSC page/fader addressing used to hard-gate all fader/key behavior
+        # on "page == 1 and fader == 1" — any other fader was parsed
+        # and logged but silently dropped. Exercise fader 3 (arbitrary, not
+        # fader 1) through the real dispatcher to confirm it now reaches
+        # that fader's own level/GO/BACK, same as "FADER 3 LEVEL ..." /
+        # "FADER 3 GO" typed on the command line.
         _osc_ex = executor_pool.get(3)
         _prev_osc_ex_level = _osc_ex.level
         _fader3_msg = _OscMsgBuilder(address="/gma3/fader/1/3")
         _fader3_msg.add_arg(0.65)
         osc._dispatch.call_handlers_for_packet(_fader3_msg.build().dgram, ("127.0.0.1", 0))
-        _check("OSC /gma3/fader/1/3 sets executor 3's own level (not grandmaster)",
+        _check("OSC /gma3/fader/1/3 sets fader 3's own level (not grandmaster)",
                abs(_osc_ex.level - 0.65) < 1e-6)
         _osc_ex.level = _prev_osc_ex_level
 
@@ -15500,7 +15501,7 @@ if STUDIO_HEADLESS:
         _key3_msg = _OscMsgBuilder(address="/gma3/key/1/3/go")
         _key3_msg.add_arg(1)
         osc._dispatch.call_handlers_for_packet(_key3_msg.build().dgram, ("127.0.0.1", 0))
-        _check("OSC /gma3/key/1/3/go GOes executor 3 (routes through EXEC 3 GO)",
+        _check("OSC /gma3/key/1/3/go GOes fader 3 (routes through FADER 3 GO)",
                _osc_ex.is_active)
 
         # /gma3/key/PAGE/EXEC/flash used to be silently dropped: the handler
@@ -15511,12 +15512,12 @@ if STUDIO_HEADLESS:
         _flash_press_msg = _OscMsgBuilder(address="/gma3/key/1/3/flash")
         _flash_press_msg.add_arg(1)
         osc._dispatch.call_handlers_for_packet(_flash_press_msg.build().dgram, ("127.0.0.1", 0))
-        _check("OSC /gma3/key/1/3/flash press fires EXEC 3 FLASH ON",
+        _check("OSC /gma3/key/1/3/flash press fires FADER 3 FLASH ON",
                _osc_ex.is_active)
         _flash_release_msg = _OscMsgBuilder(address="/gma3/key/1/3/flash")
         _flash_release_msg.add_arg(0)
         osc._dispatch.call_handlers_for_packet(_flash_release_msg.build().dgram, ("127.0.0.1", 0))
-        _check("OSC /gma3/key/1/3/flash release fires EXEC 3 FLASH OFF",
+        _check("OSC /gma3/key/1/3/flash release fires FADER 3 FLASH OFF",
                not _osc_ex.is_active)
 
         # AudioEngine (Block 9) is not wired into any command/GUI path yet,
@@ -15830,7 +15831,7 @@ if STUDIO_HEADLESS:
         _ex0 = _active_executor()
         _ex0_had_fx = bool(_ex0._fx_ids)
         run_command("FX CLEAR")
-        _check("FX CLEAR clears executor FX (executor._fx_ids empty)",
+        _check("FX CLEAR clears fader FX (executor._fx_ids empty)",
                not _ex0._fx_ids)
 
         # FX CLEAR scoped to selection — only clears selected fixtures' programmer FX
@@ -15909,26 +15910,26 @@ if STUDIO_HEADLESS:
         # Fader page button assignment round-trip
         _fpg_ex = executor_pool.get(1)
         _fpg_ex.btn_a, _fpg_ex.btn_b, _fpg_ex.btn_c = 'GO', 'BACK', 'STOP'
-        r_btn = run_command("EXEC 1 BTN A FLASH")
-        _check("EXEC 1 BTN A FLASH sets btn_a to FLASH", _fpg_ex.btn_a == 'FLASH')
-        r_btn2 = run_command("EXEC 1 BTN A GO")
-        _check("EXEC 1 BTN A GO restores btn_a to GO",   _fpg_ex.btn_a == 'GO')
-        r_btn3 = run_command("EXEC 1 BTN")  # missing slot → usage hint
-        _check("EXEC 1 BTN without slot returns current state", "btn" in r_btn3.lower() or "usage" in r_btn3.lower() or "A=" in r_btn3)
+        r_btn = run_command("FADER 1 BTN A FLASH")
+        _check("FADER 1 BTN A FLASH sets btn_a to FLASH", _fpg_ex.btn_a == 'FLASH')
+        r_btn2 = run_command("FADER 1 BTN A GO")
+        _check("FADER 1 BTN A GO restores btn_a to GO",   _fpg_ex.btn_a == 'GO')
+        r_btn3 = run_command("FADER 1 BTN")  # missing slot → usage hint
+        _check("FADER 1 BTN without slot returns current state", "btn" in r_btn3.lower() or "usage" in r_btn3.lower() or "A=" in r_btn3)
 
         # RATE+/RATE- and RATE RESET smoke tests
         _rate_ex = executor_pool.get(2)
         _rate_ex.rate_factor = 1.0
-        run_command("EXEC 2 RATE+")
-        _check("EXEC 2 RATE+ increases rate_factor to ~1.25", abs(_rate_ex.rate_factor - 1.25) < 0.01)
-        run_command("EXEC 2 RATE-")
-        _check("EXEC 2 RATE- returns rate_factor to ~1.00", abs(_rate_ex.rate_factor - 1.0) < 0.01)
-        run_command("EXEC 2 RATE+")
-        run_command("EXEC 2 RATE RESET")
-        _check("EXEC 2 RATE RESET returns rate_factor to 1.0", _rate_ex.rate_factor == 1.0)
-        r_rate_btn = run_command("EXEC 2 BTN C RATE+")
-        _check("EXEC 2 BTN C RATE+ sets btn_c to RATE+", _rate_ex.btn_c == 'RATE+')
-        run_command("EXEC 2 BTN C STOP")  # restore
+        run_command("FADER 2 RATE+")
+        _check("FADER 2 RATE+ increases rate_factor to ~1.25", abs(_rate_ex.rate_factor - 1.25) < 0.01)
+        run_command("FADER 2 RATE-")
+        _check("FADER 2 RATE- returns rate_factor to ~1.00", abs(_rate_ex.rate_factor - 1.0) < 0.01)
+        run_command("FADER 2 RATE+")
+        run_command("FADER 2 RATE RESET")
+        _check("FADER 2 RATE RESET returns rate_factor to 1.0", _rate_ex.rate_factor == 1.0)
+        r_rate_btn = run_command("FADER 2 BTN C RATE+")
+        _check("FADER 2 BTN C RATE+ sets btn_c to RATE+", _rate_ex.btn_c == 'RATE+')
+        run_command("FADER 2 BTN C STOP")  # restore
 
         # LOAD SHOW must reload OSC targets and FX defaults, not just leave
         # the previous show's live values in place — same primitives
