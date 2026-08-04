@@ -14127,11 +14127,13 @@ def run_command(cmd_str):
                 sfid = str(sub.fixture_id)
                 ps   = prog_layer.get(sfid, {})
                 cs_  = cue_merged.get(sfid, {})
-                r = ps.get('red',   cs_.get('red',   0))
-                g = ps.get('green', cs_.get('green', 0))
-                b = ps.get('blue',  cs_.get('blue',  0))
-                if r or g or b:
-                    snapshot_data[sfid] = {'red': float(r), 'green': float(g), 'blue': float(b)}
+                sub_data = {}
+                for ch in sub.profile.channels:
+                    val = ps.get(ch, cs_.get(ch))
+                    if val is not None:
+                        sub_data[ch] = float(val)
+                if sub_data:
+                    snapshot_data[sfid] = sub_data
 
         if not snapshot_data:
             return "SNAPSHOT: nothing in output — all fixtures are dark"
@@ -16730,6 +16732,18 @@ if STUDIO_HEADLESS:
             _dim_off  = _ch_names.index('dimmer')
             _check("dimmer profile channel outputs master dim correctly",
                    _ml_dmx3[_ml_base + _dim_off] == 255)
+
+            # SNAPSHOT captures attr channels (not just RGB)
+            prog.clear_programmer()
+            run_command("50")
+            run_command("AT DIM 80 PAN 180 TILT 90")
+            r_snap = run_command("SNAPSHOT 95 AttrSnap")
+            _active_cs_for_snap = cuestack_pool.get(active_executor[0])
+            _snap_cue = _active_cs_for_snap.cues.get(95.0) if _active_cs_for_snap else None
+            _check("SNAPSHOT creates cue with attr channel data",
+                   _snap_cue is not None and
+                   _snap_cue.data.get(_ml_sub_fid, {}).get('pan') == 180.0)
+            prog.clear_programmer()
 
             # Cleanup
             prog.clear_programmer()
