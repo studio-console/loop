@@ -7815,6 +7815,8 @@ class GUIEngine:
                 ("STATUS",                "Console overview: GM, selection, active faders, FX"),
                 ("CUES / STACK / LIST",   "Show all cues in active cuestack with fade times"),
                 ("LIST CUESTACKS",        "List all recorded cuestacks and cue counts"),
+                ("LIST CUES",             "List all cues in the active cuestack with fade times"),
+                ("LIST CUES CS 2",        "List cues in cuestack 2 specifically"),
                 ("LIST COLOR",            "List all color presets with RGB sample"),
                 ("LIST DIM",             "List all dim presets with level"),
                 ("LIST GROUP",            "List all groups and member counts"),
@@ -16131,6 +16133,28 @@ def run_command(cmd_str):
                 cur = f"  ◀ on Cue {cs.current:.0f}" if cs.current is not None else ""
                 lines.append(f"  [{sid}] {cs.name}  ({cue_count} cues){cur}")
             return "\n".join(lines) if len(lines) > 1 else "No cuestacks recorded"
+        # LIST CUES [CS <n>] — cue list for active or specified cuestack
+        if sub in ('CUES', 'CUE'):
+            cs_n = None
+            if 'CS' in tokens:
+                ci = tokens.index('CS')
+                try:
+                    cs_n = int(tokens[ci + 1])
+                except (IndexError, ValueError):
+                    pass
+            cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
+            if not cs:
+                label = f"Cuestack {cs_n}" if cs_n else "active cuestack"
+                return f"LIST CUES: {label} not found"
+            if not cs.cues:
+                return f"CS {cs.stack_id} '{cs.name}': no cues"
+            lines = [f"CS {cs.stack_id} '{cs.name}' ({len(cs.cues)} cues):"]
+            for num in cs._sorted_cue_numbers():
+                cue = cs.cues[num]
+                cur_m = " ◀" if num == cs.current else ""
+                note_s = f"  [{cue.note}]" if getattr(cue, 'note', '') else ""
+                lines.append(f"  [{num:.0f}] {cue.name}  fade:{cue.fade_time}s{note_s}{cur_m}")
+            return "\n".join(lines)
         _list_attr_map = {
             'POSITION': position_pool,
             'GOBO':     gobo_pool,
@@ -17407,6 +17431,14 @@ if STUDIO_HEADLESS:
         ]:
             _r = run_command(_cmd)
             _check(f"{_cmd!r} routes correctly", _kw.lower() in _r.lower())
+
+        # LIST CUES and LIST CUES CS <n>
+        _lc_r = run_command("LIST CUES")
+        _check("LIST CUES returns cue list for active cuestack",
+               "CS " in _lc_r or "not found" in _lc_r.lower())
+        _lc_cs1 = run_command("LIST CUES CS 1")
+        _check("LIST CUES CS 1 targets cuestack 1",
+               "CS 1" in _lc_cs1 or "not found" in _lc_cs1.lower())
 
         # COPY pool preset routing — was broken by overly broad COPY CUE handler
         run_command("RECORD COLOR 5 CopySource 255 128 0")
