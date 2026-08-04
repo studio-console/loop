@@ -7900,6 +7900,7 @@ class GUIEngine:
                 ("FADER 1 BTN A GO",        "Set fader 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH/RATE+/RATE-)"),
                 ("FADER 1 RATE+ / RATE-",   "Nudge playback speed ×1.25 / ÷1.25 (divides fade times)"),
                 ("FADER 1 RATE RESET",      "Restore normal playback speed"),
+                ("FADER 1 RATE 2.0",        "Set fader 1 playback speed to ×2.0 (0.1–8.0 range)"),
                 ("PAGE 1 NAME Verses",    "Name page 1"),
                 ("PAGE 1 ADD CS 3",       "Add cuestack 3 to page 1"),
                 ("PAGE 1 REMOVE CS 3",    "Remove cuestack 3 from page 1"),
@@ -13563,6 +13564,14 @@ def run_command(cmd_str):
             ex.rate_factor = 1.0
             save_show()
             return f"Fader {ex_n} rate reset → ×1.00"
+        elif verb == 'RATE' and len(tokens) >= 4:
+            try:
+                rv = float(tokens[3])
+            except ValueError:
+                return f"FADER RATE: bad value '{tokens[3]}' — use a number (e.g. 2.0) or RESET"
+            ex.rate_factor = max(0.1, min(8.0, rv))
+            save_show()
+            return f"Fader {ex_n} rate → ×{ex.rate_factor:.2f}"
         elif verb == 'LABEL':
             # FADER <n> LABEL <text>  |  FADER <n> LABEL  (clear)
             raw_parts = raw.split(None, 3)
@@ -18157,6 +18166,9 @@ if STUDIO_HEADLESS:
         run_command("FADER 2 RATE+")
         run_command("FADER 2 RATE RESET")
         _check("FADER 2 RATE RESET returns rate_factor to 1.0", _rate_ex.rate_factor == 1.0)
+        run_command("FADER 2 RATE 3.0")
+        _check("FADER 2 RATE 3.0 sets rate_factor to 3.0", abs(_rate_ex.rate_factor - 3.0) < 0.01)
+        run_command("FADER 2 RATE RESET")
         r_rate_btn = run_command("FADER 2 BTN C RATE+")
         _check("FADER 2 BTN C RATE+ sets btn_c to RATE+", _rate_ex.btn_c == 'RATE+')
         run_command("FADER 2 BTN C STOP")  # restore
