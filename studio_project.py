@@ -4734,10 +4734,18 @@ Rules:
                         self._executor_pool.bump_priority(ex.exec_id)
                         self._fire(ex, ex.back, self._patch, self._fade)
                 elif act == "dim":
-                    val = float(a["value"])
+                    # Clamp like every sibling dim-setter (Programmer.set_dimmer,
+                    # the GUI fixture-dim slider, MasterFixture.set_dimmer) --
+                    # this value comes straight from the model's JSON with no
+                    # bounds of its own. Unclamped, an out-of-range value here
+                    # is invisible live (final DMX render clamps on the way
+                    # out) but would persist verbatim into a RECORDed cue --
+                    # the same bug class already fixed for HUE SAT/VAL.
+                    val = max(0.0, min(1.0, float(a["value"])))
                     for master in self._patch.all_fixtures():
                         self._output.programmer_layer.setdefault(
                             str(master.fixture_id), {})['dim'] = val
+                        master.set_dimmer(val)
                 elif act == "fx_start":
                     # Route through run_command so it goes into the programmer
                     # (channel-additive, doesn't wipe other running FX)
@@ -10042,7 +10050,13 @@ class GUIEngine:
         if self._out:
             self._out.programmer_layer.setdefault(fid_s, {})['dim'] = dim
         if self._patch and fid in self._patch.fixtures:
-            self._patch.fixtures[fid].set_dimmer(dim * 100)
+            # MasterFixture.set_dimmer() takes a 0.0-1.0 fraction (see its
+            # own docstring) -- dim is already that fraction. A stray "* 100"
+            # here meant any drag above ~1% clamped virtual_dimmer to 1.0
+            # (max(0.0, min(1.0, dim*100)) == 1.0 for basically all inputs).
+            # Programmer.set_dimmer() and the AI dim action both pass the
+            # already-normalized fraction straight through; match that.
+            self._patch.fixtures[fid].set_dimmer(dim)
 
     def _on_fixture_dim_select_all(self):
         """Select all fixtures in the programmer."""
@@ -17382,6 +17396,41 @@ if STUDIO_HEADLESS:
             run_command("UNPARK")
         prog.clear_programmer()
 
+        # ── AI "dim" action clamp test ──────────────────────────────────
+        # AIEngine.execute()'s "dim" action wrote a model-supplied value
+        # straight into programmer_layer with no bounds check -- same bug
+        # class already fixed for HUE SAT/VAL (invisible live since final
+        # DMX render clamps on the way out, but a RECORDed cue would
+        # persist the raw out-of-range number). Build a throwaway AIEngine
+        # to exercise the fix: construction needs an API key string but
+        # never calls the network -- only .execute() runs here, which is
+        # pure local dict logic, no anthropic.messages.create() involved.
+        _prev_api_key = os.environ.get('ANTHROPIC_API_KEY')
+        os.environ['ANTHROPIC_API_KEY'] = 'sk-ant-smoketest-dummy-unused'
+        try:
+            _test_ai = AIEngine(patch, prog, output_state, fx_engine, fade_engine,
+                                 cuestack_pool=cuestack_pool, executor_pool=executor_pool)
+            _test_ai.execute([{"action": "dim", "value": 5.0}])
+            _check("AI 'dim' action clamps out-of-range value to 1.0",
+                   output_state.programmer_layer.get("1", {}).get('dim') == 1.0
+                   and patch.get(1).virtual_dimmer == 1.0)
+            _test_ai.execute([{"action": "dim", "value": -3.0}])
+            _check("AI 'dim' action clamps negative value to 0.0",
+                   output_state.programmer_layer.get("1", {}).get('dim') == 0.0
+                   and patch.get(1).virtual_dimmer == 0.0)
+        finally:
+            if _prev_api_key is None:
+                os.environ.pop('ANTHROPIC_API_KEY', None)
+            else:
+                os.environ['ANTHROPIC_API_KEY'] = _prev_api_key
+            # The "dim" action loops over ALL patched fixtures, not just a
+            # selection -- undo its virtual_dimmer=0.0 and the programmer
+            # 'dim' overrides on every fixture so this test doesn't leak
+            # state into whatever runs after it.
+            for _m in patch.all_fixtures():
+                _m.set_dimmer(1.0)
+            prog.clear_programmer()
+
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
 
@@ -17404,6 +17453,22 @@ if STUDIO_HEADLESS:
         try:
             gui.build()
             _check("gui.build() constructs all windows/widgets without error", True)
+            # ── fixture-dim-slider unit fix ──────────────────────────────
+            # _on_fixture_dim_slider passed dim*100 into MasterFixture.
+            # set_dimmer(), which expects a 0.0-1.0 fraction (per its own
+            # docstring) and clamps to it -- so any drag above ~1% silently
+            # forced virtual_dimmer to 1.0 regardless of the slider's real
+            # position. programmer_layer['dim'] masks this live (it's read
+            # first), but virtual_dimmer is the fallback default read once
+            # that key is gone (e.g. after CLEAR) and is what status/PATCH
+            # LIST prints directly -- so it would misreport 100% instead of
+            # the real level.
+            gui._on_fixture_dim_slider(None, 0.5, 1)
+            _check("fixture-dim slider sets virtual_dimmer to the slider's "
+                   "actual fraction, not fraction*100 clamped to 1.0",
+                   patch.get(1).virtual_dimmer == 0.5)
+            gui._on_fixture_dim_slider(None, 1.0, 1)
+            patch.get(1).virtual_dimmer = 1.0  # restore default for any later use
         except Exception as e:
             _check(f"gui.build() raised {type(e).__name__}: {e}", False)
         finally:
