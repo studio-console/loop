@@ -1,0 +1,105 @@
+{
+  "version": "3.0",
+  "executors": {
+    "1": {
+      "cuestack_id": 1,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "2": {
+      "cuestack_id": 2,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "3": {
+      "cuestack_id": 3,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "4": {
+      "cuestack_id": 4,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "5": {
+      "cuestack_id": 5,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "6": {
+      "cuestack_id": 6,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "7": {
+      "cuestack_id": 7,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "8": {
+      "cuestack_id": 8,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "9": {
+      "cuestack_id": 9,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    },
+    "10": {
+      "cuestack_id": 10,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0
+    }
+  }
+}

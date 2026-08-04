@@ -18,6 +18,11 @@
     },
     {
       "date": "2026-08-03",
+      "summary": "rename executor/exec \u2192 fader in all user-facing output",
+      "details": []
+    },
+    {
+      "date": "2026-08-03",
       "summary": "MIDI-learn GO/BACK for any executor; LOAD SHOW now reloads OSC targets and FX defaults",
       "details": [
         "Audited the roadmap first -- GUI polish, manual/changelog popups, MIDI-held FLASH, Block 12 AI layer, MIDI mapping GUI, attribute pool panels all already landed by direct code inspection. Ran a background research pass hunting for asymmetric sibling code paths (the pattern behind most real bugs found in recent sessions) across areas not yet deep-audited: OSC engine vs MIDI engine action parity, and ShowFile save/load symmetry.",

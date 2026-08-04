@@ -101,6 +101,24 @@ class FixtureLibrary:
             has_master_dim = False
         ))
 
+        # Generic moving head — dimmer + pan/tilt + gobo + color wheel
+        self.register(FixtureProfile(
+            name        = "Generic_Moving",
+            channels    = ["dimmer", "pan", "tilt", "pan_fine", "tilt_fine",
+                           "gobo", "color", "zoom", "focus", "iris", "strobe", "control"],
+            pixel_count = 1,
+            has_master_dim = False
+        ))
+
+        # Generic moving wash — dimmer + pan/tilt + RGB
+        self.register(FixtureProfile(
+            name        = "Generic_Moving_Wash",
+            channels    = ["dimmer", "pan", "tilt", "pan_fine", "tilt_fine",
+                           "red", "green", "blue", "zoom"],
+            pixel_count = 1,
+            has_master_dim = False
+        ))
+
     def register(self, profile):
         """Add a profile to the library."""
         self.profiles[profile.name] = profile
@@ -797,15 +815,23 @@ class Programmer:
         print(f"Enabled '{channel}' for current selection.")
         self._print_programmer()
 
+    # Attribute channels stored on sub-fixtures (same as RGB)
+    _ATTR_CHANNELS = frozenset({
+        'pan', 'tilt', 'pan_fine', 'tilt_fine',
+        'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot',
+        'zoom', 'focus', 'iris', 'shutter1', 'color',
+        'prism', 'frost', 'animation', 'control', 'macro', 'dimmer',
+    })
+
     def _get_targets_for_channel(self, channel):
         """
         Returns the right fixture objects for a given channel type.
-        Dim targets masters. RGB targets sub-fixtures.
+        Dim targets masters. RGB and attribute channels target sub-fixtures.
         All targets both.
         """
         if channel == 'dim':
             return [f for f in self.selection if isinstance(f, MasterFixture)]
-        elif channel in ('red', 'green', 'blue'):
+        elif channel in ('red', 'green', 'blue', 'white', 'amber') or channel in self._ATTR_CHANNELS:
             return self._get_sub_selection()
         elif channel == 'all':
             return self.selection
@@ -842,7 +868,12 @@ class Programmer:
         # Split on AT (or auto-detect action start if AT is omitted)
         _ACTION_KEYWORDS = {'R', 'G', 'B', 'RED', 'GREEN', 'BLUE', 'FULL', 'OUT', 'DIM',
                              'WHITE', 'WARM', 'AMBER', 'YELLOW', 'ORANGE', 'CYAN',
-                             'MAGENTA', 'PINK', 'UV', 'PURPLE', 'LIME', 'TEAL'}
+                             'MAGENTA', 'PINK', 'UV', 'PURPLE', 'LIME', 'TEAL',
+                             'PAN', 'TILT', 'PAN_FINE', 'TILT_FINE',
+                             'GOBO', 'GOBO_ROT', 'GOBO2', 'GOBO2_ROT',
+                             'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
+                             'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
+                             'CONTROL', 'MACRO'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -866,14 +897,18 @@ class Programmer:
     def _parse_channel_token(self, token):
         """Maps command token to internal channel name."""
         mapping = {
-            'R':   'red',
-            'G':   'green',
-            'B':   'blue',
-            'DIM': 'dim',
-            'ALL': 'all',
-            'RED':   'red',
-            'GREEN': 'green',
-            'BLUE':  'blue',
+            'R': 'red', 'G': 'green', 'B': 'blue',
+            'DIM': 'dim', 'ALL': 'all',
+            'RED': 'red', 'GREEN': 'green', 'BLUE': 'blue',
+            'PAN': 'pan', 'TILT': 'tilt',
+            'PAN_FINE': 'pan_fine', 'TILT_FINE': 'tilt_fine',
+            'GOBO': 'gobo', 'GOBO_ROT': 'gobo_rot',
+            'GOBO2': 'gobo2', 'GOBO2_ROT': 'gobo2_rot',
+            'ZOOM': 'zoom', 'FOCUS': 'focus', 'IRIS': 'iris',
+            'SHUTTER1': 'shutter1', 'COLOR': 'color',
+            'PRISM': 'prism', 'FROST': 'frost', 'ANIMATION': 'animation',
+            'CONTROL': 'control', 'MACRO': 'macro',
+            'DIMMER': 'dimmer',
         }
         return mapping.get(token, None)
 
@@ -953,7 +988,17 @@ class Programmer:
         if not tokens:
             return
         _CH = {'R': 'red', 'G': 'green', 'B': 'blue',
-               'RED': 'red', 'GREEN': 'green', 'BLUE': 'blue'}
+               'RED': 'red', 'GREEN': 'green', 'BLUE': 'blue',
+               'PAN': 'pan', 'TILT': 'tilt',
+               'PAN_FINE': 'pan_fine', 'TILT_FINE': 'tilt_fine',
+               'GOBO': 'gobo', 'GOBO_ROT': 'gobo_rot',
+               'GOBO2': 'gobo2', 'GOBO2_ROT': 'gobo2_rot',
+               'ZOOM': 'zoom', 'FOCUS': 'focus', 'IRIS': 'iris',
+               'SHUTTER1': 'shutter1', 'COLOR': 'color',
+               'PRISM': 'prism', 'FROST': 'frost', 'ANIMATION': 'animation',
+               'CONTROL': 'control', 'MACRO': 'macro',
+               'DIMMER': 'dimmer',
+               }
         _NAMED = {
             'WHITE':   (255, 255, 255), 'WARM':    (255, 180,  60),
             'AMBER':   (255, 140,   0), 'YELLOW':  (255, 200,   0),
@@ -974,24 +1019,29 @@ class Programmer:
             self.set_channel('green', g)
             self.set_channel('blue', b)
             return
-        if tokens[0] == 'DIM' and len(tokens) > 1:
-            try:
-                self.set_dimmer(float(tokens[1].rstrip('%')))
-            except ValueError:
-                pass
-            return
         # bare number / percent → dimmer  (e.g. AT 80  or  AT 80%)
-        bare = tokens[0].rstrip('%')
-        if bare.replace('.', '', 1).lstrip('-').isdigit():
-            try:
-                self.set_dimmer(float(bare))
-            except ValueError:
-                pass
-            return
-        # multi-channel sequence: R 255 G 0 B 128 in any order
+        # Only applies when it's the sole token to avoid consuming a selection number.
+        if len(tokens) == 1:
+            bare = tokens[0].rstrip('%')
+            if bare.replace('.', '', 1).lstrip('-').isdigit():
+                try:
+                    self.set_dimmer(float(bare))
+                except ValueError:
+                    pass
+                return
+        # Multi-channel sequence: DIM 100 R 255 G 0 B 128 PAN 200 TILT 64 etc.
+        # DIM is handled inline so "AT DIM 100 PAN 200" works in a single call.
         i = 0
         while i < len(tokens) - 1:
-            ch = _CH.get(tokens[i])
+            tok = tokens[i]
+            if tok == 'DIM':
+                try:
+                    self.set_dimmer(float(tokens[i + 1].rstrip('%')))
+                    i += 2
+                    continue
+                except ValueError:
+                    pass
+            ch = _CH.get(tok)
             if ch:
                 try:
                     self.set_channel(ch, int(tokens[i + 1]))
@@ -1030,15 +1080,28 @@ class Programmer:
                 if master_id not in sub_sample:
                     sub_sample[master_id] = vals
 
+        _COLOUR_DISPLAY = {
+            'red': 'R', 'green': 'G', 'blue': 'B', 'white': 'W', 'amber': 'A',
+        }
+        _ATTR_DISPLAY = [
+            'dimmer', 'pan', 'tilt', 'pan_fine', 'tilt_fine',
+            'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot',
+            'zoom', 'focus', 'iris', 'shutter1', 'color',
+            'prism', 'frost', 'animation', 'control', 'macro',
+        ]
         for master_id, count in sub_counts.items():
             master = self.patch.get(int(master_id))
             label  = master.name if master else f"Fixture {master_id}"
             sample = sub_sample[master_id]
             parts  = []
-            if 'red'   in sample: parts.append(f"R={sample['red']}")
-            if 'green' in sample: parts.append(f"G={sample['green']}")
-            if 'blue'  in sample: parts.append(f"B={sample['blue']}")
-            print(f"  {label} ({count} pixels): {' '.join(parts)}")
+            for ch, abbr in _COLOUR_DISPLAY.items():
+                if ch in sample:
+                    parts.append(f"{abbr}={sample[ch]}")
+            for ch in _ATTR_DISPLAY:
+                if ch in sample:
+                    parts.append(f"{ch}={sample[ch]}")
+            px_label = f"({count} pixels)" if count > 1 else ""
+            print(f"  {label}{' ' + px_label if px_label else ''}: {' '.join(parts)}")
 
         # Show disabled summary if anything is disabled
         disabled_active = {
@@ -2082,7 +2145,15 @@ class Fade:
     # Map channel names to attribute groups for per-group timing
     _CHANNEL_GROUP = {
         'red': 'colour', 'green': 'colour', 'blue': 'colour',
-        'dim': 'dim',
+        'white': 'colour', 'amber': 'colour',
+        'dim': 'dim', 'dimmer': 'dim',
+        'pan': 'position', 'tilt': 'position',
+        'pan_fine': 'position', 'tilt_fine': 'position',
+        'gobo': 'beam', 'gobo_rot': 'beam', 'gobo2': 'beam', 'gobo2_rot': 'beam',
+        'zoom': 'beam', 'focus': 'beam', 'iris': 'beam',
+        'shutter1': 'beam', 'strobe': 'beam',
+        'color': 'beam', 'prism': 'beam', 'frost': 'beam',
+        'control': 'control', 'macro': 'control', 'animation': 'control',
     }
 
     def __init__(self, data_from, data_to, fade_time, delay_time, executor,
@@ -3635,26 +3706,58 @@ class OutputState:
                     else:
                         b = base_b
 
-                    gm      = self.master_level
-                    if self.highlight_mode and master.fixture_id in self.highlight_fids:
-                        # Highlight bypasses per-fixture dim (always full open white)
-                        # but must still respect the grandmaster fader — otherwise
-                        # BLACKOUT (master_level=0) fails to cut highlighted fixtures.
-                        final_r = int(255 * gm)
-                        final_g = int(255 * gm)
-                        final_b = int(255 * gm)
-                    else:
-                        final_r = max(0, min(255, int(r * sub_dim * gm)))
-                        final_g = max(0, min(255, int(g * sub_dim * gm)))
-                        final_b = max(0, min(255, int(b * sub_dim * gm)))
+                    gm        = self.master_level
+                    highlight = (self.highlight_mode and
+                                 master.fixture_id in self.highlight_fids)
+
+                    # Build resolved values for all profile channels on this sub.
+                    # Colour channels: FX envelope-blend + dimmer applied.
+                    # 'dimmer' profile channel: maps from master dim hierarchy (0-255).
+                    # Attribute channels (pan/tilt/gobo/etc): LTP only, no dimmer,
+                    #   FX additive (same blend formula as colour).
+                    _COLOUR_CHS = frozenset({'red', 'green', 'blue', 'white', 'amber'})
+                    ch_resolved = {}
+                    for ch in sub.profile.channels:
+                        if ch in _COLOUR_CHS:
+                            if highlight:
+                                ch_resolved[ch] = int(255 * gm)
+                            else:
+                                base_val = prog_vals.get(ch, audio_vals.get(ch, cue_vals.get(ch, 0)))
+                                if ch in fx_vals:
+                                    env = fx_vals.get(f'_env_{ch}', 1.0)
+                                    merged = max(0, min(255, int(base_val * (1.0 - env) + fx_vals[ch])))
+                                else:
+                                    merged = base_val
+                                ch_resolved[ch] = max(0, min(255, int(merged * sub_dim * gm)))
+                        elif ch == 'dimmer':
+                            if highlight:
+                                ch_resolved[ch] = int(255 * gm)
+                            else:
+                                # Explicit 'dimmer' stored on sub wins; otherwise use master dim
+                                base_val = prog_vals.get('dimmer', audio_vals.get('dimmer',
+                                           cue_vals.get('dimmer', None)))
+                                if base_val is not None:
+                                    ch_resolved[ch] = max(0, min(255, int(base_val * gm)))
+                                else:
+                                    ch_resolved[ch] = max(0, min(255, int(_base_dim * gm * 255)))
+                        else:
+                            # Attribute channel: LTP, no dimmer, FX envelope-blend additive
+                            base_val = prog_vals.get(ch, audio_vals.get(ch, cue_vals.get(ch, 0)))
+                            if ch in fx_vals:
+                                env = fx_vals.get(f'_env_{ch}', 1.0)
+                                val = max(0, min(255, int(base_val * (1.0 - env) + fx_vals[ch])))
+                            else:
+                                val = base_val
+                            ch_resolved[ch] = max(0, min(255, int(val)))
 
                     for output in sub.outputs:
-                        if output['universe'] == universe:
-                            addr = output['address'] - 1
-                            if addr + 2 <= 511:
-                                dmx[addr]     = final_r
-                                dmx[addr + 1] = final_g
-                                dmx[addr + 2] = final_b
+                        if output['universe'] != universe:
+                            continue
+                        addr = output['address'] - 1
+                        for offset, ch in enumerate(sub.profile.channels):
+                            if addr + offset > 511:
+                                break
+                            dmx[addr + offset] = ch_resolved.get(ch, 0)
         return tuple(dmx)
 
 
@@ -7178,6 +7281,24 @@ class GUIEngine:
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
                 ("COL 3  /  COLOR 3",     "Apply colour preset to selection"),
                 ("DIM 2",                 "Apply dim preset to selection"),
+            ]),
+            ("MOVING LIGHTS / ATTRIBUTES", [
+                ("1 AT PAN 127 TILT 64",  "Set pan and tilt (0–255 raw DMX)"),
+                ("1 AT PAN 127",          "Set pan only"),
+                ("1 AT GOBO 10",          "Set gobo wheel position"),
+                ("1 AT ZOOM 200",         "Set zoom channel"),
+                ("1 AT FOCUS 128",        "Set focus channel"),
+                ("1 AT IRIS 64",          "Set iris (0=open, 255=closed typical)"),
+                ("1 AT DIMMER 255",       "Set dimmer channel if in profile"),
+                ("RECORD POSITION 1 Wide","Snapshot pan/tilt from programmer"),
+                ("POSITION 1",            "Apply position preset to programmer"),
+                ("RECORD GOBO 1 Open",    "Snapshot gobo from programmer"),
+                ("GOBO 1",                "Apply gobo preset to programmer"),
+                ("RECORD ZOOM 1 Wide",    "Snapshot zoom from programmer"),
+                ("RECORD FOCUS 1 Sharp",  "Snapshot focus from programmer"),
+                ("FX SINE PAN BPM 30",    "Pan sine wave FX (moving head scan)"),
+                ("FX SINE TILT BPM 20",   "Tilt sine wave FX"),
+                ("FX RAMP GOBO BPM 60",   "Ramp through gobo wheel"),
             ]),
             ("fx", [
                 ("FX SINE RED",           "Sine wave on red channel"),
@@ -13110,7 +13231,13 @@ def run_command(cmd_str):
     # CLEAR stage 2 (programmer) removes FX defs and stops preview.
 
     _WAVEFORMS = {'SINE', 'RAMP', 'PULSE', 'SQUARE', 'TRIANGLE', 'SAWTOOTH', 'FLICKER'}
-    _CHANNELS  = {'RED', 'GREEN', 'BLUE', 'DIM'}
+    _CHANNELS  = {
+        'RED', 'GREEN', 'BLUE', 'DIM',
+        'PAN', 'TILT', 'PAN_FINE', 'TILT_FINE',
+        'GOBO', 'GOBO_ROT', 'GOBO2', 'GOBO2_ROT',
+        'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1', 'COLOR',
+        'PRISM', 'FROST', 'ANIMATION', 'CONTROL', 'MACRO', 'DIMMER',
+    }
 
     # ── BPM / SIZE / SPREAD  — set global FX parameters ────────────
     # Updates live layers, programmer data, and GUI sliders in one shot.
@@ -13414,7 +13541,8 @@ def run_command(cmd_str):
                 waveform = waveform.lower()
                 channel  = 'rgb'
             elif ch_idx >= len(tokens) or tokens[ch_idx] not in _CHANNELS:
-                return f"Usage: FX [ADD] <waveform> red|green|blue|dim [BPM n] [SIZE n] [SPREAD n]"
+                return (f"Usage: FX [ADD] <waveform> red|green|blue|dim|pan|tilt|gobo|zoom|focus|… "
+                        f"[BPM n] [SIZE n] [SPREAD n]")
             else:
                 channel = tokens[ch_idx]
 
@@ -15952,6 +16080,89 @@ if STUDIO_HEADLESS:
         ShowFile.load_fx(_fx_params)
         _check("LOAD SHOW-style FX reload restores saved fx_params",
                _fx_params['rate_bpm'] == 60.0)
+
+        # ── ATTRIBUTE CHANNEL / MOVING LIGHT TESTS ───────────────────────────
+        # Patch a Generic_Moving head into a spare slot (fixture 50), set
+        # pan/tilt/gobo in programmer, record a cue, fire it, verify DMX output.
+
+        _ml_profile = library.get("Generic_Moving")
+        _check("Generic_Moving profile registered", _ml_profile is not None)
+
+        if _ml_profile:
+            # Patch at fixture 50, universe 1, address 400 (well clear of tubes)
+            _ml_fix = patch.patch_fixture(50, "SmokeMoving", "Generic_Moving", 1, 400)
+            _check("moving light patched", _ml_fix is not None)
+
+            # AT PAN 200 TILT 64 from programmer
+            prog.clear_programmer()
+            run_command("50")
+            run_command("AT DIM 100 PAN 200 TILT 64 GOBO 10")
+            _ml_sub_fid = "50.1"
+            _check("programmer stores pan",
+                   prog.data.get(_ml_sub_fid, {}).get('pan') == 200)
+            _check("programmer stores tilt",
+                   prog.data.get(_ml_sub_fid, {}).get('tilt') == 64)
+            _check("programmer stores gobo",
+                   prog.data.get(_ml_sub_fid, {}).get('gobo') == 10)
+
+            # Record to a cue and fire it; verify DMX output
+            run_command("RECORD CS 2 CUE 80 FADE 0")
+            run_command("ASSIGN CS 2 TO FADER 2")
+            prog.clear_programmer()
+            run_command("GO CS 2 CUE 80")
+            time.sleep(0.12)  # 0-sec fade, just let the engine tick once
+            _ml_dmx = output_state.get_dmx_for_universe(1)
+            _ml_base = 400 - 1   # 0-indexed
+            _ch_names = _ml_profile.channels
+            _pan_off  = _ch_names.index('pan')
+            _tilt_off = _ch_names.index('tilt')
+            _gobo_off = _ch_names.index('gobo')
+            _check("cue playback drives pan in DMX", _ml_dmx[_ml_base + _pan_off] == 200)
+            _check("cue playback drives tilt in DMX", _ml_dmx[_ml_base + _tilt_off] == 64)
+            _check("cue playback drives gobo in DMX", _ml_dmx[_ml_base + _gobo_off] == 10)
+
+            # Programmer-level attr write visible in DMX immediately
+            prog.clear_programmer()
+            run_command("50")
+            run_command("AT PAN 127 TILT 127")
+            _ml_dmx2 = output_state.get_dmx_for_universe(1)
+            _check("programmer attr channels visible in DMX output",
+                   _ml_dmx2[_ml_base + _pan_off] == 127)
+
+            # Position pool: record and apply
+            r_pos = run_command("RECORD POSITION 1 SmokePos")
+            _check("RECORD POSITION from moving light programmer",
+                   "Recorded" in r_pos or "no position" not in r_pos.lower())
+            prog.clear_programmer()
+            run_command("50")
+            run_command("POSITION 1")
+            _check("POSITION 1 restores pan to programmer",
+                   prog.data.get(_ml_sub_fid, {}).get('pan') is not None)
+
+            # FX on attribute channel: FX SINE PAN should create a layer
+            run_command("FX CLEAR")
+            run_command("50")
+            r_pan_fx = run_command("FX SINE PAN BPM 30 SIZE 50")
+            _check("FX SINE PAN accepted", "Applied FX" in r_pan_fx)
+            _pan_fx_layer = next(
+                (l for l in (active_fx or []) if l.channel == 'pan'), None)
+            _check("FX SINE PAN creates layer with channel=pan",
+                   _pan_fx_layer is not None)
+            run_command("FX CLEAR")
+
+            # DMX output handles generic profile channel order (dimmer first)
+            prog.clear_programmer()
+            run_command("50")
+            run_command("AT DIM 100")   # sets master dim = 1.0
+            _ml_dmx3 = output_state.get_dmx_for_universe(1)
+            _dim_off  = _ch_names.index('dimmer')
+            _check("dimmer profile channel outputs master dim correctly",
+                   _ml_dmx3[_ml_base + _dim_off] == 255)
+
+            # Cleanup
+            prog.clear_programmer()
+            run_command("FX CLEAR")
+            del patch.fixtures[50]
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
