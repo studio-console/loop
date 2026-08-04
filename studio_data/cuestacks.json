@@ -5,6 +5,7 @@
     "1": {
       "name": "Color Show",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Thru",
@@ -6684,6 +6685,7 @@
     "2": {
       "name": "Dynamic",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "White Full",
@@ -13373,6 +13375,7 @@
     "3": {
       "name": "Warm",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Hot Red",
@@ -21604,6 +21607,7 @@
     "4": {
       "name": "Test",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Red",
@@ -22101,6 +22105,7 @@
     "5": {
       "name": "test2",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Cue 1",
@@ -22132,6 +22137,7 @@
     "6": {
       "name": "color2",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Uv50",
@@ -22333,6 +22339,7 @@
     "7": {
       "name": "t3",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Low Blue",
@@ -22931,6 +22938,7 @@
     "8": {
       "name": "t4",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Red Half",
@@ -23252,6 +23260,7 @@
     "9": {
       "name": "t5",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Cue 1",
@@ -23499,6 +23508,7 @@
     "10": {
       "name": "test27",
       "allow_exec_time": true,
+      "wrap": false,
       "cues": {
         "1.0": {
           "name": "Red",

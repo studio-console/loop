@@ -1,7 +1,7 @@
 {
   "version": "3.0",
   "master_level": 1.0,
-  "active_executor": 7,
+  "active_executor": 10,
   "executors": {
     "1": {
       "stack_id": 1,
@@ -86,7 +86,7 @@
     },
     "10": {
       "stack_id": 10,
-      "current": null,
+      "current": 2.0,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
