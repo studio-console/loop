@@ -1311,10 +1311,20 @@ class Programmer:
                     self.data.setdefault(str(sub.fixture_id), {})[ch] = int(round(target))
             return
 
-        # WOBBLE <ch> <amount> — add per-sub random ±amount jitter to current channel value
+        # WOBBLE <ch|DIM> <amount> — add per-fixture random ±amount jitter
         if tokens[0] == 'WOBBLE' and len(tokens) >= 3:
-            ch = _CH.get(tokens[1])
             amt = _parse_num(tokens[2], lo=0.0, hi=255.0)
+            if tokens[1] == 'DIM' and amt is not None:
+                amt_f = amt / 100.0  # amount in percent → 0–1 fraction
+                masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                self._push_undo()
+                for master in masters:
+                    fid = str(master.fixture_id)
+                    cur = float(self.data.get(fid, {}).get('dim', 0.0))
+                    jitter = random.uniform(-amt_f, amt_f)
+                    self.data.setdefault(fid, {})['dim'] = max(0.0, min(1.0, cur + jitter))
+                return
+            ch = _CH.get(tokens[1])
             if ch and amt is not None:
                 subs = self._get_sub_selection()
                 self._push_undo()
@@ -1325,10 +1335,19 @@ class Programmer:
                     self.data.setdefault(sfid, {})[ch] = max(0, min(255, int(round(cur + jitter))))
             return
 
-        # SCALE <ch> <pct> — multiply each sub's channel by pct% (100=no change, 50=halve)
+        # SCALE <ch|DIM> <pct> — multiply each sub/master value by pct%
         if tokens[0] == 'SCALE' and len(tokens) >= 3:
-            ch = _CH.get(tokens[1])
             pct = _parse_num(tokens[2], lo=0.0, hi=1000.0)
+            if tokens[1] == 'DIM' and pct is not None:
+                factor = pct / 100.0
+                masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                self._push_undo()
+                for master in masters:
+                    fid = str(master.fixture_id)
+                    cur = self.data.get(fid, {}).get('dim', 0.0)
+                    self.data.setdefault(fid, {})['dim'] = max(0.0, min(1.0, float(cur) * factor))
+                return
+            ch = _CH.get(tokens[1])
             if ch and pct is not None:
                 factor = pct / 100.0
                 subs = self._get_sub_selection()
@@ -1353,8 +1372,16 @@ class Programmer:
                         self.data.setdefault(str(sub.fixture_id), {})[ch] = min(255, (v * 255 + peak // 2) // peak)
             return
 
-        # INVERT <ch> — flip each sub's channel value: new = 255 - current
+        # INVERT <ch|DIM> — flip channel value; DIM: new = 1 - current
         if tokens[0] == 'INVERT' and len(tokens) >= 2:
+            if tokens[1] == 'DIM':
+                masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                self._push_undo()
+                for master in masters:
+                    fid = str(master.fixture_id)
+                    cur = float(self.data.get(fid, {}).get('dim', 0.0))
+                    self.data.setdefault(fid, {})['dim'] = max(0.0, min(1.0, 1.0 - cur))
+                return
             ch = _CH.get(tokens[1])
             if ch:
                 subs = self._get_sub_selection()
@@ -7851,8 +7878,11 @@ class GUIEngine:
                 ("1 THRU 6 AT STEP R 10",   "Staircase red: each fixture adds 10 more than the previous (1→+0, 2→+10, ...)"),
                 ("1 THRU 6 AT MIRROR R",    "Mirror red across selection: fixture 1 ↔ fixture 6, fixture 2 ↔ fixture 5, ..."),
                 ("1 THRU 6 AT INVERT R",   "Invert each fixture's red: new = 255 − current (complements the colour)"),
+                ("1 THRU 6 AT INVERT DIM", "Invert dimmer: new = 1 − current (0% becomes 100%, 30% becomes 70%)"),
                 ("1 THRU 6 AT SCALE R 50", "Scale each fixture's red by 50% (halve); >100% amplifies, clamped to 255"),
+                ("1 THRU 6 AT SCALE DIM 50", "Scale dimmer by 50% (halve); clamped to 0–100%"),
                 ("1 THRU 6 AT WOBBLE R 20","Add independent random ±20 jitter to each fixture's red (organic variation)"),
+                ("1 THRU 6 AT WOBBLE DIM 10","Add ±10% random jitter to each fixture's dimmer (subtle organic variation)"),
                 ("1 THRU 6 AT NORMALIZE R","Scale red across selection so the highest value = 255 (preserves ratio, maximises brightness)"),
                 ("1 THRU 3 AT CLEAR R",   "Remove red channel from fixtures 1-3 in the programmer (keeps other channels)"),
                 ("1 THRU 3 AT CLEAR",     "Remove all programmer values for fixtures 1-3 (targeted partial-programmer clear)"),
@@ -19025,6 +19055,26 @@ if STUDIO_HEADLESS:
         _av_d = [prog.data.get(str(i), {}).get('dim') for i in range(1, 4)]
         _check("AT AVERAGE DIM: all stamped to mean (20+60+100)/3=60%",
                all(abs((v or 0) - 0.6) < 0.01 for v in _av_d))
+        prog.clear_programmer()
+
+        # ── AT INVERT DIM / AT SCALE DIM / AT WOBBLE DIM ─────────────────────
+        run_command("1 THRU 2 AT DIM 30")   # 30%
+        run_command("1 THRU 2 AT INVERT DIM")
+        _inv_d = [prog.data.get(str(i), {}).get('dim') for i in range(1, 3)]
+        _check("AT INVERT DIM: 30% → 70%", all(abs((v or 0) - 0.7) < 0.01 for v in _inv_d))
+        run_command("1 THRU 2 AT SCALE DIM 50")   # 70% × 50% = 35%
+        _sc_d = [prog.data.get(str(i), {}).get('dim') for i in range(1, 3)]
+        _check("AT SCALE DIM 50: 70% × 50% = 35%", all(abs((v or 0) - 0.35) < 0.01 for v in _sc_d))
+        run_command("1 THRU 2 AT SCALE DIM 200")  # 35% × 200% = 70% (≤ 1.0)
+        _sc_d2 = [prog.data.get(str(i), {}).get('dim') for i in range(1, 3)]
+        _check("AT SCALE DIM 200: 35% × 200% = 70%", all(abs((v or 0) - 0.7) < 0.01 for v in _sc_d2))
+        run_command("1 THRU 3 AT DIM 50")
+        run_command("1 THRU 3 AT WOBBLE DIM 10")   # ±10% jitter
+        _wb_d = [prog.data.get(str(i), {}).get('dim') for i in range(1, 4)]
+        _check("AT WOBBLE DIM: values remain in 0–1 range",
+               all(0.0 <= (v or 0) <= 1.0 for v in _wb_d))
+        _check("AT WOBBLE DIM: values are near the seed (within 10%)",
+               all(abs((v or 0) - 0.5) <= 0.10 for v in _wb_d))
         prog.clear_programmer()
 
         # ── AT STEP ───────────────────────────────────────────────────────────
