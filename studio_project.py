@@ -7835,6 +7835,8 @@ class GUIEngine:
                 ("CS 1 COMPRESS",          "Renumber cues to sequential integers 1, 2, 3… — collapses gaps left by deletions"),
                 ("CS 1 EXTRACT 3",         "Copy cue 3 from CS 1 into a new standalone single-cue cuestack (auto-picks slot)"),
                 ("CS 1 EXTRACT 3 INTO 10", "As above but place the extracted cuestack in slot 10"),
+                ("CS 1 DUPLICATE",         "Deep-copy all cues from CS 1 to a new auto-picked slot (preserves timing/notes)"),
+                ("CS 1 DUPLICATE INTO 5",  "Duplicate CS 1 into slot 5 specifically"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 3 SHIFT 5",         "Move cue 3 to cue 8 in the active cuestack (offset by +5)"),
@@ -13269,6 +13271,42 @@ def run_command(cmd_str):
             return (f"Extracted: CS {n} cue {cue_num:.0f} '{cue.name}' "
                     f"→ new cuestack {into_slot} on fader {into_slot}")
 
+        # CS n DUPLICATE [INTO <slot>] — deep-copy entire cuestack to a new slot
+        if len(tokens) >= 3 and tokens[2].upper() in ('DUPLICATE', 'DUP', 'CLONE'):
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            into_slot = None
+            if 'INTO' in tokens:
+                into_idx = tokens.index('INTO')
+                try:
+                    into_slot = int(tokens[into_idx + 1])
+                except (IndexError, ValueError):
+                    return "CS DUPLICATE: bad slot after INTO"
+            if into_slot is None:
+                used = set(cuestack_pool.stacks.keys())
+                into_slot = next(s for s in range(1, 9999) if s not in used)
+            if cuestack_pool.get(into_slot):
+                return (f"CS DUPLICATE: slot {into_slot} already occupied — "
+                        f"use  CS {n} DUPLICATE INTO <slot>")
+            new_cs = CueStack(into_slot, f"{cs.name} (copy)")
+            for cue_num, cue in cs.cues.items():
+                nc = Cue(cue_number=cue.cue_number, name=cue.name,
+                         fade_time=cue.fade_time, delay_time=cue.delay_time,
+                         fade_times=copy.deepcopy(cue.fade_times),
+                         delay_times=copy.deepcopy(cue.delay_times),
+                         follow_time=cue.follow_time)
+                nc.note = getattr(cue, 'note', '')
+                nc.fx_outfade = getattr(cue, 'fx_outfade', 0.0)
+                nc.data = copy.deepcopy(cue.data)
+                new_cs.cues[cue_num] = nc
+            new_cs.wrap = getattr(cs, 'wrap', False)
+            cuestack_pool.store(into_slot, new_cs)
+            executor_pool.assign(into_slot, new_cs)
+            save_show()
+            return (f"Duplicated CS {n} '{cs.name}' → CS {into_slot} '{new_cs.name}' "
+                    f"({len(new_cs.cues)} cue(s))")
+
         # CS n COMPRESS — renumber cues to 1, 2, 3, … (collapse gaps)
         if len(tokens) >= 3 and tokens[2].upper() == 'COMPRESS':
             cs = cuestack_pool.get(n)
@@ -17921,6 +17959,22 @@ if STUDIO_HEADLESS:
                _cs98 is not None and list(_cs98.cues.values())[0].name.lower() == "extcue2")
         _check("CS EXTRACT returns 'Extracted' confirmation", "Extracted" in r_ext)
         _check("CS EXTRACT source cuestack unchanged (still 2 cues)", len(_cs97.cues) == 2)
+
+        # CS DUPLICATE
+        run_command("RECORD CUESTACK 99 DupSrc")
+        run_command("CUESTACK 99")
+        run_command("1 FULL"); run_command("RECORD CUE 1 DupA")
+        run_command("1 OUT");  run_command("RECORD CUE 2 DupB")
+        _cs99dup = cuestack_pool.get(99)
+        r_dup = run_command("CS 99 DUPLICATE INTO 100")
+        _cs100 = cuestack_pool.get(100)
+        _check("CS DUPLICATE creates new cuestack in target slot", _cs100 is not None)
+        _check("CS DUPLICATE copies all cues",
+               _cs100 is not None and len(_cs100.cues) == len(_cs99dup.cues))
+        _check("CS DUPLICATE is a deep copy (modifying source doesn't affect copy)",
+               _cs100 is not None and _cs100.cues is not _cs99dup.cues)
+        _check("CS DUPLICATE returns 'Duplicated' confirmation", "Duplicated" in r_dup)
+        _check("CS DUPLICATE source is unchanged", len(_cs99dup.cues) == 2)
 
         # CUE SHIFT
         run_command("RECORD CUESTACK 96 ShiftTest")
