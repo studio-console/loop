@@ -873,7 +873,7 @@ class Programmer:
                              'GOBO', 'GOBO_ROT', 'GOBO2', 'GOBO2_ROT',
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
-                             'CONTROL', 'MACRO'}
+                             'CONTROL', 'MACRO', 'FAN'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1048,6 +1048,55 @@ class Programmer:
                 except ValueError:
                     return None
             return None
+
+        # FAN <channel> <from_val> <to_val>  — fan values across selection
+        # e.g.  FAN DIM 0 100   FAN R 0 255   FAN PAN 0 200
+        # Fan always steps by master fixture (one value per fixture, all subs get same).
+        if tokens[0] == 'FAN' and len(tokens) >= 4:
+            _fan_ch_tok = tokens[1]
+            try:
+                _fan_lo = float(tokens[2].rstrip('%'))
+                _fan_hi = float(tokens[3].rstrip('%'))
+            except ValueError:
+                pass
+            else:
+                _is_dim = (_fan_ch_tok == 'DIM')
+                _fan_ch = _CH.get(_fan_ch_tok)
+                if _is_dim or _fan_ch:
+                    # Always fan by master fixtures for consistent per-fixture stepping
+                    _masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                    n = len(_masters)
+                    if n == 1:
+                        mid = (_fan_lo + _fan_hi) / 2.0
+                        if _is_dim:
+                            self.set_dimmer(max(0.0, min(100.0, mid)))
+                        else:
+                            self.set_channel(_fan_ch, int(round(max(0, min(255, mid)))))
+                    elif n > 1:
+                        self._push_undo()
+                        for idx, master in enumerate(_masters):
+                            t = idx / (n - 1)
+                            raw_val = _fan_lo + (_fan_hi - _fan_lo) * t
+                            fid = str(master.fixture_id)
+                            if _is_dim:
+                                val = max(0.0, min(1.0, raw_val / 100.0))
+                                self._ensure_data(master)
+                                self.data[fid]['dim'] = val
+                                if fid in self.disabled:
+                                    self.disabled[fid].pop('dim', None)
+                                master.set_dimmer(val)
+                            else:
+                                val = int(round(max(0, min(255, raw_val))))
+                                # Apply to all subs of this master
+                                for sub in master.all_subs():
+                                    sub_fid = str(sub.fixture_id)
+                                    self._ensure_data(sub)
+                                    self.data[sub_fid][_fan_ch] = val
+                                    if sub_fid in self.disabled:
+                                        self.disabled[sub_fid].pop(_fan_ch, None)
+                                    sub.set_channel(_fan_ch, val)
+                        self._print_programmer()
+            return
 
         if tokens[0] == 'FULL':
             self.set_dimmer(100)
@@ -7321,6 +7370,9 @@ class GUIEngine:
                 ("1 AT -20",             "Relative dim: subtract 20 percentage points"),
                 ("1 AT R +50",           "Relative channel: add 50 to current red in programmer"),
                 ("1 AT PAN +30",         "Relative attribute: add 30 to current pan value"),
+                ("1 THRU 6 FAN DIM 0 100", "Fan dim from 0→100% linearly across selection"),
+                ("1 THRU 6 FAN R 0 255",   "Fan red channel 0→255 across selection"),
+                ("1 THRU 6 FAN PAN 0 200", "Fan pan position across selection"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -16259,6 +16311,22 @@ if STUDIO_HEADLESS:
         run_command("AT R +200")                  # clamp at 255
         _check("AT R +200 clamps to 255",
                prog.data.get('1.1', {}).get('red') == 255)
+        prog.clear_programmer()
+
+        # ── FAN TESTS ─────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 THRU 6")
+        run_command("FAN DIM 0 100")
+        _fan_dims = [prog.data.get(str(i), {}).get('dim') for i in range(1, 7)]
+        _check("FAN DIM sets fixture 1 to 0%",  abs(_fan_dims[0] or 0) < 0.01)
+        _check("FAN DIM sets fixture 6 to 100%", abs((_fan_dims[5] or 0) - 1.0) < 0.01)
+        _check("FAN DIM is monotone across selection",
+               all(_fan_dims[i] is not None and _fan_dims[i] <= _fan_dims[i+1]
+                   for i in range(5)))
+        run_command("FAN R 0 255")
+        _fan_r = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 7)]
+        _check("FAN R sets fixture 1 red to 0",   _fan_r[0] == 0)
+        _check("FAN R sets fixture 6 red to 255",  _fan_r[5] == 255)
         prog.clear_programmer()
 
         # ── NEXT/PREV FIXTURE NAVIGATION ──────────────────────────────────────
