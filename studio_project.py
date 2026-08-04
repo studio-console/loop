@@ -7881,6 +7881,7 @@ class GUIEngine:
                 ("SNAPSHOT 5",            "Record current live look (cue+prog merged) as cue 5"),
                 ("SNAPSHOT 5 Frozen",     "Snapshot with a custom name"),
                 ("SAVE",                  "Save entire show to studio_data/"),
+                ("BACKUP",                "Save a timestamped snapshot to studio_saves/backup_YYYYMMDD_HHMMSS/"),
                 ("SAVE AS <name>",        "Save a named snapshot to studio_saves/<name>/"),
                 ("LOAD SHOW <name>",      "Restore a snapshot (cuestacks/presets reload live)"),
                 ("LIST SHOWS",            "List all saved show snapshots"),
@@ -14979,6 +14980,11 @@ def run_command(cmd_str):
         return "BLACKOUT ON"
 
     # ── Save ─────────────────────────────────────────────────
+    if t0 == 'BACKUP':
+        import datetime as _dt
+        ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        return save_show_as(f"backup_{ts}")
+
     if t0 == 'SAVE':
         if len(tokens) >= 3 and tokens[1] == 'AS':
             name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
@@ -17730,6 +17736,10 @@ if STUDIO_HEADLESS:
         ShowFile.load_fx(_fx_params)
         _check("LOAD SHOW-style FX reload restores saved fx_params",
                _fx_params['rate_bpm'] == 60.0)
+
+        # BACKUP command
+        r_bk = run_command("BACKUP")
+        _check("BACKUP creates a timestamped save", "backup_" in r_bk and "saved" in r_bk.lower())
 
         # ── ATTRIBUTE CHANNEL / MOVING LIGHT TESTS ───────────────────────────
         # Patch a Generic_Moving head into a spare slot (fixture 50), set
