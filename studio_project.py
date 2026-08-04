@@ -1281,6 +1281,21 @@ class Programmer:
 
         # BRIGHTEST / DARKEST / AVERAGE — stamp max/min/mean across selection
         if tokens[0] in ('BRIGHTEST', 'DARKEST', 'AVERAGE') and len(tokens) >= 2:
+            # DIM variant: operate on master dimmer (0–1 float) per master fixture
+            if tokens[1] == 'DIM':
+                masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                dim_vals = [self.data.get(str(m.fixture_id), {}).get('dim', 0.0) for m in masters]
+                if masters and dim_vals:
+                    if tokens[0] == 'BRIGHTEST':
+                        target_dim = max(dim_vals)
+                    elif tokens[0] == 'DARKEST':
+                        target_dim = min(dim_vals)
+                    else:
+                        target_dim = sum(dim_vals) / len(dim_vals)
+                    self._push_undo()
+                    for m in masters:
+                        self.data.setdefault(str(m.fixture_id), {})['dim'] = round(target_dim, 6)
+                return
             ch = _CH.get(tokens[1])
             if ch:
                 subs = self._get_sub_selection()
@@ -7824,6 +7839,9 @@ class GUIEngine:
                 ("1 AT FLIP R",           "Invert red channel value"),
                 ("1 THRU 6 AT RANDOM R",  "Set each sub-fixture's red to an independent random value (scatter/sparkle)"),
                 ("1 THRU 6 AT RANDOM DIM", "Randomise the master dimmer (0–100%) independently per fixture"),
+                ("1 THRU 6 AT BRIGHTEST DIM", "Stamp the highest dimmer value in the selection to all fixtures"),
+                ("1 THRU 6 AT DARKEST DIM",   "Stamp the lowest dimmer value in the selection to all fixtures"),
+                ("1 THRU 6 AT AVERAGE DIM",   "Stamp the mean dimmer value across the selection to all fixtures"),
                 ("1 THRU 6 AT RANDOM PAN MASTER", "One random value per fixture, applied to all its subs"),
                 ("1 THRU 6 AT BRIGHTEST R", "Stamp the highest red value currently in selection to all fixtures"),
                 ("1 THRU 6 AT DARKEST R",   "Stamp the lowest red value currently in selection to all fixtures"),
@@ -18987,6 +19005,26 @@ if STUDIO_HEADLESS:
         _check("AT CLAMP DIM: 10% → 20% (clamped up to lo)", abs((_cd_dims[0] or 0) - 0.2) < 0.01)
         _check("AT CLAMP DIM: 50% unchanged (in range)", abs((_cd_dims[1] or 0) - 0.5) < 0.01)
         _check("AT CLAMP DIM: 90% → 80% (clamped down to hi)", abs((_cd_dims[2] or 0) - 0.8) < 0.01)
+        prog.clear_programmer()
+
+        # ── AT BRIGHTEST / DARKEST / AVERAGE DIM ─────────────────────────────
+        run_command("1 AT DIM 20")   # 20%
+        run_command("2 AT DIM 60")   # 60%
+        run_command("3 AT DIM 80")   # 80%
+        run_command("1 THRU 3 AT BRIGHTEST DIM")
+        _bd_d = [prog.data.get(str(i), {}).get('dim') for i in range(1, 4)]
+        _check("AT BRIGHTEST DIM: all stamped to max (0.8)",
+               all(abs((v or 0) - 0.8) < 0.01 for v in _bd_d))
+        run_command("1 THRU 3 AT DARKEST DIM")
+        _dk_d = [prog.data.get(str(i), {}).get('dim') for i in range(1, 4)]
+        _check("AT DARKEST DIM: all stamped to min (0.8 after BRIGHTEST)",
+               all(abs((v or 0) - 0.8) < 0.01 for v in _dk_d))
+        # Reset to original spread and test AVERAGE
+        run_command("1 AT DIM 20"); run_command("2 AT DIM 60"); run_command("3 AT DIM 100")
+        run_command("1 THRU 3 AT AVERAGE DIM")
+        _av_d = [prog.data.get(str(i), {}).get('dim') for i in range(1, 4)]
+        _check("AT AVERAGE DIM: all stamped to mean (20+60+100)/3=60%",
+               all(abs((v or 0) - 0.6) < 0.01 for v in _av_d))
         prog.clear_programmer()
 
         # ── AT STEP ───────────────────────────────────────────────────────────
