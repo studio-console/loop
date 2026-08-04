@@ -875,7 +875,7 @@ class Programmer:
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
                              'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP', 'MIRROR',
-                             'INVERT', 'SCALE'}
+                             'INVERT', 'SCALE', 'WOBBLE'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1272,6 +1272,20 @@ class Programmer:
                 self._push_undo()
                 for sub in subs:
                     self.data.setdefault(str(sub.fixture_id), {})[ch] = int(round(target))
+            return
+
+        # WOBBLE <ch> <amount> — add per-sub random ±amount jitter to current channel value
+        if tokens[0] == 'WOBBLE' and len(tokens) >= 3:
+            ch = _CH.get(tokens[1])
+            amt = _parse_num(tokens[2], lo=0.0, hi=255.0)
+            if ch and amt is not None:
+                subs = self._get_sub_selection()
+                self._push_undo()
+                for sub in subs:
+                    sfid = str(sub.fixture_id)
+                    cur = self.data.get(sfid, {}).get(ch, 0)
+                    jitter = random.uniform(-amt, amt)
+                    self.data.setdefault(sfid, {})[ch] = max(0, min(255, int(round(cur + jitter))))
             return
 
         # SCALE <ch> <pct> — multiply each sub's channel by pct% (100=no change, 50=halve)
@@ -7696,6 +7710,7 @@ class GUIEngine:
                 ("1 THRU 6 AT MIRROR R",    "Mirror red across selection: fixture 1 ↔ fixture 6, fixture 2 ↔ fixture 5, ..."),
                 ("1 THRU 6 AT INVERT R",   "Invert each fixture's red: new = 255 − current (complements the colour)"),
                 ("1 THRU 6 AT SCALE R 50", "Scale each fixture's red by 50% (halve); >100% amplifies, clamped to 255"),
+                ("1 THRU 6 AT WOBBLE R 20","Add independent random ±20 jitter to each fixture's red (organic variation)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -18436,6 +18451,17 @@ if STUDIO_HEADLESS:
         run_command("1 AT SCALE R 200")   # 200% of 200 = 400 → clamped to 255
         _sc_clamp = prog.data.get("1.1", {}).get('red')
         _check("AT SCALE R clamps at 255", _sc_clamp == 255)
+        prog.clear_programmer()
+
+        # ── AT WOBBLE ─────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 THRU 3 AT R 128")   # seed all at 128
+        run_command("1 THRU 3 AT WOBBLE R 50")   # add ±50 jitter
+        _wb_vals = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 4)]
+        _check("AT WOBBLE R keeps values in 0-255 range",
+               all(v is not None and 0 <= v <= 255 for v in _wb_vals))
+        _check("AT WOBBLE R values are near the seed (within 50)",
+               all(v is not None and abs(v - 128) <= 50 for v in _wb_vals))
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
