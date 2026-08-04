@@ -874,7 +874,7 @@ class Programmer:
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
-                             'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP'}
+                             'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1203,6 +1203,23 @@ class Programmer:
                     sfid = str(sub.fixture_id)
                     cur = self.data.get(sfid, {}).get(ch, 0)
                     self.data.setdefault(sfid, {})[ch] = max(0, min(255, 255 - int(cur)))
+            return
+
+        # STEP <ch> <step>  — add step*index to each master fixture in selection order
+        # Creates a staircase: fixture 1 unchanged, fixture 2 += step, fixture 3 += 2*step...
+        # Step is applied to all subs of each master fixture equally (same offset per fixture).
+        if tokens[0] == 'STEP' and len(tokens) >= 3:
+            ch = _CH.get(tokens[1])
+            step_v = _parse_num(tokens[2], lo=-255.0, hi=255.0)
+            if ch and step_v is not None:
+                masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                self._push_undo()
+                for idx, master in enumerate(masters):
+                    offset = int(step_v * idx)
+                    for sub in master.all_subs():
+                        sfid = str(sub.fixture_id)
+                        cur = self.data.get(sfid, {}).get(ch, 0)
+                        self.data.setdefault(sfid, {})[ch] = max(0, min(255, int(cur + offset)))
             return
 
         # CLAMP <ch> <lo> <hi>  — limit each sub's channel value to [lo, hi]
@@ -7654,6 +7671,7 @@ class GUIEngine:
                 ("1 THRU 6 AT DARKEST R",   "Stamp the lowest red value currently in selection to all fixtures"),
                 ("1 THRU 6 AT AVERAGE R",   "Stamp the mean red value across selection to all fixtures"),
                 ("1 THRU 6 AT CLAMP R 50 200", "Restrict each fixture's red to the range 50–200 (clamps values outside)"),
+                ("1 THRU 6 AT STEP R 10",   "Staircase red: each fixture adds 10 more than the previous (1→+0, 2→+10, ...)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -17826,6 +17844,15 @@ if STUDIO_HEADLESS:
         _check("AT CLAMP R clamps below-lo value up to lo (50)", _cl_vals[0] == 50)
         _check("AT CLAMP R leaves in-range value unchanged (100)", _cl_vals[1] == 100)
         _check("AT CLAMP R clamps above-hi value down to hi (200)", _cl_vals[2] == 200)
+
+        # ── AT STEP ───────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 THRU 3 AT R 50")        # seed all at 50
+        run_command("1 THRU 3 AT STEP R 20")   # 50+0, 50+20, 50+40
+        _st_vals = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 4)]
+        _check("AT STEP R fixture 1 unchanged (offset 0)", _st_vals[0] == 50)
+        _check("AT STEP R fixture 2 offset +20 (70)",      _st_vals[1] == 70)
+        _check("AT STEP R fixture 3 offset +40 (90)",      _st_vals[2] == 90)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
