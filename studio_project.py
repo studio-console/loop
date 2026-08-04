@@ -7614,6 +7614,8 @@ class GUIEngine:
             ]),
             ("PLAYBACK", [
                 ("GO",                      "Advance to next cue on active fader"),
+                ("GO FADE 3",               "One-shot: fire next cue with 3s fade (does not change the cue's stored fade)"),
+                ("GO FADE 5 DELAY 1",       "One-shot: fire with 5s fade and 1s delay"),
                 ("BACK",                    "Step to previous cue"),
                 ("GOTO 3",                  "Jump directly to cue 3 (active cuestack)"),
                 ("CUESTACK 2",              "Switch active fader to slot 2"),
@@ -12990,6 +12992,30 @@ def run_command(cmd_str):
         cs_name = ex.cuestack.name if ex.cuestack else "(no cuestack)"
         return f"Active fader → {n}  [{cs_name}]"
 
+    # GO FADE <t> [DELAY <d>] — one-shot fade override for next GO only
+    if t0 == 'GO' and len(tokens) >= 3 and tokens[1] == 'FADE':
+        try:
+            go_fade_t = float(tokens[2])
+        except ValueError:
+            return "GO FADE: usage  GO FADE <seconds> [DELAY <seconds>]"
+        go_delay_t = 0.0
+        if 'DELAY' in tokens:
+            di = tokens.index('DELAY')
+            try:
+                go_delay_t = float(tokens[di + 1])
+            except (IndexError, ValueError):
+                return "GO FADE: bad DELAY value"
+        _prev_pt = dict(_prog_time)
+        _prog_time['on']    = True
+        _prog_time['fade']  = go_fade_t
+        _prog_time['delay'] = go_delay_t
+        cue_go()
+        _prog_time.update(_prev_pt)
+        cs = _active_stack()
+        cur = cs.current if cs else None
+        delay_s = f" delay {go_delay_t}s" if go_delay_t else ""
+        return f"GO → Cue {cur}  (fade {go_fade_t}s{delay_s})"
+
     if t0 == 'GO' and len(tokens) == 1:
         cue_go()
         cs = _active_stack()
@@ -16041,6 +16067,15 @@ if STUDIO_HEADLESS:
 
         dmx = output_state.get_dmx_for_universe(1)
         _check("DMX output computes without exception", len(dmx) == 512)
+
+        # GO FADE — one-shot fade override
+        _pt_before = dict(_prog_time)
+        r_gf = run_command("GO FADE 7.5")
+        _check("GO FADE fires without error", "Cue" in r_gf or "GO" in r_gf)
+        _check("GO FADE restores prog_time.on after fire",
+               _prog_time['on'] == _pt_before['on'])
+        _check("GO FADE restores prog_time.fade after fire",
+               _prog_time['fade'] == _pt_before['fade'])
 
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
