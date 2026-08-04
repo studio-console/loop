@@ -3,6 +3,18 @@
   "entries": [
     {
       "date": "2026-08-04",
+      "summary": "Fixed real GUI bug: right-column fixture-dim sliders for tubes 4-6 were completely unreachable, not just clipped",
+      "details": [
+        "Built a real off-screen rendering harness for this session (Xvfb + LIBGL_ALWAYS_SOFTWARE=1 + dpg.output_frame_buffer(), run against a scratch copy of the script and studio_data so nothing touched the real show) since no such tooling is checked into the repo -- same technique the last screenshot-verified session used, redone from scratch.",
+        "Measured every column with dpg.get_y_scroll_max(): left_col and stage_win both sit at 0px overflow (prior sessions' fixes holding), but right_col (the \"command line\" panel) was 66px over its 512px budget. Screenshot confirmed it visually: Tube 1-3 dim sliders showed, Tube 4 was sliced in half, Tubes 5-6 were entirely below the panel border.",
+        "This was worse than a clipping bug -- right_col is built with no_scroll_with_mouse=True at the outer level (deliberately, so the numpad/keyword pad don\u2019t scroll away under a stray wheel event), so there was no way to reach tubes 4-6\u2019s sliders from the GUI at all. Command-line DIM commands still worked; only the quick-set sliders were dead for half the rig.",
+        "Fix: wrapped the per-fixture slider loop in its own fixed-height (76px) child_window, tag fixture_dim_scroll, with no_scrollbar=True but no_scroll_with_mouse=False -- the same hidden-scrollbar-but-wheel-scrollable technique the file already uses one section up for cue_list_scroll. Nested child windows get independent scroll state from their parent, so this reaches tubes 4-6 via mouse wheel without re-enabling scroll on the outer numpad area and without growing right_col past its measured budget (post-fix overflow: 2px, down from 66px).",
+        "Re-verified with the same harness: fixture_dim_scroll reports its own y_scroll_max=64 (all 6 rows reachable by wheel), right_col\u2019s own overflow is now negligible. Screenshot re-captured post-fix for a visual diff, not just the numbers.",
+        "python3 -m py_compile clean; STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 smoke test 211/211. Screenshot harness itself was scratch-only (never committed, never touched studio_data/*.json in the real repo -- ran against a scratch copy) per the hard rule against tests touching real show data."
+      ]
+    },
+    {
+      "date": "2026-08-04",
       "summary": "Fixed 2 real dim bugs: GUI fixture-dim slider clamped virtual_dimmer to 100% on almost any drag; AI 'dim' action had no bounds check at all",
       "details": [
         "Re-checked the roadmap first: all 7 originally-listed items remain landed. The two previously-flagged NEEDS ALIGNMENT items (attribute pools dead for this RGB-only rig; MIDI/OSC Grandmaster Dim disagreeing with MASTER's multiplicative scaling) are still open product decisions, not bugs -- left untouched again, still waiting on user direction.",

@@ -5848,21 +5848,35 @@ class GUIEngine:
                 dpg.add_button(label="all", width=34, height=16,
                                callback=self._on_fixture_dim_select_all)
             if self._patch:
-                for master in self._patch.all_fixtures():
-                    fid  = master.fixture_id
-                    name = master.name[:6] if len(master.name) > 2 else str(fid)
-                    with dpg.group(horizontal=True):
-                        dpg.add_text(name, color=_C_DIM, indent=4)
-                        dpg.add_spacer(width=2)
-                        dpg.add_slider_float(
-                            tag=f"fq_dim_{fid}",
-                            default_value=1.0,
-                            min_value=0.0, max_value=1.0,
-                            width=-1, height=14,
-                            format="%.0f%%",
-                            callback=self._on_fixture_dim_slider,
-                            user_data=fid,
-                        )
+                # Fixed-height scroll area, same technique as cue_list_scroll
+                # above: hidden scrollbar (no_scrollbar=True) but mouse-wheel
+                # scrolling left on (no_scroll_with_mouse=False). Pixel
+                # measurement (dpg.get_y_scroll_max on the real rendered
+                # right_col) showed the un-wrapped row list overflowing the
+                # panel's 512px budget by 66px — with the outer right_col's
+                # own no_scroll_with_mouse=True, tubes 4-6's sliders were
+                # not just visually clipped but completely unreachable.
+                # 76px shows ~3-4 rows before scrolling, matching the space
+                # actually available under the numpad without growing
+                # right_col past its measured budget.
+                with dpg.child_window(tag="fixture_dim_scroll", width=-1, height=76,
+                                      border=False, no_scrollbar=True,
+                                      no_scroll_with_mouse=False):
+                    for master in self._patch.all_fixtures():
+                        fid  = master.fixture_id
+                        name = master.name[:6] if len(master.name) > 2 else str(fid)
+                        with dpg.group(horizontal=True):
+                            dpg.add_text(name, color=_C_DIM, indent=4)
+                            dpg.add_spacer(width=2)
+                            dpg.add_slider_float(
+                                tag=f"fq_dim_{fid}",
+                                default_value=1.0,
+                                min_value=0.0, max_value=1.0,
+                                width=-1, height=14,
+                                format="%.0f%%",
+                                callback=self._on_fixture_dim_slider,
+                                user_data=fid,
+                            )
     # ── Layout budget: 1920 × 1080, no scrollbars anywhere ──────
     _W          = 1920
     _H          = 1080
