@@ -7725,6 +7725,7 @@ class GUIEngine:
                 ("COPY RATE 1 TO 5",      "Same pattern for RATE, SIZEP, SPREADP"),
                 ("COPY FORM 5 TO 6",      "Copy a custom form (destination must be slot ≥5; built-ins 1-4 protected)"),
                 ("COPY POSITION 1 TO 2",  "Same pattern for all 6 attr pool types"),
+                ("COPY FIXTURE 1 TO 2 3", "Copy programmer values from fixture 1 to fixtures 2 and 3"),
                 ("COPY CUE 3 TO 5",       "Copy cue 3 → cue 5 (active cuestack)"),
                 ("COPY CUE 3 TO 5 Intro", "Copy with new name"),
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack copy"),
@@ -15889,6 +15890,42 @@ def run_command(cmd_str):
         return (f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, "
                 "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO")
 
+    # ── COPY FIXTURE <src> TO <dst1> [dst2 ...] ──────────────────────────────
+    # Clone programmer values from one fixture to one or more destinations.
+    if t0 == 'COPY' and len(tokens) >= 5 and tokens[1] == 'FIXTURE' and 'TO' in tokens:
+        to_idx = tokens.index('TO')
+        try:
+            src_id = int(tokens[2])
+        except ValueError:
+            return "Usage: COPY FIXTURE <src> TO <dst1> [dst2 ...]"
+        dst_ids = []
+        for tok in tokens[to_idx + 1:]:
+            try: dst_ids.append(int(tok))
+            except ValueError: break
+        if not dst_ids:
+            return "COPY FIXTURE: provide at least one destination fixture"
+        src_master = patch.get(src_id)
+        if not src_master:
+            return f"COPY FIXTURE: fixture {src_id} not patched"
+        prog._push_undo()
+        copied = []
+        for dst_id in dst_ids:
+            dst_master = patch.get(dst_id)
+            if not dst_master:
+                continue
+            src_m_data = prog.data.get(str(src_id), {})
+            if src_m_data:
+                prog.data.setdefault(str(dst_id), {}).update(copy.deepcopy(src_m_data))
+            for src_sub in src_master.all_subs():
+                src_sub_data = prog.data.get(str(src_sub.fixture_id), {})
+                if src_sub_data:
+                    dst_sub = dst_master.get_sub(src_sub.sub_index)
+                    if dst_sub:
+                        prog.data.setdefault(str(dst_sub.fixture_id), {}).update(
+                            copy.deepcopy(src_sub_data))
+            copied.append(dst_id)
+        return f"Copied fixture {src_id} → {copied}"
+
     # ── COPY CUE / COPY CS ────────────────────────────────────────────────────
     # COPY CUE <src> TO <dst>               — within active cuestack
     # COPY CUE <src> TO <dst> <name>        — with new name
@@ -16439,6 +16476,24 @@ if STUDIO_HEADLESS:
                executor_pool.get(2).cuestack is _cs1_before)
         # Swap back to restore state for remaining tests
         run_command("FADER SWAP 1 2")
+
+        # COPY FIXTURE
+        run_command("1 AT RED 200")                   # set red on fixture 1 (sub-fixture channel)
+        _cf_f1 = patch.get(1)
+        _cf_f2 = patch.get(2)
+        if _cf_f1 and _cf_f2:
+            _cf_f1_sub = next(iter(_cf_f1.all_subs()), None)
+            _cf_f2_sub = next(iter(_cf_f2.all_subs()), None)
+            _cf_red_src = (prog.data.get(str(_cf_f1_sub.fixture_id), {}).get('red')
+                           if _cf_f1_sub else None)
+            r_cf = run_command("COPY FIXTURE 1 TO 2")
+            _cf_red_dst = (prog.data.get(str(_cf_f2_sub.fixture_id), {}).get('red')
+                           if _cf_f2_sub else None)
+            _check("COPY FIXTURE copies sub channel to destination",
+                   _cf_red_src is not None and _cf_red_dst == _cf_red_src)
+            _check("COPY FIXTURE returns confirmation message", "Copied fixture" in r_cf)
+        r_cf_bad = run_command("COPY FIXTURE 999 TO 2")
+        _check("COPY FIXTURE rejects unknown source", "not patched" in r_cf_bad or "999" in r_cf_bad)
 
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
