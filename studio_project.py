@@ -1135,6 +1135,8 @@ class Programmer:
                 elif tokens[j] == 'VAL':
                     try: v = float(tokens[j + 1])
                     except ValueError: pass
+            s = max(0.0, min(100.0, s))
+            v = max(0.0, min(100.0, v))
             h1, s1, v1 = h / 360.0, s / 100.0, v / 100.0
             c = v1 * s1
             x = c * (1 - abs((h1 * 6) % 2 - 1))
@@ -3760,14 +3762,28 @@ class OutputState:
 
     def get_dmx_for_universe(self, universe):
         if self.freeze_mode and universe in self.frozen_dmx:
-            # FREEZE locks the *look*, not the master fader or a direct DMX
-            # override — BLACKOUT/MASTER must still be able to cut a frozen
-            # output (safety-critical: BLACKOUT is documented as "cut all
-            # output NOW" and must not be silently defeated by FREEZE), and
-            # a direct DMX override is documented as highest-priority/
+            # FREEZE locks the *look*, not the master fader, SOLO isolation,
+            # or a direct DMX override — BLACKOUT/MASTER must still be able
+            # to cut a frozen output (safety-critical: BLACKOUT is documented
+            # as "cut all output NOW" and must not be silently defeated by
+            # FREEZE), SOLO's "zero everyone else" guarantee must still hold,
+            # and a direct DMX override is documented as highest-priority/
             # applied-last regardless of what else is happening.
             gm = self.master_level
             dmx = [int(v * gm) for v in self.frozen_dmx[universe]]
+            if self.solo_mode:
+                for master in self.patch.all_fixtures():
+                    if master.fixture_id in self.solo_fids:
+                        continue
+                    for sub in master.all_subs():
+                        for output in sub.outputs:
+                            if output['universe'] != universe:
+                                continue
+                            addr = output['address'] - 1
+                            for offset in range(len(sub.profile.channels)):
+                                if addr + offset > 511:
+                                    break
+                                dmx[addr + offset] = 0
             for addr1, val in self.direct_dmx.get(universe, {}).items():
                 if 1 <= addr1 <= 512:
                     dmx[addr1 - 1] = max(0, min(255, int(val)))
@@ -16160,9 +16176,20 @@ if STUDIO_HEADLESS:
         run_command("BLACKOUT OFF")
         run_command("HIGHLIGHT OFF")
 
-        # FREEZE must not defeat BLACKOUT or a direct DMX override — real
-        # output computation, not just the flags. FREEZE snapshots a look;
-        # it must not be a way to disable the master safety cutoff.
+        # FREEZE must not defeat BLACKOUT, SOLO, or a direct DMX override —
+        # real output computation, not just the flags. FREEZE snapshots a
+        # look; it must not be a way to disable the master safety cutoff.
+        # FADER 1 STOP + FX CLEAR first: the very first smoke-test check
+        # (near the top of this block) GO'd a sine-RED FX cue on fader 1
+        # and never stopped it, so it's been running live in the background
+        # ever since. With a selection active, "FX CLEAR" only clears
+        # programmer FX (by design, scoped to selection) and leaves that
+        # executor's FX running -- its real-time envelope would otherwise
+        # make the frozen red value here timing-dependent instead of
+        # deterministic. Stop the executor directly so nothing but this
+        # test's own explicit AT command drives colour into the freeze.
+        run_command("FADER 1 STOP")
+        run_command("FX CLEAR")
         run_command("ALL AT R 200 G 150 B 100")
         run_command("FREEZE")
         _dmx_frozen = output_state.get_dmx_for_universe(1)
@@ -16177,6 +16204,28 @@ if STUDIO_HEADLESS:
         _dmx_frozen_override = output_state.get_dmx_for_universe(1)
         _check("direct DMX override still applies during FREEZE", _dmx_frozen_override[0] == 42)
         run_command("CLEAR DMX")
+
+        # SOLO's "zero everyone else" guarantee must also survive FREEZE —
+        # same class of bug, found by a background audit of the same code.
+        # Seed a synthetic frozen snapshot directly instead of re-capturing
+        # one through run_command("FREEZE") -- this isolates the check to
+        # exactly the SOLO-during-FREEZE branch instead of also depending on
+        # whatever dim/FX state other tests in this shared process happen
+        # to have left on fixture 1 (that state is real but not this
+        # check's concern).
+        _solo_out = output_state.patch.get(1).all_subs()[0].outputs[0]
+        _other_out = output_state.patch.get(3).all_subs()[0].outputs[0]
+        _univ = _solo_out['universe']
+        output_state.frozen_dmx[_univ] = tuple([200] * 512)
+        output_state.freeze_mode = True
+        run_command("1")
+        run_command("SOLO")
+        _dmx_frozen_solo = output_state.get_dmx_for_universe(_univ)
+        _check("SOLO still zeros non-solo fixtures during FREEZE",
+               _dmx_frozen_solo[_other_out['address'] - 1] == 0)
+        _check("SOLO still passes the solo'd fixture during FREEZE",
+               _dmx_frozen_solo[_solo_out['address'] - 1] > 0)
+        run_command("SOLO OFF")
         run_command("FREEZE OFF")
 
         # RECORD GROUP + recall — untested prior to this session
@@ -16863,6 +16912,15 @@ if STUDIO_HEADLESS:
         _check("HUE 240 sets blue=255",
                prog.data.get('1.1', {}).get('blue') == 255 and
                prog.data.get('1.1', {}).get('red') == 0)
+        run_command("AT HUE 60 SAT 100 VAL 150")   # VAL over 100 must clamp
+        _check("HUE VAL clamps at 100 (no channel over 255)",
+               prog.data.get('1.1', {}).get('red') == 255 and
+               prog.data.get('1.1', {}).get('green') == 255)
+        run_command("AT HUE 0 SAT -50")            # SAT under 0 must clamp to 0 (grey/white)
+        _check("HUE SAT clamps at 0 (grey output, not a negative-saturation artifact)",
+               prog.data.get('1.1', {}).get('red') == 255 and
+               prog.data.get('1.1', {}).get('green') == 255 and
+               prog.data.get('1.1', {}).get('blue') == 255)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
