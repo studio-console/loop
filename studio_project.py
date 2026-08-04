@@ -7794,6 +7794,7 @@ class GUIEngine:
                 ("COPY FORM 5 TO 6",      "Copy a custom form (destination must be slot ≥5; built-ins 1-4 protected)"),
                 ("COPY POSITION 1 TO 2",  "Same pattern for all 6 attr pool types"),
                 ("COPY FIXTURE 1 TO 2 3", "Copy programmer values from fixture 1 to fixtures 2 and 3"),
+                ("FIXTURE SWAP 1 2",      "Exchange all programmer values between fixtures 1 and 2"),
                 ("COPY CUE 3 TO 5",       "Copy cue 3 → cue 5 (active cuestack)"),
                 ("COPY CUE 3 TO 5 Intro", "Copy with new name"),
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "Cross-cuestack copy"),
@@ -15942,6 +15943,39 @@ def run_command(cmd_str):
                 "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS")
 
     # ── FIXTURE INFO <n> — detailed per-fixture status ──────────────────────────
+    # FIXTURE SWAP <a> <b> — exchange programmer values between two fixtures
+    if t0 == 'FIXTURE' and len(tokens) >= 4 and tokens[1].upper() == 'SWAP':
+        try:
+            fid_a, fid_b = int(tokens[2]), int(tokens[3])
+        except ValueError:
+            return "Usage: FIXTURE SWAP <a> <b>"
+        if fid_a == fid_b:
+            return "FIXTURE SWAP: source and destination are the same"
+        if not patch.get(fid_a):
+            return f"FIXTURE SWAP: fixture {fid_a} not in patch"
+        if not patch.get(fid_b):
+            return f"FIXTURE SWAP: fixture {fid_b} not in patch"
+        # Collect all data keys belonging to each fixture: "N" (master) and "N.x" (subs)
+        def _fx_keys(fid):
+            return [k for k in prog.data
+                    if k == str(fid) or k.startswith(str(fid) + '.')]
+        keys_a = _fx_keys(fid_a)
+        keys_b = _fx_keys(fid_b)
+        # Extract data, remap keys from A→B and B→A
+        data_a = {k: prog.data.pop(k) for k in keys_a}
+        data_b = {k: prog.data.pop(k) for k in keys_b}
+        def _remap(d, old_fid, new_fid):
+            out = {}
+            for k, v in d.items():
+                if k == str(old_fid):
+                    out[str(new_fid)] = v
+                elif k.startswith(str(old_fid) + '.'):
+                    out[str(new_fid) + k[len(str(old_fid)):]] = v
+            return out
+        prog.data.update(_remap(data_a, fid_a, fid_b))
+        prog.data.update(_remap(data_b, fid_b, fid_a))
+        return f"Programmer: swapped fixture {fid_a} ↔ fixture {fid_b}"
+
     if t0 == 'FIXTURE' and len(tokens) >= 3 and tokens[1] in ('INFO', 'STATUS', 'SHOW'):
         try:
             fid = int(tokens[2])
@@ -16956,6 +16990,21 @@ if STUDIO_HEADLESS:
             _check("COPY FIXTURE returns confirmation message", "Copied fixture" in r_cf)
         r_cf_bad = run_command("COPY FIXTURE 999 TO 2")
         _check("COPY FIXTURE rejects unknown source", "not patched" in r_cf_bad or "999" in r_cf_bad)
+
+        # FIXTURE SWAP
+        prog.clear_programmer()
+        run_command("1 AT R 80")    # fixture 1 red = 80
+        run_command("2 AT R 200")   # fixture 2 red = 200
+        _fs_f1s = "1.1" if patch.get(1) and next(iter(patch.get(1).all_subs()), None) else None
+        _fs_f2s = "2.1" if patch.get(2) and next(iter(patch.get(2).all_subs()), None) else None
+        if _fs_f1s and _fs_f2s:
+            r_swap = run_command("FIXTURE SWAP 1 2")
+            _sw_r1 = prog.data.get(_fs_f1s, {}).get('red')
+            _sw_r2 = prog.data.get(_fs_f2s, {}).get('red')
+            _check("FIXTURE SWAP moves fixture 2 value to fixture 1", _sw_r1 == 200)
+            _check("FIXTURE SWAP moves fixture 1 value to fixture 2", _sw_r2 == 80)
+            _check("FIXTURE SWAP returns confirmation", "swapped" in r_swap.lower())
+        prog.clear_programmer()
 
         # FIXTURE INFO
         _fi = patch.get(1)
