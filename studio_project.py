@@ -7890,6 +7890,7 @@ class GUIEngine:
                 ("CUESTACK MERGE 2 INTO 1", "Append all cues from CS 2 into CS 1 (renumbered after CS 1's last cue)"),
                 ("CS 1 REVERSE",           "Reverse cue playback order in cuestack 1 (renumbers 1-N from last to first)"),
                 ("CS 1 COMPRESS",          "Renumber cues to sequential integers 1, 2, 3… — collapses gaps left by deletions"),
+                ("CS 1 RENUMBER STEP 10",  "Renumber cues at multiples of 10 (→10,20,30…) to leave room for future inserts"),
                 ("CS 1 EXTRACT 3",         "Copy cue 3 from CS 1 into a new standalone single-cue cuestack (auto-picks slot)"),
                 ("CS 1 EXTRACT 3 INTO 10", "As above but place the extracted cuestack in slot 10"),
                 ("CS 1 DUPLICATE",         "Deep-copy all cues from CS 1 to a new auto-picked slot (preserves timing/notes)"),
@@ -13336,6 +13337,35 @@ def run_command(cmd_str):
             return (f"Extracted: CS {n} cue {cue_num:.0f} '{cue.name}' "
                     f"→ new cuestack {into_slot} on fader {into_slot}")
 
+        # CS n RENUMBER STEP <s> — renumber cues at multiples of s (10→10,20,30…)
+        if len(tokens) >= 4 and tokens[2].upper() == 'RENUMBER' and tokens[3].upper() == 'STEP':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            sorted_nums = cs._sorted_cue_numbers()
+            if not sorted_nums:
+                return f"Cuestack {n} is empty"
+            try:
+                step = int(tokens[4])
+            except (IndexError, ValueError):
+                return "CS RENUMBER STEP: provide a step value (e.g. CS 1 RENUMBER STEP 10)"
+            if step < 1:
+                return "CS RENUMBER STEP: step must be at least 1"
+            ordered = [cs.cues[num] for num in sorted_nums]
+            old_current = cs.current
+            cs.cues.clear()
+            new_current = None
+            for idx, cue in enumerate(ordered, start=1):
+                new_num = float(idx * step)
+                if old_current is not None and cue.cue_number == old_current:
+                    new_current = new_num
+                cue.cue_number = new_num
+                cs.cues[new_num] = cue
+            cs.current = new_current
+            save_show()
+            return (f"CS {n} '{cs.name}': renumbered {len(ordered)} cues "
+                    f"at step {step} ({step:.0f}–{len(ordered)*step:.0f})")
+
         # CS n DUPLICATE [INTO <slot>] — deep-copy entire cuestack to a new slot
         if len(tokens) >= 3 and tokens[2].upper() in ('DUPLICATE', 'DUP', 'CLONE'):
             cs = cuestack_pool.get(n)
@@ -18148,6 +18178,19 @@ if STUDIO_HEADLESS:
                _cs100 is not None and _cs100.cues is not _cs99dup.cues)
         _check("CS DUPLICATE returns 'Duplicated' confirmation", "Duplicated" in r_dup)
         _check("CS DUPLICATE source is unchanged", len(_cs99dup.cues) == 2)
+
+        # CS RENUMBER STEP
+        run_command("RECORD CUESTACK 101 StepTest")
+        run_command("CUESTACK 101")
+        run_command("1 FULL"); run_command("RECORD CUE 1 SA")
+        run_command("1 OUT");  run_command("RECORD CUE 2 SB")
+        run_command("1 AT R 200"); run_command("RECORD CUE 3 SC")
+        _cs101 = cuestack_pool.get(101)
+        r_ren = run_command("CS 101 RENUMBER STEP 10")
+        _ren_nums = _cs101._sorted_cue_numbers()
+        _check("CS RENUMBER STEP 10 gives multiples of 10",
+               _ren_nums == [10.0, 20.0, 30.0])
+        _check("CS RENUMBER STEP returns confirmation", "renumbered" in r_ren.lower())
 
         # CUE SHIFT
         run_command("RECORD CUESTACK 96 ShiftTest")
