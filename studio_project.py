@@ -7841,6 +7841,7 @@ class GUIEngine:
             ]),
             ("PATCH COMMANDS", [
                 ("LIST PATCH",             "List all patched fixtures with address and profile"),
+                ("FIXTURE INFO 3",         "Show detailed info: profile, channels, addresses, programmer values, park status"),
                 ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350", "Add fixture 7 as Generic_Moving at U1 addr 350"),
                 ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350 NAME MovHead7", "Add with a custom name"),
                 ("PATCH REMOVE 7",         "Remove fixture 7 from patch (saves show)"),
@@ -15583,6 +15584,46 @@ def run_command(cmd_str):
                 "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
                 "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS")
 
+    # ── FIXTURE INFO <n> — detailed per-fixture status ──────────────────────────
+    if t0 == 'FIXTURE' and len(tokens) >= 3 and tokens[1] in ('INFO', 'STATUS', 'SHOW'):
+        try:
+            fid = int(tokens[2])
+        except ValueError:
+            return "Usage: FIXTURE INFO <id>"
+        master = patch.get(fid)
+        if not master:
+            return f"Fixture {fid} not patched"
+        prof = master.profile
+        lines = [f"Fixture {fid}: {master.name}",
+                 f"  Profile  : {prof.name}",
+                 f"  Channels : {', '.join(prof.channels)}",
+                 f"  Pixels   : {master.pixel_count}"]
+        # Address table
+        for i, sub in enumerate(master.all_subs(), 1):
+            if sub.outputs:
+                o = sub.outputs[0]
+                end = o['address'] + len(prof.channels) - 1
+                lines.append(f"  Pixel {i:3d}: U{o['universe']}@{o['address']}-{end}")
+        # Park status
+        if fid in output_state.parked_fids:
+            lines.append("  Status   : PARKED")
+        # Programmer values
+        prog_vals = []
+        m_dim = prog.data.get(str(fid), {}).get('dim')
+        if m_dim is not None:
+            prog_vals.append(f"dim={m_dim:.0%}")
+        for sub in master.all_subs():
+            sfid = str(sub.fixture_id)
+            sd = prog.data.get(sfid, {})
+            if sd:
+                pairs = "  ".join(f"{k}={v}" for k, v in sd.items())
+                prog_vals.append(f"[sub {sub.sub_index}] {pairs}")
+        if prog_vals:
+            lines.append("  Programmer:")
+            for v in prog_vals:
+                lines.append(f"    {v}")
+        return "\n".join(lines)
+
     # ── Clear — programmer only, never touches cuestacks ────────
     # ── RELEASE — stop executor(s) ───────────────────────────
     # ── PRIORITY — set executor merge priority ────────────────
@@ -16494,6 +16535,16 @@ if STUDIO_HEADLESS:
             _check("COPY FIXTURE returns confirmation message", "Copied fixture" in r_cf)
         r_cf_bad = run_command("COPY FIXTURE 999 TO 2")
         _check("COPY FIXTURE rejects unknown source", "not patched" in r_cf_bad or "999" in r_cf_bad)
+
+        # FIXTURE INFO
+        _fi = patch.get(1)
+        if _fi:
+            r_fi = run_command("FIXTURE INFO 1")
+            _check("FIXTURE INFO shows fixture name", _fi.name in r_fi)
+            _check("FIXTURE INFO shows profile name", _fi.profile.name in r_fi)
+            _check("FIXTURE INFO shows channel list", any(ch in r_fi for ch in _fi.profile.channels))
+        r_fi_bad = run_command("FIXTURE INFO 999")
+        _check("FIXTURE INFO rejects unknown fixture", "not patched" in r_fi_bad or "999" in r_fi_bad)
 
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
