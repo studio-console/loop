@@ -2275,6 +2275,8 @@ class Executor:
         self.btn_c = 'STOP'
         # Playback rate multiplier: 1.0 = normal, 2.0 = twice as fast (divides fade times)
         self.rate_factor = 1.0
+        # FX amplitude multiplier: 1.0 = normal, 2.0 = double, 0.5 = half (applied to all owned layers)
+        self.size_factor = 1.0
         # Optional human-readable label for this fader slot (independent of the cuestack name)
         self.label = ""
 
@@ -2359,12 +2361,26 @@ class Executor:
                 direction    = ld.get('direction','forward'),
             )
             self._fx_ids.append(fxid)
+            # Apply executor size_factor to the newly-created layer
+            if self.size_factor != 1.0:
+                layer = self.fx_engine._layers.get(fxid)
+                if layer is not None:
+                    layer.size_scale = self.size_factor
 
         # _bucket_fx_defs (module-level, defined near FXEngine) merges
         # identical defs across fixtures into one layer so spread/chase can
         # cross fixture boundaries — see target_scope in FX command docs.
         for ld, targets in _bucket_fx_defs(expanded, patch):
             _add(ld, ld['channel'], targets)
+
+    def _apply_size_factor(self):
+        """Push current size_factor to all owned FX layers immediately."""
+        if not self.fx_engine:
+            return
+        for fxid in self._fx_ids:
+            layer = self.fx_engine._layers.get(fxid)
+            if layer is not None:
+                layer.size_scale = self.size_factor
 
     # ── Playback ─────────────────────────────────────────────
 
@@ -3468,6 +3484,9 @@ class FXLayer:
         self._size_inline   = float(size)
         self._spread_inline = float(spread)
 
+        # Per-executor amplitude multiplier — set by FADER n SIZE; 1.0 = normal
+        self.size_scale = 1.0
+
     def begin_outfade(self, now=None):
         """Trigger amplitude ramp-out. Engine auto-removes when amplitude hits 0."""
         if self._out_start is None:
@@ -3602,7 +3621,7 @@ class FXLayer:
         base_phase = cycle_phase + self.phase_offset
 
         # size  0-100 → 0-255 DMX;  spread 0-100 → 0.0-1.0 phase fraction
-        sz     = (self.size / 100.0) * 255.0 * env
+        sz     = (self.size / 100.0) * 255.0 * env * max(0.0, self.size_scale)
         sp     = self.spread / 100.0
         result = {}
         for i, sub in enumerate(self.targets):
@@ -8184,6 +8203,9 @@ class GUIEngine:
                 ("FADER 1 RATE+ / RATE-",   "Nudge playback speed ×1.25 / ÷1.25 (divides fade times)"),
                 ("FADER 1 RATE RESET",      "Restore normal playback speed"),
                 ("FADER 1 RATE 2.0",        "Set fader 1 playback speed to ×2.0 (0.1–8.0 range)"),
+                ("FADER 1 SIZE+ / SIZE-",   "Nudge fader 1 FX amplitude ×1.25 / ÷1.25 (0–4× range)"),
+                ("FADER 1 SIZE RESET",      "Restore normal FX amplitude (×1.0) for fader 1"),
+                ("FADER 1 SIZE 2.0",        "Double FX amplitude on fader 1 (all owned FX layers)"),
                 ("PAGE 1 NAME Verses",    "Name page 1"),
                 ("PAGE 1 ADD CS 3",       "Add cuestack 3 to page 1"),
                 ("PAGE 1 REMOVE CS 3",    "Remove cuestack 3 from page 1"),
@@ -11599,6 +11621,7 @@ class ShowFile:
                 "btn_b":        ex.btn_b,
                 "btn_c":        ex.btn_c,
                 "rate_factor":  ex.rate_factor,
+                "size_factor":  ex.size_factor,
                 "label":        ex.label,
             }
         _write_file(ShowFile.EXECUTORS, doc)
@@ -11623,12 +11646,14 @@ class ShowFile:
             ex.level        = float(edata.get("level",  1.0))
             ex.priority     = int(edata.get("priority", 0))
             ex.trigger_mode = edata.get("trigger_mode", "toggle")
-            _valid_fns      = {'GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-'}
+            _valid_fns      = {'GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-', 'SIZE+', 'SIZE-'}
             ex.btn_a        = edata.get("btn_a", "GO")  if edata.get("btn_a", "GO")   in _valid_fns else "GO"
             ex.btn_b        = edata.get("btn_b", "BACK") if edata.get("btn_b", "BACK") in _valid_fns else "BACK"
             ex.btn_c        = edata.get("btn_c", "STOP") if edata.get("btn_c", "STOP") in _valid_fns else "STOP"
             _rf             = float(edata.get("rate_factor", 1.0))
             ex.rate_factor  = max(0.1, min(8.0, _rf))
+            _sf             = float(edata.get("size_factor", 1.0))
+            ex.size_factor  = max(0.0, min(4.0, _sf))
             ex.label        = edata.get("label", "")
         print(f"  Loaded executors — {count} assignment(s)")
         return True
@@ -13943,8 +13968,8 @@ def run_command(cmd_str):
             if slot not in ('A', 'B', 'C'):
                 return "BTN: slot must be A, B, or C"
             fn = tokens[4].upper() if len(tokens) > 4 else ''
-            if fn not in ('GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-'):
-                return "BTN: function must be GO, BACK, STOP, FLASH, RATE+ or RATE-"
+            if fn not in ('GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-', 'SIZE+', 'SIZE-'):
+                return "BTN: function must be GO, BACK, STOP, FLASH, RATE+, RATE-, SIZE+ or SIZE-"
             setattr(ex, f'btn_{slot.lower()}', fn)
             save_show()
             return f"Fader {ex_n} button {slot} → {fn}"
@@ -13977,6 +14002,26 @@ def run_command(cmd_str):
             ex.rate_factor = max(0.1, min(8.0, rv))
             save_show()
             return f"Fader {ex_n} rate → ×{ex.rate_factor:.2f}"
+        elif verb in ('SIZE+', 'SIZE-'):
+            step = 1.25 if verb == 'SIZE+' else (1.0 / 1.25)
+            ex.size_factor = max(0.0, min(4.0, ex.size_factor * step))
+            ex._apply_size_factor()
+            save_show()
+            return f"Fader {ex_n} fx size → ×{ex.size_factor:.2f}"
+        elif verb == 'SIZE' and len(tokens) >= 4 and tokens[3].upper() == 'RESET':
+            ex.size_factor = 1.0
+            ex._apply_size_factor()
+            save_show()
+            return f"Fader {ex_n} fx size reset → ×1.00"
+        elif verb == 'SIZE' and len(tokens) >= 4:
+            try:
+                sv = float(tokens[3])
+            except ValueError:
+                return f"FADER SIZE: bad value '{tokens[3]}' — use a number (e.g. 2.0) or RESET"
+            ex.size_factor = max(0.0, min(4.0, sv))
+            ex._apply_size_factor()
+            save_show()
+            return f"Fader {ex_n} fx size → ×{ex.size_factor:.2f}"
         elif verb == 'LABEL':
             # FADER <n> LABEL <text>  |  FADER <n> LABEL  (clear)
             raw_parts = raw.split(None, 3)
@@ -14044,6 +14089,7 @@ def run_command(cmd_str):
             lines.append(f"  Priority  : {Executor.PRIORITY_LABELS[ex.priority]}")
             lines.append(f"  Trigger   : {ex.trigger_mode}")
             lines.append(f"  Rate      : ×{ex.rate_factor:.2f}")
+            lines.append(f"  FX Size   : ×{ex.size_factor:.2f}")
             lines.append(f"  Buttons   : A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}")
             if cs:
                 lines.append(f"  CueStack  : [{cs.stack_id}] {cs.name}")
@@ -19681,6 +19727,40 @@ if STUDIO_HEADLESS:
             for _m in patch.all_fixtures():
                 _m.set_dimmer(1.0)
             prog.clear_programmer()
+
+        # ── FADER SIZE — per-executor FX amplitude multiplier ────────────
+        _sz_ex = executor_pool.get(3)
+        _sz_ex.size_factor = 1.0
+        r_sz_plus = run_command("FADER 3 SIZE+")
+        _check("FADER SIZE+ nudges size_factor up to ~1.25",
+               abs(_sz_ex.size_factor - 1.25) < 0.01)
+        _check("FADER SIZE+ returns confirmation", "size" in r_sz_plus.lower())
+        run_command("FADER 3 SIZE-")
+        _check("FADER SIZE- returns size_factor to ~1.00",
+               abs(_sz_ex.size_factor - 1.0) < 0.01)
+        run_command("FADER 3 SIZE+")
+        r_sz_reset = run_command("FADER 3 SIZE RESET")
+        _check("FADER SIZE RESET returns size_factor to 1.0", _sz_ex.size_factor == 1.0)
+        _check("FADER SIZE RESET returns confirmation", "reset" in r_sz_reset.lower())
+        r_sz_set = run_command("FADER 3 SIZE 2.0")
+        _check("FADER SIZE 2.0 sets size_factor to 2.0",
+               abs(_sz_ex.size_factor - 2.0) < 0.01)
+        _check("FADER SIZE 2.0 returns confirmation", "2.0" in r_sz_set or "2.00" in r_sz_set)
+        # SIZE propagates to owned FX layers (if any are active)
+        run_command("FX CLEAR")
+        run_command("1 THRU 3")
+        run_command("FX SINE RED BPM 60 SIZE 100")
+        _sz_layer_id = _sz_ex._fx_ids[0] if _sz_ex._fx_ids else None
+        if _sz_layer_id is not None:
+            _sz_layer = fx_engine._layers.get(_sz_layer_id)
+            _sz_ex.size_factor = 0.5
+            _sz_ex._apply_size_factor()
+            _check("FADER SIZE: _apply_size_factor sets size_scale on owned layer",
+                   _sz_layer is None or abs(_sz_layer.size_scale - 0.5) < 0.01)
+        _sz_ex.size_factor = 1.0
+        _sz_ex._apply_size_factor()
+        run_command("FX CLEAR")
+        prog.clear_programmer()
 
         # ── AT … IN <seconds> LIVE PROGRAMMER FADE ────────────────────────
         prog.clear_programmer()
