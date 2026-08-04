@@ -1172,6 +1172,26 @@ class Programmer:
             self.set_channel('blue', b)
             return
 
+        # RANDOM <channel> — assign an independent random value (0-255) to each
+        # sub-fixture in the selection. Per-master variant: RANDOM <ch> MASTER
+        # applies the same random value to all subs of each master fixture.
+        if tokens[0] == 'RANDOM' and len(tokens) >= 2:
+            ch = _CH.get(tokens[1])
+            if ch:
+                import random as _rnd
+                per_master = len(tokens) >= 3 and tokens[2] == 'MASTER'
+                self._push_undo()
+                if per_master:
+                    masters = [f for f in self.selection if isinstance(f, MasterFixture)]
+                    for master in masters:
+                        val = _rnd.randint(0, 255)
+                        for sub in master.all_subs():
+                            self.data.setdefault(str(sub.fixture_id), {})[ch] = val
+                else:
+                    for sub in self._get_sub_selection():
+                        self.data.setdefault(str(sub.fixture_id), {})[ch] = _rnd.randint(0, 255)
+            return
+
         # FLIP <channel> — invert channel value: new = 255 - current (0 if unset)
         # Useful for mirroring pan/tilt on symmetric rigs, or inverting colour.
         if tokens[0] == 'FLIP':
@@ -7594,6 +7614,8 @@ class GUIEngine:
                 ("1 AT CT 5600",          "Daylight-balanced white (5600K)"),
                 ("1 AT FLIP PAN",         "Invert pan: new = 255 − current (mirror for symmetric rigs)"),
                 ("1 AT FLIP R",           "Invert red channel value"),
+                ("1 THRU 6 AT RANDOM R",  "Set each sub-fixture's red to an independent random value (scatter/sparkle)"),
+                ("1 THRU 6 AT RANDOM PAN MASTER", "One random value per fixture, applied to all its subs"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -17390,6 +17412,24 @@ if STUDIO_HEADLESS:
         run_command("AT FLIP R")         # 255 - 0 = 255
         _check("AT FLIP R on 0 gives 255",
                prog.data.get('1.1', {}).get('red') == 255)
+        prog.clear_programmer()
+
+        # ── AT RANDOM CHANNEL TESTS ───────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 THRU 6")
+        run_command("AT RANDOM R")    # each sub gets independent random red
+        _rnd_reds = [prog.data.get(f"{i}.1", {}).get('red') for i in range(1, 7)]
+        _check("AT RANDOM R sets red on all selected fixtures",
+               all(v is not None for v in _rnd_reds))
+        _check("AT RANDOM R values are in valid range",
+               all(0 <= v <= 255 for v in _rnd_reds if v is not None))
+        # RANDOM MASTER: all subs of each master get same value
+        prog.clear_programmer()
+        run_command("1")   # 54 pixels
+        run_command("AT RANDOM G MASTER")
+        _grn_subs = [prog.data.get(f"1.{i}", {}).get('green') for i in range(1, 4)]
+        _check("AT RANDOM G MASTER applies same value to all subs of a master",
+               len(set(v for v in _grn_subs if v is not None)) == 1)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
