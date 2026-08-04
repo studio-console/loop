@@ -7833,6 +7833,8 @@ class GUIEngine:
                 ("CUESTACK MERGE 2 INTO 1", "Append all cues from CS 2 into CS 1 (renumbered after CS 1's last cue)"),
                 ("CS 1 REVERSE",           "Reverse cue playback order in cuestack 1 (renumbers 1-N from last to first)"),
                 ("CS 1 COMPRESS",          "Renumber cues to sequential integers 1, 2, 3… — collapses gaps left by deletions"),
+                ("CS 1 EXTRACT 3",         "Copy cue 3 from CS 1 into a new standalone single-cue cuestack (auto-picks slot)"),
+                ("CS 1 EXTRACT 3 INTO 10", "As above but place the extracted cuestack in slot 10"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 3 SHIFT 5",         "Move cue 3 to cue 8 in the active cuestack (offset by +5)"),
@@ -13223,6 +13225,46 @@ def run_command(cmd_str):
                 cs.cues[float(new_num)] = cue
             save_show()
             return f"CS {n} '{cs.name}': reversed — {len(rev_cues)} cues renumbered 1–{len(rev_cues)}"
+        # CS <n> EXTRACT <cue_num> [INTO <slot>] — copy one cue into a fresh cuestack
+        if len(tokens) >= 4 and tokens[2].upper() == 'EXTRACT':
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            try:
+                cue_num = float(tokens[3])
+            except ValueError:
+                return f"CS EXTRACT: bad cue number '{tokens[3]}'"
+            cue = cs.cues.get(cue_num)
+            if not cue:
+                return f"CS EXTRACT: cue {cue_num:.0f} not found in cuestack {n}"
+            # Determine destination slot
+            into_slot = None
+            if 'INTO' in tokens:
+                into_idx = tokens.index('INTO')
+                try:
+                    into_slot = int(tokens[into_idx + 1])
+                except (IndexError, ValueError):
+                    return "CS EXTRACT: bad slot after INTO"
+            if into_slot is None:
+                # Auto-pick lowest unused slot
+                used = set(cuestack_pool.stacks.keys())
+                into_slot = next(s for s in range(1, 9999) if s not in used)
+            if cuestack_pool.get(into_slot):
+                return (f"CS EXTRACT: slot {into_slot} already occupied — "
+                        f"use  CS {n} EXTRACT {cue_num:.0f} INTO <slot>")
+            new_cs = cuestack_pool.create(into_slot, f"{cs.name} — Cue {cue_num:.0f}")
+            nc = Cue(cue_number=1.0, name=cue.name, fade_time=cue.fade_time,
+                     delay_time=cue.delay_time, fade_times=copy.deepcopy(cue.fade_times),
+                     delay_times=copy.deepcopy(cue.delay_times), follow_time=cue.follow_time)
+            nc.note = getattr(cue, 'note', '')
+            nc.fx_outfade = getattr(cue, 'fx_outfade', 0.0)
+            nc.data = copy.deepcopy(cue.data)
+            new_cs.cues[1.0] = nc
+            executor_pool.assign(into_slot, new_cs)
+            save_show()
+            return (f"Extracted: CS {n} cue {cue_num:.0f} '{cue.name}' "
+                    f"→ new cuestack {into_slot} on fader {into_slot}")
+
         # CS n COMPRESS — renumber cues to 1, 2, 3, … (collapse gaps)
         if len(tokens) >= 3 and tokens[2].upper() == 'COMPRESS':
             cs = cuestack_pool.get(n)
@@ -17809,6 +17851,22 @@ if STUDIO_HEADLESS:
         _check("CS COMPRESS preserves cue names in order",
                [_cs95.cues[n].name for n in _cmp_nums] == ["Cue1", "Cue5", "Cue10"])
         _check("CS COMPRESS returns 'compressed' confirmation", "compressed" in r_cmp)
+
+        # CS EXTRACT
+        run_command("RECORD CUESTACK 97 ExtractSrc")
+        run_command("CUESTACK 97")
+        run_command("1 FULL"); run_command("RECORD CUE 1 ExtCue1")
+        run_command("1 OUT");  run_command("RECORD CUE 2 ExtCue2")
+        _cs97 = cuestack_pool.get(97)
+        r_ext = run_command("CS 97 EXTRACT 2 INTO 98")
+        _cs98 = cuestack_pool.get(98)
+        _check("CS EXTRACT creates new cuestack in target slot", _cs98 is not None)
+        _check("CS EXTRACT new cuestack has exactly one cue",
+               _cs98 is not None and len(_cs98.cues) == 1)
+        _check("CS EXTRACT preserves cue name",
+               _cs98 is not None and list(_cs98.cues.values())[0].name.lower() == "extcue2")
+        _check("CS EXTRACT returns 'Extracted' confirmation", "Extracted" in r_ext)
+        _check("CS EXTRACT source cuestack unchanged (still 2 cues)", len(_cs97.cues) == 2)
 
         # CUE SHIFT
         run_command("RECORD CUESTACK 96 ShiftTest")
