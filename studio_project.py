@@ -7820,6 +7820,7 @@ class GUIEngine:
                 ("ASSIGN CS 2 TO FADER 1",  "Wire cuestack 2 to fader 1"),
                 ("FADER SWAP 1 2",          "Swap the cuestacks on faders 1 and 2"),
                 ("FADER 1 INFO",            "Detailed status of fader 1: level, priority, rate, buttons, cuestack, current cue"),
+                ("FADER 1 CLEAR",           "Stop fader 1 and reset its cuestack to 'not started' (position resets to top)"),
                 ("FADER 1 LABEL Main Show", "Set a human-readable label on fader 1 (shown in LIST FADER)"),
                 ("FADER 1 LABEL",           "Clear the label on fader 1"),
                 ("RELEASE 2",               "Stop fader 2"),
@@ -13219,6 +13220,14 @@ def run_command(cmd_str):
         elif verb == 'STOP':
             ex.stop()
             return f"Fader {ex_n} stopped"
+        elif verb == 'CLEAR':
+            # FADER <n> CLEAR  — stop fader and reset cuestack position to "not started"
+            ex.stop()
+            if ex.cuestack:
+                ex.cuestack.current = None
+                cs_name = ex.cuestack.name
+                return f"Fader {ex_n} cleared — '{cs_name}' reset to start"
+            return f"Fader {ex_n} stopped (no cuestack)"
         elif verb == 'GOTO' and len(tokens) > 3:
             try:
                 num = float(tokens[3])
@@ -17595,6 +17604,15 @@ if STUDIO_HEADLESS:
             _check("FADER INFO shows cuestack name", _fi1_ex.cuestack.name in r_fi1)
         r_fi1_stat = run_command("FADER 1 STATUS")
         _check("FADER STATUS alias works", "Level" in r_fi1_stat)
+
+        # FADER CLEAR
+        _clr_ex = executor_pool.get(1)
+        _clr_cs = _clr_ex.cuestack
+        if _clr_cs:
+            _clr_cs.current = 1  # pretend we're at cue 1
+            r_fc = run_command("FADER 1 CLEAR")
+            _check("FADER CLEAR resets cuestack position to None", _clr_cs.current is None)
+            _check("FADER CLEAR returns confirmation", "cleared" in r_fc or "reset" in r_fc)
 
         # LOAD SHOW must reload OSC targets and FX defaults, not just leave
         # the previous show's live values in place — same primitives
