@@ -7798,6 +7798,7 @@ class GUIEngine:
                 ("CLEAR POSITION 1",      "Delete position preset 1 (works for all 6 attr types)"),
                 ("RATE 3 / SIZEP 2 / SPREADP 1", "Recall a rate/size/spread preset onto the live BPM/size/spread"),
                 ("CS 2 INFO",             "Detailed status of cuestack 2: cue list, current cue, loop/wrap, assigned faders"),
+                ("CUESTACK MERGE 2 INTO 1", "Append all cues from CS 2 into CS 1 (renumbered after CS 1's last cue)"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
@@ -13092,6 +13093,50 @@ def run_command(cmd_str):
     # ── Executor selection ────────────────────────────────────
     # CUESTACK N  — make executor N the active one
     if t0 in ('CUESTACK', 'CS') and len(tokens) > 1:
+        if tokens[1] == 'MERGE':
+            if 'INTO' not in tokens:
+                return "Usage: CUESTACK MERGE <src> INTO <dst>"
+            into_idx = tokens.index('INTO')
+            try:
+                src_n = int(tokens[2])
+                dst_n = int(tokens[into_idx + 1])
+            except (IndexError, ValueError):
+                return "Usage: CUESTACK MERGE <src> INTO <dst>"
+            src_cs = cuestack_pool.get(src_n)
+            dst_cs = cuestack_pool.get(dst_n)
+            if not src_cs:
+                return f"CUESTACK MERGE: source CS {src_n} not found"
+            if not dst_cs:
+                return f"CUESTACK MERGE: destination CS {dst_n} not found"
+            if src_n == dst_n:
+                return "CUESTACK MERGE: source and destination must be different"
+            src_sorted = src_cs._sorted_cue_numbers()
+            if not src_sorted:
+                return f"CUESTACK MERGE: source CS {src_n} is empty"
+            dst_sorted = dst_cs._sorted_cue_numbers()
+            base = (max(dst_sorted) + 1) if dst_sorted else 0.0
+            merged = 0
+            for src_num in src_sorted:
+                src_cue = src_cs.cues[src_num]
+                new_num = base + src_num
+                nc = Cue(
+                    cue_number  = new_num,
+                    name        = src_cue.name,
+                    fade_time   = src_cue.fade_time,
+                    delay_time  = src_cue.delay_time,
+                    fade_times  = copy.deepcopy(src_cue.fade_times),
+                    delay_times = copy.deepcopy(src_cue.delay_times),
+                    follow_time = src_cue.follow_time,
+                )
+                nc.note       = src_cue.note
+                nc.fx_outfade = src_cue.fx_outfade
+                nc.data       = copy.deepcopy(src_cue.data)
+                dst_cs.cues[new_num] = nc
+                merged += 1
+            save_show()
+            return (f"Merged CS {src_n} '{src_cs.name}' into CS {dst_n} '{dst_cs.name}' "
+                    f"— {merged} cue(s) appended (renumbered from {base:.0f})")
+        # All remaining subcommands require tokens[1] to be a cuestack number
         try:
             n = int(tokens[1])
         except ValueError:
@@ -17526,6 +17571,30 @@ if STUDIO_HEADLESS:
         _check("CS INFO shows wrap/loop state", "Wrap" in r_csi or "Loop" in r_csi)
         r_csi_bad = run_command("CS 9999 INFO")
         _check("CS INFO rejects unknown cuestack", "not found" in r_csi_bad)
+
+        # CUESTACK MERGE
+        run_command("RECORD CUESTACK 91 MergeSrc")
+        run_command("CUESTACK 91")          # make active
+        run_command("1 FULL")
+        run_command("RECORD CUE 1 SrcCue1")
+        run_command("RECORD CUESTACK 92 MergeDst")
+        run_command("CUESTACK 92")
+        run_command("1 OUT")
+        run_command("RECORD CUE 1 DstCue1")
+        _cs91 = cuestack_pool.get(91)
+        _cs92 = cuestack_pool.get(92)
+        _n_before = len(_cs92.cues)
+        r_merge = run_command("CUESTACK MERGE 91 INTO 92")
+        _n_after = len(_cs92.cues)
+        _check("CUESTACK MERGE adds src cues to dst",
+               _n_after == _n_before + len(_cs91.cues))
+        _check("CUESTACK MERGE returns confirmation", "Merged" in r_merge)
+        # Src cue numbers in dst should be offset past dst's original last cue
+        _merged_num = max(_cs92._sorted_cue_numbers())
+        _check("CUESTACK MERGE renumbers merged cues after dst's last cue",
+               _merged_num > 1.0)
+        r_merge_bad = run_command("CUESTACK MERGE 9999 INTO 92")
+        _check("CUESTACK MERGE rejects unknown source", "not found" in r_merge_bad)
 
         # CS BACK on wrap-around (first cue -> last cue) must also clear the
         # LTP-bleed layer when WRAP is ON -- CS GO already did this on forward
