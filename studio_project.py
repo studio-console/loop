@@ -2694,14 +2694,19 @@ def _cuestack_back(self, patch, fade_engine, executor):
     numbers = self._sorted_cue_numbers()
     if not numbers:
         return "CueStack is empty"
+    wrap_occurred = False
     if self.current is None:
         prev_num = numbers[-1]
     else:
         try:
             idx      = numbers.index(self.current)
-            prev_num = numbers[(idx - 1) % len(numbers)]
+            prev_idx = (idx - 1) % len(numbers)
+            prev_num = numbers[prev_idx]
+            wrap_occurred = (idx == 0 and prev_idx == len(numbers) - 1)
         except ValueError:
             prev_num = numbers[-1]
+    if wrap_occurred and getattr(self, 'wrap', False):
+        executor.layer.clear()  # no LTP bleed from first cue back to last
     return _cuestack_fire_cue(self, prev_num, patch, fade_engine, executor)
 
 def _cuestack_goto(self, cue_number, patch, fade_engine, executor):
@@ -17035,6 +17040,43 @@ if STUDIO_HEADLESS:
         _check("CS 99 WRAP ON sets .wrap = True", _cs99.wrap is True)
         run_command("CS 99 WRAP OFF")
         _check("CS 99 WRAP OFF sets .wrap = False", _cs99.wrap is False)
+
+        # CS BACK on wrap-around (first cue -> last cue) must also clear the
+        # LTP-bleed layer when WRAP is ON -- CS GO already did this on forward
+        # wrap (last -> first); BACK had no equivalent, flagged by a prior
+        # session and left unfixed pending confirmation it wasn't intentional.
+        run_command("RECORD CUESTACK 98 BackWrapTest")
+        _cs98 = cuestack_pool.get(98)
+        run_command("1")
+        run_command("AT R 10")
+        run_command("RECORD CS 98 CUE 1")
+        run_command("AT R 20")
+        run_command("RECORD CS 98 CUE 2")
+        prog.clear_programmer()
+        run_command("ASSIGN CS 98 TO FADER 9")
+        _ex98 = executor_pool.get(9)
+        _cs98.wrap    = True
+        _cs98.current = _cs98._sorted_cue_numbers()[0]   # sitting at first cue
+        _ex98.layer['__bleed_sentinel__'] = {'red': 99}
+        _cs98.back(patch, fade_engine, _ex98)
+        _check("CS BACK wrap-around (first->last) clears LTP-bleed layer when WRAP ON",
+               '__bleed_sentinel__' not in _ex98.layer)
+
+        _cs98.wrap    = False
+        _cs98.current = _cs98._sorted_cue_numbers()[0]
+        _ex98.layer['__bleed_sentinel2__'] = {'red': 99}
+        _cs98.back(patch, fade_engine, _ex98)
+        _check("CS BACK wrap-around leaves layer intact when WRAP OFF",
+               '__bleed_sentinel2__' in _ex98.layer)
+
+        # Non-wrap BACK (middle of stack, no wraparound) must never clear the
+        # layer even with WRAP ON -- only the actual last->first transition should.
+        _cs98.wrap    = True
+        _cs98.current = _cs98._sorted_cue_numbers()[-1]  # sitting at last cue, BACK is not a wrap
+        _ex98.layer['__bleed_sentinel3__'] = {'red': 99}
+        _cs98.back(patch, fade_engine, _ex98)
+        _check("CS BACK non-wrap step leaves layer intact even with WRAP ON",
+               '__bleed_sentinel3__' in _ex98.layer)
 
         # UNDO must not desync output_state.programmer_layer from prog.data --
         # link_programmer() aliases them to the *same* dict object, so undo()
