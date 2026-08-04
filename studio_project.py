@@ -13414,6 +13414,8 @@ def run_command(cmd_str):
             nc.fx_outfade = getattr(cue, 'fx_outfade', 0.0)
             nc.data = copy.deepcopy(cue.data)
             new_cs.cues[1.0] = nc
+            new_cs.wrap = getattr(cs, 'wrap', False)
+            new_cs.note = getattr(cs, 'note', '')
             executor_pool.assign(into_slot, new_cs)
             save_show()
             return (f"Extracted: CS {n} cue {cue_num:.0f} '{cue.name}' "
@@ -13478,6 +13480,7 @@ def run_command(cmd_str):
                 nc.data = copy.deepcopy(cue.data)
                 new_cs.cues[cue_num] = nc
             new_cs.wrap = getattr(cs, 'wrap', False)
+            new_cs.note = getattr(cs, 'note', '')
             cuestack_pool.store(into_slot, new_cs)
             executor_pool.assign(into_slot, new_cs)
             save_show()
@@ -16403,6 +16406,7 @@ def run_command(cmd_str):
             return f"FIXTURE SWAP: fixture {fid_a} not in patch"
         if not patch.get(fid_b):
             return f"FIXTURE SWAP: fixture {fid_b} not in patch"
+        prog._push_undo()
         # Collect all data keys belonging to each fixture: "N" (master) and "N.x" (subs)
         def _fx_keys(fid):
             return [k for k in prog.data
@@ -17551,6 +17555,11 @@ if STUDIO_HEADLESS:
             _check("FIXTURE SWAP moves fixture 2 value to fixture 1", _sw_r1 == 200)
             _check("FIXTURE SWAP moves fixture 1 value to fixture 2", _sw_r2 == 80)
             _check("FIXTURE SWAP returns confirmation", "swapped" in r_swap.lower())
+            prog.undo()
+            _sw_u1 = prog.data.get(_fs_f1s, {}).get('red')
+            _sw_u2 = prog.data.get(_fs_f2s, {}).get('red')
+            _check("FIXTURE SWAP pushes an undo snapshot (UNDO restores fixture 1)", _sw_u1 == 80)
+            _check("FIXTURE SWAP pushes an undo snapshot (UNDO restores fixture 2)", _sw_u2 == 200)
         prog.clear_programmer()
 
         # FIXTURE INFO
@@ -18410,6 +18419,8 @@ if STUDIO_HEADLESS:
         run_command("1 FULL"); run_command("RECORD CUE 1 ExtCue1")
         run_command("1 OUT");  run_command("RECORD CUE 2 ExtCue2")
         _cs97 = cuestack_pool.get(97)
+        _cs97.note = "Dark Moody Show"
+        _cs97.wrap = True
         r_ext = run_command("CS 97 EXTRACT 2 INTO 98")
         _cs98 = cuestack_pool.get(98)
         _check("CS EXTRACT creates new cuestack in target slot", _cs98 is not None)
@@ -18419,6 +18430,10 @@ if STUDIO_HEADLESS:
                _cs98 is not None and list(_cs98.cues.values())[0].name.lower() == "extcue2")
         _check("CS EXTRACT returns 'Extracted' confirmation", "Extracted" in r_ext)
         _check("CS EXTRACT source cuestack unchanged (still 2 cues)", len(_cs97.cues) == 2)
+        _check("CS EXTRACT carries source note to new cuestack",
+               _cs98 is not None and _cs98.note == "Dark Moody Show")
+        _check("CS EXTRACT carries source wrap flag to new cuestack",
+               _cs98 is not None and _cs98.wrap is True)
 
         # CS DUPLICATE
         run_command("RECORD CUESTACK 99 DupSrc")
@@ -18426,6 +18441,8 @@ if STUDIO_HEADLESS:
         run_command("1 FULL"); run_command("RECORD CUE 1 DupA")
         run_command("1 OUT");  run_command("RECORD CUE 2 DupB")
         _cs99dup = cuestack_pool.get(99)
+        _cs99dup.note = "Act 2 Opener"
+        _cs99dup.wrap = True
         r_dup = run_command("CS 99 DUPLICATE INTO 100")
         _cs100 = cuestack_pool.get(100)
         _check("CS DUPLICATE creates new cuestack in target slot", _cs100 is not None)
@@ -18435,6 +18452,10 @@ if STUDIO_HEADLESS:
                _cs100 is not None and _cs100.cues is not _cs99dup.cues)
         _check("CS DUPLICATE returns 'Duplicated' confirmation", "Duplicated" in r_dup)
         _check("CS DUPLICATE source is unchanged", len(_cs99dup.cues) == 2)
+        _check("CS DUPLICATE carries source note to new cuestack",
+               _cs100 is not None and _cs100.note == "Act 2 Opener")
+        _check("CS DUPLICATE carries source wrap flag to new cuestack (regression check)",
+               _cs100 is not None and _cs100.wrap is True)
 
         # CS RENUMBER STEP
         run_command("RECORD CUESTACK 101 StepTest")
