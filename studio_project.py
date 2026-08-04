@@ -5340,6 +5340,17 @@ def _make_alert_btn_theme():
     return t
 
 
+def _make_transport_go_theme():
+    """Green theme for the transport GO button."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (30,  74,  16, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (74, 138,  32, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (128, 208, 64, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (128, 208, 64, 255))
+    return t
+
+
 def _make_dim_btn_theme():
     """Dimmed/inactive button style for toggleable status indicators."""
     with dpg.theme() as t:
@@ -5347,6 +5358,17 @@ def _make_dim_btn_theme():
             dpg.add_theme_color(dpg.mvThemeCol_Button,        (30, 24, 50, 255))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 40, 80, 255))
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (70, 55, 110, 255))
+    return t
+
+
+def _make_numpad_digit_theme():
+    """Slightly lighter background for digit buttons — distinct from keyword keys."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (24, 15, 64, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (60, 42, 140, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (100, 72, 210, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (232, 226, 255, 255))
     return t
 
 
@@ -5571,7 +5593,9 @@ class GUIEngine:
         self._back_theme     = _make_back_theme()
         self._fade_bar_theme = _make_fade_bar_theme()
         self._alert_btn_theme     = _make_alert_btn_theme()
+        self._transport_go_theme  = _make_transport_go_theme()
         self._dim_btn_theme       = _make_dim_btn_theme()
+        self._numpad_digit_theme  = _make_numpad_digit_theme()
         self._pool_live_theme     = _make_pool_live_theme()
         self._pool_empty_theme    = _make_pool_empty_theme()
 
@@ -5661,8 +5685,9 @@ class GUIEngine:
 
         # Apply per-item themes after widgets are built
         try:
-            dpg.bind_item_theme("go_btn",   self._go_theme)
-            dpg.bind_item_theme("back_btn", self._back_theme)
+            dpg.bind_item_theme("go_btn",           self._transport_go_theme)
+            dpg.bind_item_theme("back_btn",         self._back_theme)
+            dpg.bind_item_theme("numpad_digit_group", self._numpad_digit_theme)
         except Exception:
             pass
 
@@ -5673,90 +5698,118 @@ class GUIEngine:
         dpg.set_primary_window("main", True)
 
     def _build_header(self):
+        # ── Top row: info + 4 grouped button clusters ──────────
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.21", color=_C_ACCENT)
-            dpg.add_text("   |   ", color=_C_DIM)
-            dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
-            dpg.add_text("   |   ", color=_C_DIM)
+            dpg.add_text("studio  v0.21", color=_C_ACCENT)
+            dpg.add_spacer(width=6)
+            dpg.add_text("▶", tag="hdr_cue", color=_C_TEXT)
+            dpg.add_spacer(width=6)
             dpg.add_text("fx: off", tag="hdr_fx", color=_C_DIM)
-            dpg.add_text("   |   ", color=_C_DIM)
+            dpg.add_spacer(width=6)
             dpg.add_text("", tag="hdr_clock", color=_C_DIM)
             dpg.add_text("dim: --", tag="hdr_dim", color=_C_TEXT)
-            dpg.add_text("   ", color=_C_BORDER)
-            dpg.add_button(label="patch", width=60,
+            dpg.add_spacer(width=10)
+            dpg.add_text("│", color=_C_BORDER)
+            dpg.add_spacer(width=6)
+
+            # cluster: hardware — patch / osc / midi
+            dpg.add_text("hw", color=_C_DIM)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="patch", width=60, height=24,
                            callback=self._on_patch_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="osc", width=50,
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="osc", width=50, height=24,
                            callback=self._on_osc_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="midi", width=60,
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="midi", width=60, height=24,
                            callback=self._on_midi_toggle)
+            dpg.add_spacer(width=8)
+            dpg.add_text("│", color=_C_BORDER)
+            dpg.add_spacer(width=6)
+
+            # cluster: views — pages / attr / fdrs / mon
+            dpg.add_text("view", color=_C_DIM)
             dpg.add_spacer(width=4)
-            dpg.add_button(label="fx ed", width=60,
-                           callback=self._on_fx_editor_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="?", width=30,
-                           callback=self._on_keys_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="log", width=50,
-                           callback=self._on_changelog_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="pages", width=55,
+            dpg.add_button(label="pages", width=55, height=24,
                            callback=self._on_pages_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="attr", width=50,
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="attr", width=50, height=24,
                            callback=self._on_attr_popup_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="mon", width=50,
-                           callback=self._on_monitors_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="color", width=52,
-                           callback=self._on_color_picker_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="spd", width=46,
-                           callback=self._on_speed_master_toggle)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="fdrs", width=50,
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="fdrs", width=50, height=24,
                            callback=self._on_fader_page_toggle)
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="mon", width=50, height=24,
+                           callback=self._on_monitors_toggle)
+            dpg.add_spacer(width=8)
+            dpg.add_text("│", color=_C_BORDER)
+            dpg.add_spacer(width=6)
+
+            # cluster: tools — fx ed / color / spd / ai
+            dpg.add_text("tools", color=_C_DIM)
             dpg.add_spacer(width=4)
-            dpg.add_button(label="ai", width=36,
+            dpg.add_button(label="fx ed", width=60, height=24,
+                           callback=self._on_fx_editor_toggle)
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="color", width=52, height=24,
+                           callback=self._on_color_picker_toggle)
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="spd", width=46, height=24,
+                           callback=self._on_speed_master_toggle)
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="ai", width=36, height=24,
                            callback=self._on_ai_bar_toggle)
+            dpg.add_spacer(width=8)
+            dpg.add_text("│", color=_C_BORDER)
+            dpg.add_spacer(width=6)
+
+            # cluster: system — log / ? / audio / save show
+            dpg.add_text("sys", color=_C_DIM)
             dpg.add_spacer(width=4)
-            dpg.add_button(label="audio", width=50,
+            dpg.add_button(label="log", width=50, height=24,
+                           callback=self._on_changelog_toggle)
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="?", width=30, height=24,
+                           callback=self._on_keys_toggle)
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="audio", width=50, height=24,
                            callback=self._on_audio_toggle)
-            dpg.add_button(label="save show", width=90,
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="save show", width=90, height=24,
                            callback=self._on_save)
+            dpg.add_spacer(width=6)
             dpg.add_text("", tag="hdr_save_status", color=_C_DIM)
+
         dpg.add_separator()
-        # ── Programmer + Selection status bar ──────────────────
+        # ── Status bar: programmer state + mode pills + selection ─
         with dpg.group(horizontal=True):
             dpg.add_text("●", tag="sb_prog_dot",   color=_C_DIM)
             dpg.add_text("programmer", tag="sb_prog_lbl", color=_C_DIM)
-            dpg.add_spacer(width=20)
+            dpg.add_spacer(width=16)
             dpg.add_button(label="blind", tag="sb_blind_lbl",
-                           width=54, height=16,
+                           width=58, height=24,
                            callback=self._on_blind_toggle)
-            dpg.add_spacer(width=10)
-            dpg.add_button(label="bbo", tag="sb_bbo_lbl",
-                           width=44, height=16,
+            dpg.add_spacer(width=6)
+            dpg.add_button(label="blackout", tag="sb_bbo_lbl",
+                           width=78, height=24,
                            callback=lambda: self._cmd("BLACKOUT") if self._cmd else None)
-            dpg.add_spacer(width=10)
-            dpg.add_button(label="hl", tag="sb_hl_lbl",
-                           width=36, height=16,
+            dpg.add_spacer(width=6)
+            dpg.add_button(label="highlight", tag="sb_hl_lbl",
+                           width=78, height=24,
                            callback=self._on_highlight_toggle)
-            dpg.add_spacer(width=20)
-            dpg.add_button(label="pt", tag="sb_pt_lbl",
-                           width=36, height=16,
+            dpg.add_spacer(width=6)
+            dpg.add_button(label="pan·tilt", tag="sb_pt_lbl",
+                           width=70, height=24,
                            callback=self._on_pt_toggle)
-            dpg.add_spacer(width=20)
+            dpg.add_spacer(width=16)
             dpg.add_text("sel", color=_C_DIM)
             dpg.add_spacer(width=4)
-            # One clickable chip per patched fixture — click to select, Shift+click to add
+            # one clickable chip per patched fixture
             if self._patch:
                 for master in self._patch.all_fixtures():
                     fid = master.fixture_id
                     dpg.add_button(label=f"[{fid}]", tag=f"sb_sel_{fid}",
-                                   width=34, height=16,
+                                   width=34, height=20,
                                    callback=self._on_fixture_chip_click,
                                    user_data=fid)
                     dpg.add_spacer(width=2)
@@ -5771,32 +5824,32 @@ class GUIEngine:
                               border=True, no_scrollbar=False, no_scroll_with_mouse=False):
             # ── Cue list ─────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("cuestack", color=_C_ACCENT)
+                dpg.add_text("◆ cuestack", color=_C_ACCENT)
                 dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
                               width=-120, height_mode=dpg.mvComboHeight_Small,
                               callback=self._on_cs_combo_select)
                 dpg.add_text("", tag="hdr_wrap", color=_C_ACCENT)
             dpg.add_separator()
             # Fixed-height scroll area for the cue list
-            with dpg.child_window(tag="cue_list_scroll", width=-1, height=78,
+            with dpg.child_window(tag="cue_list_scroll", width=-1, height=150,
                                   border=False, no_scrollbar=True,
                                   no_scroll_with_mouse=False):
                 dpg.add_group(tag="cue_list_group")
             dpg.add_separator()
             with dpg.group(horizontal=True):
-                dpg.add_button(label=" ◀ back ", tag="back_btn", width=106,
+                dpg.add_button(label=" ◀ back ", tag="back_btn", width=106, height=24,
                                callback=lambda: self._back())
-                dpg.add_button(label=" ↺ reload ", width=120,
+                dpg.add_button(label=" ↺ reload ", width=120, height=24,
                                callback=lambda: self._reload() if self._reload else None)
-                dpg.add_button(label="  go ▶  ", tag="go_btn", width=106,
+                dpg.add_button(label="  go ▶  ", tag="go_btn", width=106, height=24,
                                callback=lambda: self._go())
 
             dpg.add_spacer(height=4)
             # ── Active playbacks ─────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("active playbacks", color=_C_ACCENT)
+                dpg.add_text("◆ active playbacks", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
-                dpg.add_button(label="stop all", width=78,
+                dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_executors)
             dpg.add_separator()
             with dpg.child_window(tag="playbacks_list", width=-1, height=90,
@@ -5838,9 +5891,9 @@ class GUIEngine:
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("fx", color=_C_ACCENT)
+                dpg.add_text("◆ fx", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
-                dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=18,
+                dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=24,
                                callback=self._on_tap_tempo)
                 dpg.add_text("", tag="fx_tap_label", color=_C_DIM)
             dpg.add_separator()
@@ -6127,19 +6180,19 @@ class GUIEngine:
         _NW = 70   # digit button width
         _NH = 40   # digit button height — 4 rows × 40 + 3 × 4-gap = 172px
         _KW = 108  # keyword button width (wider label)
-        _BH = 20   # quick-action button height
+        _BH = 24   # quick-action button height
         _W  = self._W_RIGHT
 
         with dpg.child_window(tag="right_col", width=_W, height=self._H_MAIN,
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── Header ─────────────────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("command line", color=_C_ACCENT)
+                dpg.add_text("◆ command line", color=_C_ACCENT)
                 dpg.add_spacer(width=10)
                 dpg.add_text("sel: —", tag="cmd_sel_count", color=_C_DIM)
 
-            # ── Log — proportioned to leave room for keypad ─────
-            with dpg.child_window(tag="cmd_log_win", width=-1, height=88,
+            # ── Log — larger to show more feedback lines ─────────
+            with dpg.child_window(tag="cmd_log_win", width=-1, height=140,
                                   border=True, horizontal_scrollbar=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("", tag="cmd_log", wrap=0)
@@ -6156,9 +6209,9 @@ class GUIEngine:
                     width=-220, on_enter=True,
                     callback=self._on_cmd_execute,
                 )
-                dpg.add_button(label="enter", width=80, height=22,
+                dpg.add_button(label="enter", width=80, height=24,
                                callback=self._on_cmd_execute)
-                dpg.add_button(label="clr", width=50, height=22,
+                dpg.add_button(label="clr", width=50, height=24,
                                callback=self._numpad_clear_input)
 
             dpg.add_separator()
@@ -6199,7 +6252,7 @@ class GUIEngine:
             with dpg.group(horizontal=True):
 
                 # Left: digit pad [7][8][9] / [4][5][6] / [1][2][3] / [⌫][0][.]
-                with dpg.group():
+                with dpg.group(tag="numpad_digit_group"):
                     for row_digits in ([7, 8, 9], [4, 5, 6], [1, 2, 3]):
                         with dpg.group(horizontal=True):
                             for d in row_digits:
