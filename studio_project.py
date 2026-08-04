@@ -875,7 +875,7 @@ class Programmer:
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
                              'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT', 'FLIP',
                              'BRIGHTEST', 'DARKEST', 'AVERAGE', 'CLAMP', 'STEP', 'MIRROR',
-                             'INVERT'}
+                             'INVERT', 'SCALE'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1272,6 +1272,20 @@ class Programmer:
                 self._push_undo()
                 for sub in subs:
                     self.data.setdefault(str(sub.fixture_id), {})[ch] = int(round(target))
+            return
+
+        # SCALE <ch> <pct> — multiply each sub's channel by pct% (100=no change, 50=halve)
+        if tokens[0] == 'SCALE' and len(tokens) >= 3:
+            ch = _CH.get(tokens[1])
+            pct = _parse_num(tokens[2], lo=0.0, hi=1000.0)
+            if ch and pct is not None:
+                factor = pct / 100.0
+                subs = self._get_sub_selection()
+                self._push_undo()
+                for sub in subs:
+                    sfid = str(sub.fixture_id)
+                    cur = self.data.get(sfid, {}).get(ch, 0)
+                    self.data.setdefault(sfid, {})[ch] = max(0, min(255, int(round(cur * factor))))
             return
 
         # INVERT <ch> — flip each sub's channel value: new = 255 - current
@@ -7681,6 +7695,7 @@ class GUIEngine:
                 ("1 THRU 6 AT STEP R 10",   "Staircase red: each fixture adds 10 more than the previous (1→+0, 2→+10, ...)"),
                 ("1 THRU 6 AT MIRROR R",    "Mirror red across selection: fixture 1 ↔ fixture 6, fixture 2 ↔ fixture 5, ..."),
                 ("1 THRU 6 AT INVERT R",   "Invert each fixture's red: new = 255 − current (complements the colour)"),
+                ("1 THRU 6 AT SCALE R 50", "Scale each fixture's red by 50% (halve); >100% amplifies, clamped to 255"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -18240,6 +18255,21 @@ if STUDIO_HEADLESS:
         _inv_r2 = prog.data.get("2.1", {}).get('red')
         _check("AT INVERT R: 100 → 155 (255-100)", _inv_r1 == 155)
         _check("AT INVERT R: 0 → 255 (255-0)",     _inv_r2 == 255)
+        prog.clear_programmer()
+
+        # ── AT SCALE ──────────────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT R 200")   # fixture 1 red = 200
+        run_command("2 AT R 100")   # fixture 2 red = 100
+        run_command("1 THRU 2 AT SCALE R 50")   # 50% → 100, 50
+        _sc_r1 = prog.data.get("1.1", {}).get('red')
+        _sc_r2 = prog.data.get("2.1", {}).get('red')
+        _check("AT SCALE R 50%: 200 → 100", _sc_r1 == 100)
+        _check("AT SCALE R 50%: 100 → 50",  _sc_r2 == 50)
+        run_command("1 AT R 200")
+        run_command("1 AT SCALE R 200")   # 200% of 200 = 400 → clamped to 255
+        _sc_clamp = prog.data.get("1.1", {}).get('red')
+        _check("AT SCALE R clamps at 255", _sc_clamp == 255)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
