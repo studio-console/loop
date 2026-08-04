@@ -7989,6 +7989,7 @@ class GUIEngine:
                 ("SAVE AS <name>",        "Save a named snapshot to studio_saves/<name>/"),
                 ("LOAD SHOW <name>",      "Restore a snapshot (cuestacks/presets reload live)"),
                 ("LIST SHOWS",            "List all saved show snapshots"),
+                ("SHOW INFO",             "High-level overview: fixtures, cueLists, presets, active faders, master level"),
                 ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
                 ("PROGRAMMER SHOW",       "Print a human-readable dump of all programmer values (fixture names + channels)"),
                 ("PROGRAMMER STATS",      "Show how many fixtures/sub-fixtures and channels are active in programmer"),
@@ -15262,6 +15263,31 @@ def run_command(cmd_str):
         return "BLACKOUT ON"
 
     # ── Save ─────────────────────────────────────────────────
+    # ── SHOW INFO — high-level overview of the current show ──────────────────
+    if t0 == 'SHOW' and len(tokens) >= 2 and tokens[1] in ('INFO', 'STATUS', 'STATS'):
+        total_cues   = sum(len(cs.cues) for cs in cuestack_pool.stacks.values())
+        active_faders = sum(1 for ex in executor_pool.executors.values() if ex.is_active)
+        assigned_faders = sum(1 for ex in executor_pool.executors.values() if ex.cuestack)
+        prog_fids = len(set(k.split('.')[0] for k in prog.data if prog.data.get(k)))
+        lines = [
+            "Show overview:",
+            f"  Fixtures     : {len(patch.fixtures)} patched",
+            f"  Programmer   : {prog_fids} fixture(s) touched",
+            f"  CueStacks    : {len(cuestack_pool.stacks)} stacks  /  {total_cues} cues total",
+            f"  Faders       : {active_faders} active  /  {assigned_faders} assigned",
+            f"  FX Presets   : {len(fx_pool.presets)}",
+            f"  Color Presets: {len(color_pool.presets)}",
+            f"  Dim Presets  : {len(dim_pool.presets)}",
+            f"  Groups       : {len(group_pool.groups)}",
+            f"  Prog Snaps   : {len(_prog_snapshots)}",
+        ]
+        if output_state.blind:
+            lines.append("  Mode         : BLIND")
+        if output_state.freeze_mode:
+            lines.append("  Mode         : FROZEN")
+        lines.append(f"  Master       : {output_state.master_level:.0%}")
+        return "\n".join(lines)
+
     if t0 == 'BACKUP':
         import datetime as _dt
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -17479,6 +17505,12 @@ if STUDIO_HEADLESS:
         run_command("GM OUT")
         _check("GM OUT sets master to 0%", output_state.master_level == 0.0)
         output_state.master_level = 1.0   # restore
+
+        # SHOW INFO
+        r_si = run_command("SHOW INFO")
+        _check("SHOW INFO returns multi-line overview", len(r_si.splitlines()) >= 5)
+        _check("SHOW INFO shows fixture count", "Fixtures" in r_si)
+        _check("SHOW INFO shows master level", "Master" in r_si)
 
         # OUTPUT STATUS
         run_command("MASTER 100")          # ensure master at full
