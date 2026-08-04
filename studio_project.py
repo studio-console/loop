@@ -15734,6 +15734,7 @@ def run_command(cmd_str):
                         follow_time = src_cue.follow_time,
                     )
                     nc.note = src_cue.note
+                    nc.fx_outfade = src_cue.fx_outfade
                     nc.data = copy.deepcopy(src_cue.data)
                     dst_cs.cues[cue_n] = nc
                 if not dst_cs.name or dst_cs.name == f"Cuestack {dst_cs_n}":
@@ -15793,6 +15794,7 @@ def run_command(cmd_str):
                 follow_time = src_cue.follow_time,
             )
             dst_cue.note = src_cue.note
+            dst_cue.fx_outfade = src_cue.fx_outfade
             dst_cue.data = copy.deepcopy(src_cue.data)
             dst_cs.cues[float(dst_cue_n)] = dst_cue
             save_show()
@@ -15853,6 +15855,7 @@ def run_command(cmd_str):
                 follow_time = src_cue.follow_time,
             )
             moved.note = src_cue.note
+            moved.fx_outfade = src_cue.fx_outfade
             moved.data = copy.deepcopy(src_cue.data)
             dst_cs.cues[float(dst_cue_n)] = moved
             src_cs.delete_cue(src_cue_n)
@@ -16841,6 +16844,31 @@ if STUDIO_HEADLESS:
         # FXOUTFADE keyword in timing edit
         _apply_timing_edit(_fxo_cue, "FXOUTFADE 2.5")
         _check("FXOUTFADE sets cue.fx_outfade", _fxo_cue.fx_outfade == 2.5)
+
+        # COPY CUE / COPY CS / MOVE CUE must preserve fx_outfade (was silently
+        # dropped -- Cue() constructor doesn't take it, and all three call
+        # sites copied note/data/timings but forgot fx_outfade)
+        _fxo_src_cs = cuestack_pool.create(91)
+        _fxo_src_cue = Cue(1.0, "FXOutSrc")
+        _fxo_src_cue.fx_outfade = 3.25
+        _fxo_src_cs.cues[1.0] = _fxo_src_cue
+        run_command("COPY CS 91 TO CS 92")
+        _fxo_dst_cs = cuestack_pool.get(92)
+        _check("COPY CS preserves cue.fx_outfade",
+               _fxo_dst_cs is not None and _fxo_dst_cs.cues.get(1.0) is not None and
+               _fxo_dst_cs.cues[1.0].fx_outfade == 3.25)
+
+        run_command("COPY CS 91 CUE 1 TO CS 93 CUE 1")
+        _fxo_dst_cs2 = cuestack_pool.get(93)
+        _check("COPY CUE (single cue) preserves cue.fx_outfade",
+               _fxo_dst_cs2 is not None and _fxo_dst_cs2.cues.get(1.0) is not None and
+               _fxo_dst_cs2.cues[1.0].fx_outfade == 3.25)
+
+        run_command("MOVE CS 91 CUE 1 TO CS 94 CUE 1")
+        _fxo_dst_cs3 = cuestack_pool.get(94)
+        _check("MOVE CUE preserves cue.fx_outfade",
+               _fxo_dst_cs3 is not None and _fxo_dst_cs3.cues.get(1.0) is not None and
+               _fxo_dst_cs3.cues[1.0].fx_outfade == 3.25)
 
         # FX CLEAR clears executor FX layers
         run_command("FX SINE RED BPM 60 SIZE 100")
