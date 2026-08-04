@@ -7675,6 +7675,8 @@ class GUIEngine:
                 ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350", "Add fixture 7 as Generic_Moving at U1 addr 350"),
                 ("PATCH ADD 7 Generic_Moving UNIVERSE 1 AT 350 NAME MovHead7", "Add with a custom name"),
                 ("PATCH REMOVE 7",         "Remove fixture 7 from patch (saves show)"),
+                ("PATCH RENAME 3 Front Par", "Rename fixture 3 (saves show)"),
+                ("PATCH MOVE 3 UNIVERSE 2 AT 1", "Move fixture 3 to U2@1 (recalculates sub addresses)"),
             ]),
             ("NETWORK / sACN", [
                 ("NETWORK STATUS",         "Show current sACN bind address and universe list"),
@@ -14255,6 +14257,47 @@ def run_command(cmd_str):
             del patch.fixtures[fid]
             save_show()
             return f"Removed fixture {fid} from patch"
+        if sub == 'RENAME':
+            try:
+                fid = int(tokens[2])
+            except (IndexError, ValueError):
+                return "Usage: PATCH RENAME <id> <new name>"
+            master = patch.get(fid)
+            if not master:
+                return f"PATCH RENAME: fixture {fid} not patched"
+            raw_parts = raw.split(None, 3)
+            if len(raw_parts) < 4:
+                return "Usage: PATCH RENAME <id> <new name>"
+            master.name = raw_parts[3]
+            save_show()
+            return f"Fixture {fid} renamed to '{master.name}'"
+        if sub == 'MOVE':
+            try:
+                fid = int(tokens[2])
+            except (IndexError, ValueError):
+                return "Usage: PATCH MOVE <id> UNIVERSE <u> AT <addr>"
+            master = patch.get(fid)
+            if not master:
+                return f"PATCH MOVE: fixture {fid} not patched"
+            univ = 1; addr = 1
+            if 'UNIVERSE' in tokens:
+                ui = tokens.index('UNIVERSE')
+                try: univ = int(tokens[ui + 1])
+                except (IndexError, ValueError): pass
+            if 'AT' in tokens:
+                ai = tokens.index('AT')
+                try: addr = int(tokens[ai + 1])
+                except (IndexError, ValueError): pass
+            chs = master.profile.channels_per_pixel
+            for i, sub_fix in enumerate(master.all_subs()):
+                new_addr = addr + i * chs
+                if sub_fix.outputs:
+                    sub_fix.outputs[0] = {"universe": univ, "address": new_addr}
+                else:
+                    sub_fix.outputs.append({"universe": univ, "address": new_addr})
+            save_show()
+            end_addr = addr + len(master.sub_fixtures) * chs - 1
+            return f"Moved fixture {fid} to U{univ}@{addr}-{end_addr}"
 
     if t0 == 'LIST' and len(tokens) >= 2 and tokens[1] == 'SHOWS':
         return list_shows()
@@ -16637,6 +16680,20 @@ if STUDIO_HEADLESS:
             _check("PREV retreats selection to previous fixture",
                    _sel_masters2 == [_all_ids[0]])
             prog.clear_programmer()
+
+        # ── PATCH RENAME / PATCH MOVE TESTS ──────────────────────────────
+        _tmp_fix = patch.patch_fixture(51, "TmpFix", "Generic_RGB", 1, 490)
+        _check("PATCH RENAME test fixture patched", _tmp_fix is not None)
+        r_pr = run_command("PATCH RENAME 51 RenamedFix")
+        _check("PATCH RENAME changes fixture name",
+               patch.get(51) is not None and patch.get(51).name == "RenamedFix")
+        r_pm = run_command("PATCH MOVE 51 UNIVERSE 2 AT 50")
+        _first_sub_51 = patch.get(51).all_subs()[0] if patch.get(51) else None
+        _check("PATCH MOVE updates sub universe",
+               _first_sub_51 is not None and _first_sub_51.outputs[0]['universe'] == 2)
+        _check("PATCH MOVE updates sub address",
+               _first_sub_51 is not None and _first_sub_51.outputs[0]['address'] == 50)
+        del patch.fixtures[51]
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
