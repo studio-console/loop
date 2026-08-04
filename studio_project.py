@@ -7873,6 +7873,8 @@ class GUIEngine:
                 ("FADER 1 INFO",            "Detailed status of fader 1: level, priority, rate, buttons, cuestack, current cue"),
                 ("FADER 1 CLEAR",           "Stop fader 1 and reset its cuestack to 'not started' (position resets to top)"),
                 ("FADER ALL CLEAR",         "Stop every fader and reset all cuestack positions to the start"),
+                ("FADER 1 LOOP ON",         "Set fader 1's cuestack to loop: fires cue 1 again after the last cue"),
+                ("FADER 1 LOOP OFF",        "Disable looping on fader 1's cuestack (stop after last cue)"),
                 ("FADER 1 LABEL Main Show", "Set a human-readable label on fader 1 (shown in LIST FADER)"),
                 ("FADER 1 LABEL",           "Clear the label on fader 1"),
                 ("RELEASE 2",               "Stop fader 2"),
@@ -13567,6 +13569,20 @@ def run_command(cmd_str):
             save_show()
             return (f"Fader {ex_n} label → '{label_text}'"
                     if label_text else f"Fader {ex_n} label cleared")
+        elif verb == 'LOOP' and len(tokens) >= 4:
+            cs = ex.cuestack
+            if not cs:
+                return f"Fader {ex_n} has no cuestack assigned"
+            state = tokens[3].upper()
+            if state == 'ON':
+                cs.wrap = True
+                save_show()
+                return f"Fader {ex_n} loop ON — CS '{cs.name}' wraps after last cue"
+            elif state == 'OFF':
+                cs.wrap = False
+                save_show()
+                return f"Fader {ex_n} loop OFF — CS '{cs.name}' stops after last cue"
+            return "FADER LOOP: use ON or OFF"
         elif verb in ('INFO', 'STATUS', 'SHOW'):
             cs = ex.cuestack
             lbl_s = f"  Label     : {ex.label}" if ex.label else ""
@@ -18149,6 +18165,14 @@ if STUDIO_HEADLESS:
         _check("FADER ALL CLEAR returns 'cleared' confirmation", "cleared" in r_fac)
         _check("FADER ALL CLEAR resets position of cuestack in fader 1",
                _clr_cs is None or _clr_cs.current is None)
+
+        # FADER LOOP ON/OFF
+        if _clr_cs:
+            r_loop_on  = run_command("FADER 1 LOOP ON")
+            _check("FADER LOOP ON enables wrap on assigned cuestack", _clr_cs.wrap is True)
+            _check("FADER LOOP ON returns confirmation", "loop" in r_loop_on.lower() or "wrap" in r_loop_on.lower())
+            r_loop_off = run_command("FADER 1 LOOP OFF")
+            _check("FADER LOOP OFF disables wrap on assigned cuestack", _clr_cs.wrap is False)
 
         # LOAD SHOW must reload OSC targets and FX defaults, not just leave
         # the previous show's live values in place — same primitives
