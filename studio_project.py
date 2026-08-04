@@ -7933,6 +7933,8 @@ class GUIEngine:
                 ("LIST PARK",             "Show all currently parked fixtures"),
                 ("HIGHLIGHT / HL",        "Selected fixtures go full white at 100% — HL OFF to cancel; hl button in header"),
                 ("OUTPUT STATUS",          "Show top 20 non-zero DMX channels currently live (OUTPUT STATUS 40 for more)"),
+                ("GRANDMASTER",           "Show current grandmaster level (0-100%)"),
+                ("GM 80",                 "Set grandmaster to 80% (or GM FULL / GM OUT)"),
                 ("BLACKOUT",              "Cut all DMX output instantly (BLACKOUT OFF to restore)"),
                 ("BLACKOUT OFF  / BBO",   "Same as BLACKOUT — BBO is a one-key shorthand"),
                 ("SNAPSHOT 5",            "Record current live look (cue+prog merged) as cue 5"),
@@ -15161,6 +15163,23 @@ def run_command(cmd_str):
         output_state.master_level = max(0.0, min(1.0, pct / 100.0))
         return f"Master → {pct:.0f}%"
 
+    # ── GRANDMASTER / GM — show or set the master output level ───────────────
+    if t0 in ('GRANDMASTER', 'GM'):
+        if len(tokens) == 1:
+            return f"Grandmaster: {output_state.master_level:.0%}"
+        arg = tokens[1]
+        if arg == 'FULL':
+            output_state.master_level = 1.0
+        elif arg == 'OUT':
+            output_state.master_level = 0.0
+        else:
+            try:
+                pct = float(arg.rstrip('%'))
+                output_state.master_level = max(0.0, min(1.0, pct / 100.0))
+            except ValueError:
+                return f"GRANDMASTER: unrecognised value '{arg}' — use 0-100 or FULL/OUT"
+        return f"Grandmaster → {output_state.master_level:.0%}"
+
     if t0 == 'BLACKOUT':
         off = len(tokens) > 1 and tokens[1] == 'OFF'
         if off or output_state.master_level == 0.0:
@@ -17382,6 +17401,19 @@ if STUDIO_HEADLESS:
         _dmx_frozen_override = output_state.get_dmx_for_universe(1)
         _check("direct DMX override still applies during FREEZE", _dmx_frozen_override[0] == 42)
         run_command("CLEAR DMX")
+
+        # GRANDMASTER
+        output_state.master_level = 1.0
+        r_gm_show = run_command("GRANDMASTER")
+        _check("GRANDMASTER (no args) shows current level", "%" in r_gm_show)
+        r_gm_set = run_command("GM 75")
+        _check("GM 75 sets master to 75%", abs(output_state.master_level - 0.75) < 0.01)
+        _check("GM 75 returns confirmation with new level", "75" in r_gm_set)
+        run_command("GM FULL")
+        _check("GM FULL sets master to 100%", output_state.master_level == 1.0)
+        run_command("GM OUT")
+        _check("GM OUT sets master to 0%", output_state.master_level == 0.0)
+        output_state.master_level = 1.0   # restore
 
         # OUTPUT STATUS
         run_command("MASTER 100")          # ensure master at full
