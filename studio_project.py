@@ -9805,6 +9805,21 @@ class GUIEngine:
             if ex.cuestack
         )
 
+    @staticmethod
+    def _fit_text(text, max_w):
+        """Truncate text with an ellipsis so its rendered width stays <= max_w px.
+        Used to keep the active-playbacks row's trailing action buttons from
+        being pushed off the edge of the (fixed-width) left column by a long
+        cuestack/cue name."""
+        try:
+            if dpg.get_text_size(text)[0] <= max_w:
+                return text
+            while text and dpg.get_text_size(text + "…")[0] > max_w:
+                text = text[:-1]
+            return (text + "…") if text else "…"
+        except Exception:
+            return text
+
     def _rebuild_playbacks(self):
         """
         Rebuild the executor-slot list inside the left column. Lists every
@@ -9833,19 +9848,43 @@ class GUIEngine:
                          color=_C_DIM, parent="playbacks_list")
             return
 
+        # Reserve room for the trailing fixed-width buttons (time/priority/a/b/c
+        # + inter-item spacing) so the two variable-length labels below never
+        # push them past the edge of the (fixed-width) left column — see
+        # _fit_text. 260px measured empirically (pixel-verified via a headless
+        # DearPyGui render against the widest real row) with margin to spare
+        # for the rarer 52px time-override badge.
+        try:
+            _row_w = dpg.get_item_rect_size("playbacks_list")[0] or 349
+        except Exception:
+            _row_w = 349
+        _label_budget = max(60, _row_w - 260)
+        _name_w = _label_budget * 2 // 5
+        _cue_w  = _label_budget - _name_w
+
         for ex in active:
             cs  = ex.cuestack
             cur = cs.current
             if cur is not None:
                 cue = cs.cues.get(cur)
-                cue_label = f"▶ {cur:.0f}: {cue.name[:10]}" if cue else f"▶ {cur:.0f}"
+                cue_label = f"▶ {cur:.0f}: {cue.name}" if cue else f"▶ {cur:.0f}"
             else:
                 cue_label = "▶ —"
             pri_label = Executor.PRIORITY_LABELS.get(ex.priority, 'NRM')
+            _full_name = f"[{ex.exec_id}] {cs.name}"
+            _fit_name  = self._fit_text(_full_name, _name_w)
+            _fit_cue   = self._fit_text(cue_label, _cue_w)
             with dpg.group(horizontal=True, parent="playbacks_list"):
-                dpg.add_text(f"[{ex.exec_id}] {cs.name[:11]}", color=_C_TEXT)
-                dpg.add_spacer(width=2)
-                dpg.add_text(cue_label, color=_C_ACCENT)
+                _name_tag = f"pb_name_{ex.exec_id}"
+                _cue_tag  = f"pb_cue_{ex.exec_id}"
+                dpg.add_text(_fit_name, tag=_name_tag, color=_C_TEXT)
+                if _fit_name != _full_name:
+                    with dpg.tooltip(_name_tag):
+                        dpg.add_text(_full_name)
+                dpg.add_text(_fit_cue, tag=_cue_tag, color=_C_ACCENT)
+                if _fit_cue != cue_label:
+                    with dpg.tooltip(_cue_tag):
+                        dpg.add_text(cue_label)
                 # Time override badge
                 if ex.time_override_on and ex.time_override_fade is not None:
                     t_label  = f"T{ex.time_override_fade:.1f}s"
