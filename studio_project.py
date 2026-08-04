@@ -3735,6 +3735,8 @@ class OutputState:
         self.frozen_dmx       = {}    # {universe: tuple(512)} — snapshot at FREEZE time
         self.solo_mode        = False  # when True, only solo_fids get output
         self.solo_fids        = set() # set of master fixture_id ints to pass through
+        self.parked_fids      = set() # set of master fixture_id ints that are parked
+        self.parked_addresses = {}    # {universe: {address(1-512): value}} — snapshot at park time
         self._lock            = threading.Lock()
 
     def link_programmer(self, programmer):
@@ -3918,8 +3920,12 @@ class OutputState:
                             if addr + offset > 511:
                                 break
                             dmx[addr + offset] = 0 if _solo_suppress else ch_resolved.get(ch, 0)
-            # Direct DMX overrides — highest priority, applied last
+            # Direct DMX overrides — applied after all other layers
             for addr1, val in self.direct_dmx.get(universe, {}).items():
+                if 1 <= addr1 <= 512:
+                    dmx[addr1 - 1] = max(0, min(255, int(val)))
+            # Parked fixture values — absolute, highest priority (even above direct_dmx)
+            for addr1, val in self.parked_addresses.get(universe, {}).items():
                 if 1 <= addr1 <= 512:
                     dmx[addr1 - 1] = max(0, min(255, int(val)))
         return tuple(dmx)
@@ -7647,6 +7653,9 @@ class GUIEngine:
                 ("FREEZE OFF",            "Release FREEZE — live output resumes"),
                 ("SOLO",                  "Solo selected fixtures — all others zeroed on output (select first)"),
                 ("SOLO OFF",              "Release SOLO — all fixtures restore normal output"),
+                ("PARK",                  "Park selected fixtures at current DMX values — immune to cue/prog changes"),
+                ("UNPARK",                "Release selected fixtures from PARK (UNPARK ALL to clear all parks)"),
+                ("LIST PARK",             "Show all currently parked fixtures"),
                 ("HIGHLIGHT / HL",        "Selected fixtures go full white at 100% — HL OFF to cancel; hl button in header"),
                 ("BLACKOUT",              "Cut all DMX output instantly (BLACKOUT OFF to restore)"),
                 ("BLACKOUT OFF  / BBO",   "Same as BLACKOUT — BBO is a one-key shorthand"),
@@ -14258,6 +14267,58 @@ def run_command(cmd_str):
         fids = sorted(output_state.solo_fids)
         return f"SOLO ON — only fixtures {fids} pass through; others zeroed"
 
+    # ── PARK / UNPARK ────────────────────────────────────────────────────────
+    # PARK          — park selected fixtures at their current DMX output values
+    # UNPARK        — release selected fixtures from park (or UNPARK ALL)
+    # LIST PARK     — show all currently parked fixtures
+    if t0 == 'PARK':
+        off = len(tokens) > 1 and tokens[1] in ('OFF', 'RELEASE')
+        if off:
+            return run_command("UNPARK")
+        sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
+        if not sel_masters:
+            return "PARK: select fixtures first"
+        for master in sel_masters:
+            # Temporarily remove from parked set so we get live output (not the old park)
+            was_parked = master.fixture_id in output_state.parked_fids
+            output_state.parked_fids.discard(master.fixture_id)
+            univs = {out['universe'] for sub in master.all_subs() for out in sub.outputs}
+            for u in univs:
+                dmx_snap = output_state.get_dmx_for_universe(u)
+                for sub in master.all_subs():
+                    for out in sub.outputs:
+                        if out['universe'] != u:
+                            continue
+                        for off_i, _ in enumerate(sub.profile.channels):
+                            a = out['address'] + off_i
+                            if 1 <= a <= 512:
+                                output_state.parked_addresses.setdefault(u, {})[a] = dmx_snap[a - 1]
+            output_state.parked_fids.add(master.fixture_id)
+        fids = sorted(f.fixture_id for f in sel_masters)
+        return f"PARK — fixture(s) {fids} frozen at current DMX output (UNPARK to release)"
+
+    if t0 == 'UNPARK':
+        all_mode = len(tokens) > 1 and tokens[1] == 'ALL'
+        if all_mode:
+            output_state.parked_fids.clear()
+            output_state.parked_addresses.clear()
+            return "UNPARK ALL — all fixtures released"
+        sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
+        if not sel_masters:
+            output_state.parked_fids.clear()
+            output_state.parked_addresses.clear()
+            return "UNPARK ALL — all fixtures released"
+        for master in sel_masters:
+            output_state.parked_fids.discard(master.fixture_id)
+            for sub in master.all_subs():
+                for out in sub.outputs:
+                    u = out['universe']
+                    for off_i in range(len(sub.profile.channels)):
+                        a = out['address'] + off_i
+                        output_state.parked_addresses.get(u, {}).pop(a, None)
+        fids = sorted(f.fixture_id for f in sel_masters)
+        return f"UNPARK — fixture(s) {fids} released from park"
+
     if t0 == 'HIGHLIGHT' or (t0 == 'HL' and len(tokens) <= 2):
         off = len(tokens) > 1 and tokens[1] == 'OFF'
         on  = len(tokens) > 1 and tokens[1] == 'ON'
@@ -15109,15 +15170,28 @@ def run_command(cmd_str):
             for fid in sorted(patch.fixtures):
                 m = patch.fixtures[fid]
                 first_sub = m.get_sub(1)
+                park_s = "  [PARKED]" if fid in output_state.parked_fids else ""
                 if first_sub and first_sub.outputs:
                     out = first_sub.outputs[0]
-                    lines.append(f"  [{fid}] {m.name}  {m.profile.name}  U{out['universe']}@{out['address']}")
+                    lines.append(f"  [{fid}] {m.name}  {m.profile.name}  U{out['universe']}@{out['address']}{park_s}")
                 else:
-                    lines.append(f"  [{fid}] {m.name}  {m.profile.name}")
+                    lines.append(f"  [{fid}] {m.name}  {m.profile.name}{park_s}")
             return "\n".join(lines)
+        if sub == 'PARK':
+            if not output_state.parked_fids:
+                return "No fixtures parked"
+            lines = ["Parked fixtures:"]
+            for fid in sorted(output_state.parked_fids):
+                m = patch.get(fid)
+                name = m.name if m else f"(fixture {fid})"
+                addr_count = sum(len(v) for v in output_state.parked_addresses.values())
+                lines.append(f"  [{fid}] {name}")
+            return "\n".join(lines)
+        if sub == 'MACRO':
+            return run_command("MACRO LIST")
         return (f"LIST: unknown sub-command '{tokens[1]}' — "
                 "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
-                "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, SHOWS")
+                "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS")
 
     # ── Clear — programmer only, never touches cuestacks ────────
     # ── RELEASE — stop executor(s) ───────────────────────────
@@ -16872,6 +16946,35 @@ if STUDIO_HEADLESS:
                macro_pool.get(99, {}).get("name") == "Renamed")
         run_command("MACRO DELETE 99")
         _check("MACRO DELETE removes slot", 99 not in macro_pool)
+        prog.clear_programmer()
+
+        # ── PARK / UNPARK TESTS ───────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT FULL")           # dim=1.0, so DMX output for fixture 1 is non-zero
+        run_command("AT R 200 G 100 B 50")
+        # Park fixture 1 at this look
+        r_park = run_command("PARK")
+        _check("PARK adds fixture to parked_fids", 1 in output_state.parked_fids)
+        _check("PARK stores some parked addresses",
+               bool(output_state.parked_addresses))
+        # Change programmer — should not affect parked output
+        run_command("AT R 0 G 0 B 0")
+        _park_dmx = output_state.get_dmx_for_universe(1)
+        # Fixture 1 subs start at address 1 (SGM_RGB_54); first sub has r at offset 0
+        _first_sub_1 = patch.get(1).all_subs()[0]
+        _r_addr = _first_sub_1.outputs[0]['address'] - 1  # 0-indexed
+        _check("PARK holds DMX value against programmer change",
+               _park_dmx[_r_addr] == 200)
+        # Unpark
+        r_unpark = run_command("UNPARK")
+        _check("UNPARK removes fixture from parked_fids", 1 not in output_state.parked_fids)
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT R 0 G 0 B 0")
+        _after_dmx = output_state.get_dmx_for_universe(1)
+        _check("After UNPARK, programmer changes take effect",
+               _after_dmx[_r_addr] == 0)
         prog.clear_programmer()
 
     except Exception as e:
