@@ -3,6 +3,19 @@
   "entries": [
     {
       "date": "2026-08-04",
+      "summary": "Fixed a real safety bug: FREEZE silently defeated PARK (same bug class fixed twice before, this time on the newest isolation layer)",
+      "details": [
+        "Roadmap re-audit: all 7 established roadmap items remain landed. The most recent commit before this session (511be3b, GO FADE) shipped without a changelog entry -- noting that gap here per the established practice rather than backfilling it after the fact; GO FADE itself was checked as part of this session's work (see below) and found correct.",
+        "Went looking for the next bug the way the last two sessions did: the FREEZE frozen-snapshot branch of OutputState.get_dmx_for_universe() has twice needed a fix for silently defeating a newer real-time isolation/override layer (BLACKOUT/MASTER, then SOLO) because each was added to the live-render branch without anyone connecting it to the frozen branch. PARK (added in a later commit than either of those fixes) was the obvious next thing to check, and had the identical gap: the frozen branch applied master_level, SOLO zeroing, and direct_dmx overrides (per its own comment enumerating exactly those three), but never touched self.parked_addresses at all.",
+        "Concretely: PARK a fixture (documented as 'immune to cue/prog changes', highest priority, even above direct_dmx), then engage FREEZE for any reason -- the frozen snapshot's stored value for that fixture's addresses was output instead of the parked value, with no warning either way. A technician relying on PARK to hold a fixture at a known-safe value (e.g. during a patch check) would silently lose that protection the moment FREEZE was toggled.",
+        "Fixed by adding the same parked_addresses loop used in the live branch to the end of the frozen branch, after direct_dmx, matching PARK's documented 'even above direct_dmx' priority. Updated the branch's own comment to enumerate PARK alongside BLACKOUT/MASTER, SOLO, and direct DMX override as things FREEZE must not defeat.",
+        "Also checked GO FADE (the untracked prior commit) end to end while in this area: _prog_time is read synchronously inside _cuestack_fire_cue() (called directly by cue_go(), no threading) and baked into the Fade object's ov_fade/ov_delay before GO FADE's handler restores the previous _prog_time state -- so the one-shot override is genuinely one-shot and the restore can't race an in-flight fade. No bug found there.",
+        "Smoke test extended: seeds a synthetic frozen snapshot directly (output_state.frozen_dmx[1] = a conflicting known tuple, not via run_command('FREEZE')) after parking fixture 1 at a real value via PARK, same isolation technique used for the prior SOLO-vs-FREEZE check. 200/200 passing (197 previous -- 195 from the untracked GO FADE commit plus 2 more not yet counted here since that commit had no changelog entry -- + 3 new: the PARK/UNPARK block wasn't previously covered by a changelog-documented test count either, corrected in the same pass). Verified studio_data/*.json untouched via git status.",
+        "No schema or persisted-data changes -- pure fix to existing DMX render logic, fully backward compatible with existing shows. Verified with python3 -m py_compile and STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1."
+      ]
+    },
+    {
+      "date": "2026-08-04",
       "summary": "Fixed 2 more real bugs found by a parallel background audit: SOLO also defeated by FREEZE, HUE SAT/VAL unclamped",
       "details": [
         "While fixing the FREEZE-vs-BLACKOUT/DMX-override bug in the previous commit, kicked off a background audit in parallel scoped to the same newest, least-audited features (SOLO, FREEZE, direct DMX override, RANDOM/EVERY N, HUE, FAN, NEXT/PREV, relative AT) to catch anything the manual read missed. It independently confirmed the BLACKOUT bug and surfaced two more real, previously-undetected bugs of the same general shape.",

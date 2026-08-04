@@ -3763,12 +3763,14 @@ class OutputState:
     def get_dmx_for_universe(self, universe):
         if self.freeze_mode and universe in self.frozen_dmx:
             # FREEZE locks the *look*, not the master fader, SOLO isolation,
-            # or a direct DMX override — BLACKOUT/MASTER must still be able
-            # to cut a frozen output (safety-critical: BLACKOUT is documented
-            # as "cut all output NOW" and must not be silently defeated by
-            # FREEZE), SOLO's "zero everyone else" guarantee must still hold,
-            # and a direct DMX override is documented as highest-priority/
-            # applied-last regardless of what else is happening.
+            # a direct DMX override, or PARK — BLACKOUT/MASTER must still be
+            # able to cut a frozen output (safety-critical: BLACKOUT is
+            # documented as "cut all output NOW" and must not be silently
+            # defeated by FREEZE), SOLO's "zero everyone else" guarantee must
+            # still hold, a direct DMX override is documented as
+            # highest-priority/applied-last regardless of what else is
+            # happening, and PARK is documented as "immune to cue/prog
+            # changes" and higher priority still (even above direct_dmx).
             gm = self.master_level
             dmx = [int(v * gm) for v in self.frozen_dmx[universe]]
             if self.solo_mode:
@@ -3785,6 +3787,9 @@ class OutputState:
                                     break
                                 dmx[addr + offset] = 0
             for addr1, val in self.direct_dmx.get(universe, {}).items():
+                if 1 <= addr1 <= 512:
+                    dmx[addr1 - 1] = max(0, min(255, int(val)))
+            for addr1, val in self.parked_addresses.get(universe, {}).items():
                 if 1 <= addr1 <= 512:
                     dmx[addr1 - 1] = max(0, min(255, int(val)))
             return tuple(dmx)
@@ -17068,6 +17073,35 @@ if STUDIO_HEADLESS:
         _after_dmx = output_state.get_dmx_for_universe(1)
         _check("After UNPARK, programmer changes take effect",
                _after_dmx[_r_addr] == 0)
+        prog.clear_programmer()
+
+        # ── PARK-vs-FREEZE TEST ─────────────────────────────────────────────
+        # Same bug class fixed twice before (BLACKOUT-vs-FREEZE, SOLO-vs-FREEZE):
+        # FREEZE's frozen-snapshot branch must not silently defeat a newer
+        # isolation/override layer. PARK is documented as "immune to
+        # cue/prog changes" and highest priority (even above direct_dmx) —
+        # verify it still holds while FREEZE is active. Seeds a synthetic
+        # frozen snapshot directly (not via run_command('FREEZE')) so this
+        # check is isolated from whatever dim/FX state other tests in this
+        # long-lived process have left on fixture 1.
+        run_command("1")
+        run_command("AT FULL")
+        run_command("AT R 222 G 11 B 33")
+        run_command("PARK")
+        _park_addr = _first_sub_1.outputs[0]['address'] - 1  # 0-indexed
+        _saved_frozen = dict(output_state.frozen_dmx)
+        _saved_freeze_mode = output_state.freeze_mode
+        try:
+            output_state.frozen_dmx[1] = tuple([99] * 512)  # conflicts with parked 222
+            output_state.freeze_mode = True
+            _frozen_dmx = output_state.get_dmx_for_universe(1)
+            _check("PARK still holds its value while FREEZE is active",
+                   _frozen_dmx[_park_addr] == 222)
+        finally:
+            output_state.freeze_mode = _saved_freeze_mode
+            output_state.frozen_dmx.clear()
+            output_state.frozen_dmx.update(_saved_frozen)
+            run_command("UNPARK")
         prog.clear_programmer()
 
     except Exception as e:
