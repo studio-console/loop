@@ -1974,6 +1974,8 @@ class Executor:
         self.btn_c = 'STOP'
         # Playback rate multiplier: 1.0 = normal, 2.0 = twice as fast (divides fade times)
         self.rate_factor = 1.0
+        # Optional human-readable label for this fader slot (independent of the cuestack name)
+        self.label = ""
 
     def assign(self, cuestack):
         self.cuestack = cuestack
@@ -7778,6 +7780,8 @@ class GUIEngine:
                 ("CUESTACK 2",              "Switch active fader to slot 2"),
                 ("ASSIGN CS 2 TO FADER 1",  "Wire cuestack 2 to fader 1"),
                 ("FADER SWAP 1 2",          "Swap the cuestacks on faders 1 and 2"),
+                ("FADER 1 LABEL Main Show", "Set a human-readable label on fader 1 (shown in LIST FADER)"),
+                ("FADER 1 LABEL",           "Clear the label on fader 1"),
                 ("RELEASE 2",               "Stop fader 2"),
                 ("RELEASE ALL",             "Stop all active faders"),
                 ("PRIORITY 2 HIGH",         "Set fader 2 to high priority (HI/NRM/LO)"),
@@ -11174,6 +11178,7 @@ class ShowFile:
                 "btn_b":        ex.btn_b,
                 "btn_c":        ex.btn_c,
                 "rate_factor":  ex.rate_factor,
+                "label":        ex.label,
             }
         _write_file(ShowFile.EXECUTORS, doc)
         print(f"  Saved executors  → {len(doc['executors'])} slot(s)")
@@ -11203,6 +11208,7 @@ class ShowFile:
             ex.btn_c        = edata.get("btn_c", "STOP") if edata.get("btn_c", "STOP") in _valid_fns else "STOP"
             _rf             = float(edata.get("rate_factor", 1.0))
             ex.rate_factor  = max(0.1, min(8.0, _rf))
+            ex.label        = edata.get("label", "")
         print(f"  Loaded executors — {count} assignment(s)")
         return True
 
@@ -13248,6 +13254,14 @@ def run_command(cmd_str):
             ex.rate_factor = 1.0
             save_show()
             return f"Fader {ex_n} rate reset → ×1.00"
+        elif verb == 'LABEL':
+            # FADER <n> LABEL <text>  |  FADER <n> LABEL  (clear)
+            raw_parts = raw.split(None, 3)
+            label_text = raw_parts[3].strip() if len(raw_parts) >= 4 else ""
+            ex.label = label_text
+            save_show()
+            return (f"Fader {ex_n} label → '{label_text}'"
+                    if label_text else f"Fader {ex_n} label cleared")
         else:
             return f"FADER {ex_n}: unknown verb '{verb}'"
 
@@ -15545,13 +15559,14 @@ def run_command(cmd_str):
             for eid in sorted(executor_pool.executors):
                 ex = executor_pool.executors[eid]
                 cs = ex.cuestack
+                lbl_s = f"  [{ex.label}]" if ex.label else ""
                 if cs:
                     cur_s = (f"  cue {cs.current:.0f}" if cs.current is not None else "  not started")
                     active_s = "  ACTIVE" if ex.is_active else "  idle"
                     mode_s = f"  mode={ex.trigger_mode}"
-                    lines.append(f"  [{eid}] → CS {cs.stack_id}: {cs.name}{cur_s}{active_s}{mode_s}")
+                    lines.append(f"  [{eid}]{lbl_s} → CS {cs.stack_id}: {cs.name}{cur_s}{active_s}{mode_s}")
                 else:
-                    lines.append(f"  [{eid}] → (unassigned)")
+                    lines.append(f"  [{eid}]{lbl_s} → (unassigned)")
             return "\n".join(lines)
         if sub == 'MIDI':
             if not midi or (not midi.cc_maps and not midi.note_maps):
@@ -17371,6 +17386,16 @@ if STUDIO_HEADLESS:
         r_rate_btn = run_command("FADER 2 BTN C RATE+")
         _check("FADER 2 BTN C RATE+ sets btn_c to RATE+", _rate_ex.btn_c == 'RATE+')
         run_command("FADER 2 BTN C STOP")  # restore
+
+        # FADER LABEL
+        _lbl_ex = executor_pool.get(1)
+        r_lbl = run_command("FADER 1 LABEL Main Show")
+        _check("FADER LABEL sets label on executor", _lbl_ex.label == "Main Show")
+        _check("FADER LABEL returns confirmation", "Main Show" in r_lbl)
+        r_lbl_list = run_command("LIST FADER")
+        _check("LIST FADER shows label", "Main Show" in r_lbl_list)
+        run_command("FADER 1 LABEL")  # clear
+        _check("FADER 1 LABEL (no text) clears label", _lbl_ex.label == "")
 
         # LOAD SHOW must reload OSC targets and FX defaults, not just leave
         # the previous show's live values in place — same primitives
