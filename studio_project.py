@@ -7987,6 +7987,7 @@ class GUIEngine:
                 ("GOTO 3",                  "Jump directly to cue 3 (active cuestack)"),
                 ("CUESTACK 2",              "Switch active fader to slot 2"),
                 ("ASSIGN CS 2 TO FADER 1",  "Wire cuestack 2 to fader 1"),
+                ("FADER 1 ASSIGN CS 2",     "Shorthand for ASSIGN CS 2 TO FADER 1"),
                 ("FADER SWAP 1 2",          "Swap the cuestacks on faders 1 and 2"),
                 ("FADER 1 INFO",            "Detailed status of fader 1: level, priority, rate, buttons, cuestack, current cue"),
                 ("FADER 1 CLEAR",           "Stop fader 1 and reset its cuestack to 'not started' (position resets to top)"),
@@ -13806,6 +13807,17 @@ def run_command(cmd_str):
             save_show()
             return (f"Fader {ex_n} label → '{label_text}'"
                     if label_text else f"Fader {ex_n} label cleared")
+        elif verb == 'ASSIGN' and len(tokens) >= 5 and tokens[3].upper() == 'CS':
+            try:
+                cs_n = int(tokens[4])
+            except ValueError:
+                return f"FADER ASSIGN: bad cuestack number '{tokens[4]}'"
+            stack = cuestack_pool.get(cs_n)
+            if not stack:
+                return f"FADER ASSIGN: cuestack {cs_n} not found"
+            executor_pool.assign(ex_n, stack)
+            save_show()
+            return f"CS {cs_n} '{stack.name}' assigned to fader {ex_n}"
         elif verb == 'BOUNCE' and len(tokens) >= 4:
             cs = ex.cuestack
             if not cs:
@@ -19193,6 +19205,19 @@ if STUDIO_HEADLESS:
         _r_ps_empty = run_command("PROGRAMMER SCALE 50")
         _check("PROGRAMMER SCALE: empty programmer returns error", "empty" in _r_ps_empty.lower())
         prog.clear_programmer()
+
+        # ── FADER ASSIGN CS ───────────────────────────────────────────────────
+        _fa_cs = cuestack_pool.get(1)
+        if _fa_cs:
+            _fa_ex = executor_pool.get(15)  # high slot unlikely to conflict
+            _fa_result = run_command(f"FADER 15 ASSIGN CS 1")
+            _check("FADER ASSIGN CS: wires cuestack to fader",
+                   _fa_ex.cuestack is _fa_cs)
+            _check("FADER ASSIGN CS: returns confirmation",
+                   "CS 1" in _fa_result or "assigned" in _fa_result.lower())
+            _r_fa_bad = run_command("FADER 15 ASSIGN CS 9999")
+            _check("FADER ASSIGN CS: bad CS returns error",
+                   "not found" in _r_fa_bad.lower())
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
