@@ -7859,6 +7859,7 @@ class GUIEngine:
                 ("UNPARK",                "Release selected fixtures from PARK (UNPARK ALL to clear all parks)"),
                 ("LIST PARK",             "Show all currently parked fixtures"),
                 ("HIGHLIGHT / HL",        "Selected fixtures go full white at 100% — HL OFF to cancel; hl button in header"),
+                ("OUTPUT STATUS",          "Show top 20 non-zero DMX channels currently live (OUTPUT STATUS 40 for more)"),
                 ("BLACKOUT",              "Cut all DMX output instantly (BLACKOUT OFF to restore)"),
                 ("BLACKOUT OFF  / BBO",   "Same as BLACKOUT — BBO is a one-key shorthand"),
                 ("SNAPSHOT 5",            "Record current live look (cue+prog merged) as cue 5"),
@@ -14827,6 +14828,49 @@ def run_command(cmd_str):
             fids = sorted(output_state.highlight_fids)
             return f"HIGHLIGHT ON — fixtures {fids} at full white"
 
+    # ── OUTPUT STATUS — current live DMX overview ─────────────────────────────
+    if t0 == 'OUTPUT' and len(tokens) >= 2 and tokens[1] in ('STATUS', 'INFO', 'SHOW'):
+        limit = 20
+        try:
+            if len(tokens) >= 3:
+                limit = int(tokens[2])
+        except ValueError:
+            pass
+        lines = [f"Output (master={output_state.master_level:.0%}"
+                 + ("  FREEZE" if output_state.freeze_mode else "")
+                 + ("  BLIND" if output_state.blind else "")
+                 + ("  BLACKOUT" if output_state.master_level == 0.0 else "")
+                 + "):"]
+        all_active = []
+        for u in sorted(set(list(output_state.parked_addresses.keys())
+                            + list(output_state.direct_dmx.keys()) + [1])):
+            dmx = output_state.get_dmx_for_universe(u)
+            for addr0, val in enumerate(dmx):
+                if val > 0:
+                    all_active.append((u, addr0 + 1, val))
+        all_active.sort(key=lambda x: -x[2])
+        if not all_active:
+            lines.append("  (all channels at 0)")
+        else:
+            shown = all_active[:limit]
+            for u, addr, val in shown:
+                pct = val / 255 * 100
+                bar = '█' * int(pct / 10)
+                # Reverse-map address to fixture name
+                fid_label = ""
+                for fid, master in patch.fixtures.items():
+                    for sub in master.all_subs():
+                        for out in sub.outputs:
+                            if (out['universe'] == u and
+                                    out['address'] <= addr <
+                                    out['address'] + len(master.profile.channels)):
+                                fid_label = f"  ← {master.name}"
+                                break
+                lines.append(f"  U{u}@{addr:03d}: {val:3d}  {bar:<10} {pct:.0f}%{fid_label}")
+            if len(all_active) > limit:
+                lines.append(f"  … ({len(all_active) - limit} more channels)")
+        return "\n".join(lines)
+
     if t0 == 'MASTER' and len(tokens) >= 2:
         try:
             pct = float(tokens[1])
@@ -16850,6 +16894,15 @@ if STUDIO_HEADLESS:
         _dmx_frozen_override = output_state.get_dmx_for_universe(1)
         _check("direct DMX override still applies during FREEZE", _dmx_frozen_override[0] == 42)
         run_command("CLEAR DMX")
+
+        # OUTPUT STATUS
+        run_command("MASTER 100")          # ensure master at full
+        run_command("FREEZE OFF")
+        run_command("1 FULL")              # put fixture 1 at 100% in programmer
+        r_os = run_command("OUTPUT STATUS")
+        _check("OUTPUT STATUS returns non-empty string", len(r_os) > 10)
+        _check("OUTPUT STATUS shows master level", "master=" in r_os.lower() or "Output" in r_os)
+        prog.clear_programmer()
 
         # SOLO's "zero everyone else" guarantee must also survive FREEZE —
         # same class of bug, found by a background audit of the same code.
