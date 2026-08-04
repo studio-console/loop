@@ -5023,7 +5023,8 @@ class GUIEngine:
                  rate_pool=None, size_pool=None, spread_pool=None,
                  speed_master_pool=None,
                  attr_pools=None, osc=None,
-                 library=None, save_patch_fn=None, fx_params=None):
+                 library=None, save_patch_fn=None, fx_params=None,
+                 audio_engine=None, audio_mapper=None):
         self._midi       = midi
         self._fx         = fx_engine
         self._fade       = fade_engine
@@ -5056,6 +5057,8 @@ class GUIEngine:
         self._save        = save_fn         # save_fn() → ShowFile.save()
         self._save_patch  = save_patch_fn   # save_patch_fn() → ShowFile.save_patch()
         self._cmd         = cmd_fn          # cmd_fn(str) → result str
+        self._audio_engine = audio_engine   # AudioEngine — capture + level/band analysis
+        self._audio_mapper = audio_mapper   # AudioMapper — level/band → output_state.audio_layer
 
         self._cmd_log     = []         # command history lines
         self._cmd_history = []         # entered commands for ↑↓ recall
@@ -5091,6 +5094,7 @@ class GUIEngine:
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
         "color_picker_window", "speed_master_window", "fader_page_window",
+        "audio_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -5193,6 +5197,7 @@ class GUIEngine:
         self._build_color_picker_popup()
         self._build_speed_master_popup()
         self._build_fader_page_popup()
+        self._build_audio_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -5257,7 +5262,7 @@ class GUIEngine:
 
     def _build_header(self):
         with dpg.group(horizontal=True):
-            dpg.add_text("studio console  v0.20", color=_C_ACCENT)
+            dpg.add_text("studio console  v0.21", color=_C_ACCENT)
             dpg.add_text("   |   ", color=_C_DIM)
             dpg.add_text("▶ (none)", tag="hdr_cue", color=_C_TEXT)
             dpg.add_text("   |   ", color=_C_DIM)
@@ -5304,6 +5309,9 @@ class GUIEngine:
             dpg.add_spacer(width=4)
             dpg.add_button(label="ai", width=36,
                            callback=self._on_ai_bar_toggle)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="audio", width=50,
+                           callback=self._on_audio_toggle)
             dpg.add_button(label="save show", width=90,
                            callback=self._on_save)
             dpg.add_text("", tag="hdr_save_status", color=_C_DIM)
@@ -7755,6 +7763,7 @@ class GUIEngine:
                 ("AUDIO OFF",       "Disable reactive layer (capture keeps running if started)"),
                 ("AUDIO STATUS",    "Show capture/mapping state and current band levels"),
                 ("AUDIO GAIN 3.0",  "Adjust input sensitivity (default 3.0)"),
+                ("audio button (header)", "Open the audio reactive panel — device picker, start/stop capture, mapping toggle, gain slider, live level/low/mid/high meters"),
             ]),
             ("AI CONTROL", [
                 ("ai button (header)",    "Open the floating AI prompt bar (prompt box, chip buttons, history/prompts links)"),
@@ -7784,6 +7793,7 @@ class GUIEngine:
                 ("spd button",            "Open the speed master panel (16 live BPM faders, MA-style)"),
                 ("fdrs button",           "Open the 15-slot fader page panel — ◀/▶ page through banks of 15 faders (page 2 = faders 16-30, etc.)"),
                 ("color button",          "Open the HSV colour wheel for RGB control"),
+                ("audio button",          "Open the audio reactive panel (device, capture, mapping, gain, live meters)"),
             ]),
             ("STATUS BAR & QUICK CONTROLS", [
                 ("blind button",          "Click to toggle BLIND — programmer hidden from DMX output; glows red when active"),
@@ -8657,6 +8667,65 @@ class GUIEngine:
         except Exception:
             pass
 
+    def _on_audio_toggle(self):
+        try:
+            if dpg.is_item_shown("audio_window"):
+                self._save_popup_layout()
+                dpg.hide_item("audio_window")
+            else:
+                dpg.show_item("audio_window")
+        except Exception:
+            pass
+
+    def _on_audio_start(self):
+        """Start capture on the device picked in the combo (blank = system default)."""
+        if not self._audio_engine:
+            return
+        device = None
+        try:
+            name = dpg.get_value("audio_device_combo")
+            if name and _AUDIO_AVAILABLE:
+                for i, d in enumerate(sd.query_devices()):
+                    if d['name'] == name and d['max_input_channels'] > 0:
+                        device = i
+                        break
+        except Exception:
+            pass
+        try:
+            self._audio_engine.start(device=device)
+            dpg.set_value("audio_capture_status", "capturing")
+            dpg.configure_item("audio_capture_status", color=_C_ACCENT)
+        except Exception as e:
+            dpg.set_value("audio_capture_status", f"error: {e}")
+            dpg.configure_item("audio_capture_status", color=[255, 80, 80, 220])
+
+    def _on_audio_stop(self):
+        if not self._audio_engine:
+            return
+        self._audio_engine.stop()
+        try:
+            dpg.set_value("audio_capture_status", "stopped")
+            dpg.configure_item("audio_capture_status", color=_C_DIM)
+        except Exception:
+            pass
+
+    def _on_audio_map_toggle(self):
+        if not self._audio_mapper:
+            return
+        if self._audio_mapper.enabled:
+            self._audio_mapper.disable()
+        else:
+            self._audio_mapper.enable()
+        try:
+            on = self._audio_mapper.enabled
+            dpg.set_item_label("audio_map_btn", "mapping: ON" if on else "mapping: OFF")
+        except Exception:
+            pass
+
+    def _on_audio_gain(self, sender, value):
+        if self._audio_engine:
+            self._audio_engine.gain = value
+
     def _on_color_picker_toggle(self):
         try:
             if dpg.is_item_shown("color_picker_window"):
@@ -9058,6 +9127,23 @@ class GUIEngine:
             except Exception:
                 pass
 
+    def _tick_audio(self):
+        """Update live level meters + capture/mapping status (called from _tick)."""
+        if not self._audio_engine or not dpg.is_item_shown("audio_window"):
+            return
+        try:
+            dpg.set_value("audio_bar_level", self._audio_engine.level)
+            dpg.set_value("audio_bar_low",   self._audio_engine.low)
+            dpg.set_value("audio_bar_mid",   self._audio_engine.mid)
+            dpg.set_value("audio_bar_high",  self._audio_engine.high)
+            if self._audio_mapper:
+                on = self._audio_mapper.enabled
+                dpg.set_item_label("audio_map_btn", "mapping: ON" if on else "mapping: OFF")
+            state = "capturing" if self._audio_engine._running else "stopped"
+            dpg.set_value("audio_capture_status", state)
+        except Exception:
+            pass
+
     def _build_monitors_popup(self):
         """Floating programmer/output monitor popup — no inner boxes, just tables."""
         with dpg.window(tag="monitors_window", label="monitors",
@@ -9174,6 +9260,59 @@ class GUIEngine:
                                    callback=self._on_ai_send)
                 dpg.add_button(label="send", width=110,
                                callback=self._on_ai_send)
+
+    def _build_audio_popup(self):
+        """Floating audio-reactive panel — front-end for Block 9's AudioEngine/
+        AudioMapper, which previously had a full AUDIO ON/OFF/START/STOP/GAIN
+        command surface but zero GUI (see changelog / KNOWN ISSUES): device
+        pick, capture, and mapping toggle all required typing commands. Mirrors
+        the ai/midi popup pattern — built hidden, opened via a header button.
+        """
+        with dpg.window(tag="audio_window", label="audio reactive",
+                        width=420, height=300, show=False, pos=(260, 120)):
+            dpg.add_text("audio reactive", color=_C_ACCENT)
+            dpg.add_separator()
+            if not (self._audio_engine and _AUDIO_AVAILABLE):
+                dpg.add_text("Audio backend unavailable — sounddevice/PortAudio "
+                             "not installed or no input device.", color=_C_DIM,
+                             wrap=380)
+            with dpg.group(horizontal=True):
+                dpg.add_text("device:", color=_C_DIM)
+                _dev_names = []
+                if self._audio_engine and _AUDIO_AVAILABLE:
+                    try:
+                        _dev_names = [d['name'] for d in sd.query_devices()
+                                     if d['max_input_channels'] > 0]
+                    except Exception:
+                        _dev_names = []
+                dpg.add_combo(tag="audio_device_combo", items=_dev_names,
+                              default_value=_dev_names[0] if _dev_names else "",
+                              width=220)
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="start capture", width=110,
+                               callback=self._on_audio_start)
+                dpg.add_button(label="stop", width=60,
+                               callback=self._on_audio_stop)
+                dpg.add_text("", tag="audio_capture_status", color=_C_DIM)
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_button(label="mapping: OFF", tag="audio_map_btn", width=130,
+                               callback=self._on_audio_map_toggle)
+                dpg.add_text("bass=red mid=green high=blue level=dim", color=_C_DIM,
+                             wrap=180)
+            dpg.add_drag_float(tag="audio_gain", label="gain",
+                               default_value=(self._audio_engine.gain
+                                              if self._audio_engine else 3.0),
+                               min_value=0.1, max_value=20.0, speed=0.1,
+                               format="%.1f", width=200,
+                               callback=self._on_audio_gain)
+            dpg.add_separator()
+            dpg.add_text("live levels", color=_C_DIM)
+            for _lbl, _tag in (("level", "audio_bar_level"), ("low", "audio_bar_low"),
+                              ("mid", "audio_bar_mid"), ("high", "audio_bar_high")):
+                with dpg.group(horizontal=True):
+                    dpg.add_text(f"{_lbl:5s}", color=_C_DIM)
+                    dpg.add_progress_bar(tag=_tag, default_value=0.0, width=280)
 
     # ── Callbacks ────────────────────────────────────────────
 
@@ -9978,6 +10117,7 @@ class GUIEngine:
         self._tick_pools()
         self._tick_stage()
         self._tick_fader_page()
+        self._tick_audio()
 
         # ── Status bar: programmer + selection ──────────────────
         prog_data   = self._prog.data if self._prog else {}
@@ -16046,6 +16186,8 @@ gui = GUIEngine(
     library          = library,
     save_patch_fn    = lambda: ShowFile.save_patch(patch),
     fx_params        = _fx_params,
+    audio_engine     = audio_engine,
+    audio_mapper     = audio_mapper,
 )
 # Wire run_command and GUI log into AI engine (both defined after ai was created)
 if getattr(ai, '_enabled', False):
@@ -16393,12 +16535,13 @@ if STUDIO_HEADLESS:
         _check("OSC /gma3/key/1/3/flash release fires FADER 3 FLASH OFF",
                not _osc_ex.is_active)
 
-        # AudioEngine (Block 9) is not wired into any command/GUI path yet,
-        # but its import used to be unconditional -- a missing sounddevice
-        # package or native PortAudio lib crashed the entire console before
-        # a single fixture patched. Force the unavailable branch here so the
-        # guard is verified on every run, regardless of whether this box
-        # happens to have a working audio stack installed.
+        # AudioEngine (Block 9) has an AUDIO command surface and a GUI panel
+        # (audio_window) now, but its import used to be unconditional -- a
+        # missing sounddevice package or native PortAudio lib crashed the
+        # entire console before a single fixture patched. Force the
+        # unavailable branch here so the guard is verified on every run,
+        # regardless of whether this box happens to have a working audio
+        # stack installed.
         _audio_probe = AudioEngine()
         _prev_audio_avail = _AUDIO_AVAILABLE
         _AUDIO_AVAILABLE = False
@@ -17279,6 +17422,8 @@ audio_engine.stop()
 # - Show file per-category save/load with .bak auto-backup
 # - GUI panels: cuestacks, groups, colors, dims, FX pool, forms pool
 # - MIDI fader control, OSC bridge, AI command layer (ANTHROPIC_API_KEY gated)
+# - Audio reactive panel: device pick, capture start/stop, mapping toggle,
+#   gain, live level/low/mid/high meters (GUI front-end for Block 9)
 #
 # ── KNOWN ISSUES / TODO ───────────────────────────────────────────────────────
 # - executor_pool now persists cuestack assignments to executors.json; loaded
