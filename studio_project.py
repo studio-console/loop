@@ -7817,6 +7817,7 @@ class GUIEngine:
                 ("CS 1 COMPRESS",          "Renumber cues to sequential integers 1, 2, 3… — collapses gaps left by deletions"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
+                ("CUE 3 SHIFT 5",         "Move cue 3 to cue 8 in the active cuestack (offset by +5)"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
                 ("CUE 5 FADE 2 DELAY 1",  "Set fade + delay"),
                 ("CUE 5 FADE 2 DFADE 5",  "Global fade + dim-only fade override"),
@@ -16082,6 +16083,30 @@ def run_command(cmd_str):
         save_show()
         return f"Updated: {cue}"
 
+    # CUE <n> SHIFT <offset> — move a cue to a new number within the active cuestack
+    if t0 == 'CUE' and len(tokens) >= 4 and tokens[2].upper() == 'SHIFT':
+        try:
+            cue_num = float(tokens[1])
+            offset  = float(tokens[3])
+        except ValueError:
+            return "Usage: CUE <n> SHIFT <offset>"
+        cs = _active_stack()
+        if not cs:
+            return "CUE SHIFT: no active cuestack"
+        cue = cs.cues.get(cue_num)
+        if not cue:
+            return f"CUE SHIFT: cue {cue_num:.0f} not found"
+        new_num = round(cue_num + offset, 6)
+        if new_num in cs.cues:
+            return f"CUE SHIFT: position {new_num:.0f} already occupied"
+        del cs.cues[cue_num]
+        cue.cue_number = new_num
+        cs.cues[new_num] = cue
+        if cs.current == cue_num:
+            cs.current = new_num
+        save_show()
+        return f"Cue {cue_num:.0f} → {new_num:.0f} in '{cs.name}'"
+
     # RENAME CUESTACK <n> <new name>
     # RENAME CUE <n> <new name>          (active cuestack)
     # RENAME CS <n> CUE <m> <new name>   (explicit cuestack)
@@ -17670,6 +17695,20 @@ if STUDIO_HEADLESS:
         _check("CS COMPRESS preserves cue names in order",
                [_cs95.cues[n].name for n in _cmp_nums] == ["Cue1", "Cue5", "Cue10"])
         _check("CS COMPRESS returns 'compressed' confirmation", "compressed" in r_cmp)
+
+        # CUE SHIFT
+        run_command("RECORD CUESTACK 96 ShiftTest")
+        run_command("CUESTACK 96")
+        run_command("1 FULL"); run_command("RECORD CUE 3 MoverCue")
+        run_command("1 OUT");  run_command("RECORD CUE 7 StayCue")
+        _cs96 = cuestack_pool.get(96)
+        r_shift = run_command("CUE 3 SHIFT 5")   # 3+5 = cue 8
+        _shift_nums = _cs96._sorted_cue_numbers()
+        _check("CUE SHIFT moves cue to new number (3→8)",
+               3.0 not in _shift_nums and 8.0 in _shift_nums)
+        _check("CUE SHIFT does not disturb other cues",
+               7.0 in _shift_nums)
+        _check("CUE SHIFT returns confirmation with new number", "8" in r_shift)
 
         # CUESTACK MERGE
         run_command("RECORD CUESTACK 91 MergeSrc")
