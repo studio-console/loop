@@ -8075,6 +8075,8 @@ class GUIEngine:
                 ("SHOW INFO",             "High-level overview: fixtures, cueLists, presets, active faders, master level"),
                 ("UNDO",                  "Undo last programmer change (up to 20 steps)"),
                 ("PROGRAMMER SHOW",       "Print a human-readable dump of all programmer values (fixture names + channels)"),
+                ("PROGRAMMER SCALE 50",   "Scale all programmer values to 50% (halve every dim, RGB, and attribute channel)"),
+                ("PROGRAMMER SCALE 200",  "Double all programmer values (clamped to max) — amplify a subtle look"),
                 ("PROGRAMMER STATS",      "Show how many fixtures/sub-fixtures and channels are active in programmer"),
                 ("PROGRAMMER CAPTURE",     "Pull the current live cue-layer output for selected fixtures into the programmer"),
                 ("PROGRAMMER SAVE 1 Pre-show", "Save current programmer values to session slot 1 (ephemeral — not in show file)"),
@@ -17415,6 +17417,32 @@ def run_command(cmd_str):
             lines.append(f"  [{sl}] {s['name']}  ({ch} param(s))")
         return "\n".join(lines)
 
+    # ── PROGRAMMER SCALE <pct> — multiply all programmer values by pct% ───────
+    if t0 == 'PROGRAMMER' and len(tokens) >= 3 and tokens[1] == 'SCALE':
+        try:
+            pct = float(tokens[2].rstrip('%'))
+        except ValueError:
+            return f"PROGRAMMER SCALE: bad value '{tokens[2]}'"
+        if pct < 0 or pct > 1000:
+            return "PROGRAMMER SCALE: use a percentage 0–1000"
+        factor = pct / 100.0
+        if not prog.data:
+            return "PROGRAMMER SCALE: programmer is empty"
+        prog._push_undo()
+        scaled = 0
+        for key, vals in prog.data.items():
+            if not vals:
+                continue
+            if 'dim' in vals:
+                vals['dim'] = max(0.0, min(1.0, vals['dim'] * factor))
+                scaled += 1
+            for ch in list(vals):
+                if ch == 'dim':
+                    continue
+                vals[ch] = max(0, min(255, int(round(vals[ch] * factor))))
+                scaled += 1
+        return f"Programmer scaled to {pct:.0f}% — {scaled} value(s) updated"
+
     # ── PROGRAMMER STATS ──────────────────────────────────────────────────────
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('STATS', 'STATUS', 'INFO'):
         m_count   = sum(1 for k in prog.data if '.' not in k and prog.data[k])
@@ -19143,6 +19171,28 @@ if STUDIO_HEADLESS:
             _check("RENAME FIXTURE: name restored", _rf_master.name == _rf_orig)
         _rf_bad = run_command("RENAME FIXTURE 9999 X")
         _check("RENAME FIXTURE: bad ID returns error", "not in patch" in _rf_bad)
+
+        # ── PROGRAMMER SCALE ──────────────────────────────────────────────────
+        prog.clear_programmer()
+        run_command("1 AT DIM 100")         # dim=1.0
+        run_command("1 AT R 200 G 100")     # red=200, green=100
+        _r_ps = run_command("PROGRAMMER SCALE 50")
+        _check("PROGRAMMER SCALE: returns confirmation", "50%" in _r_ps or "scaled" in _r_ps.lower())
+        _ps_dim = prog.data.get("1", {}).get('dim')
+        _ps_r   = prog.data.get("1.1", {}).get('red')
+        _ps_g   = prog.data.get("1.1", {}).get('green')
+        _check("PROGRAMMER SCALE 50: dim scaled to 50%", abs((_ps_dim or 0) - 0.5) < 0.01)
+        _check("PROGRAMMER SCALE 50: red 200 → 100", _ps_r == 100)
+        _check("PROGRAMMER SCALE 50: green 100 → 50", _ps_g == 50)
+        # Test 200% (amplify + clamp)
+        run_command("PROGRAMMER SCALE 200")
+        _ps_r2 = prog.data.get("1.1", {}).get('red')
+        _check("PROGRAMMER SCALE 200: red 100 × 2 = 200", _ps_r2 == 200)
+        # Test empty programmer
+        prog.clear_programmer()
+        _r_ps_empty = run_command("PROGRAMMER SCALE 50")
+        _check("PROGRAMMER SCALE: empty programmer returns error", "empty" in _r_ps_empty.lower())
+        prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
