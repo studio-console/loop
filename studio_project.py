@@ -7934,6 +7934,8 @@ class GUIEngine:
             ]),
             ("FADERS & PAGES", [
                 ("FADER 1 GO / BACK / STOP","Direct fader control"),
+                ("FADER 1 GOTO FIRST",      "Jump fader 1 to the first cue in its cuestack and fire it"),
+                ("FADER 1 GOTO LAST",       "Jump fader 1 to the last cue in its cuestack and fire it"),
                 ("FADER 1 LEVEL 75",        "Set fader 1 master level to 75% (GUI slider also works)"),
                 ("FADER 1 MODE FLASH",      "Set trigger mode: live only while held"),
                 ("FADER 1 MODE TOGGLE",     "Set trigger mode: GO/BACK advance (default)"),
@@ -13501,10 +13503,22 @@ def run_command(cmd_str):
                 return f"Fader {ex_n} cleared — '{cs_name}' reset to start"
             return f"Fader {ex_n} stopped (no cuestack)"
         elif verb == 'GOTO' and len(tokens) > 3:
-            try:
-                num = float(tokens[3])
-            except ValueError:
-                return f"FADER GOTO: bad cue number '{tokens[3]}'"
+            cs = ex.cuestack
+            # GOTO FIRST / LAST — jump to first or last cue
+            dest_kw = tokens[3].upper() if len(tokens) > 3 else ''
+            if dest_kw == 'FIRST':
+                if not cs or not cs.cues:
+                    return f"Fader {ex_n}: no cues"
+                num = cs._sorted_cue_numbers()[0]
+            elif dest_kw == 'LAST':
+                if not cs or not cs.cues:
+                    return f"Fader {ex_n}: no cues"
+                num = cs._sorted_cue_numbers()[-1]
+            else:
+                try:
+                    num = float(tokens[3])
+                except ValueError:
+                    return f"FADER GOTO: bad cue number '{tokens[3]}'"
             executor_pool.bump_priority(ex_n)
             msg = ex.goto(num, patch, fade_engine)
             if not msg or 'not found' not in msg:
@@ -17723,6 +17737,19 @@ if STUDIO_HEADLESS:
         # GOTO non-existent cue returns error, not false success
         _r_goto_bad = run_command("GOTO 9999")
         _check("GOTO non-existent cue returns error", "not found" in (_r_goto_bad or "").lower())
+
+        # FADER GOTO FIRST / LAST
+        _gtfl_ex = executor_pool.get(1)
+        if _gtfl_ex and _gtfl_ex.cuestack and _gtfl_ex.cuestack.cues:
+            _gtfl_cs = _gtfl_ex.cuestack
+            _gtfl_first = _gtfl_cs._sorted_cue_numbers()[0]
+            _gtfl_last  = _gtfl_cs._sorted_cue_numbers()[-1]
+            run_command("FADER 1 GOTO FIRST")
+            _check("FADER GOTO FIRST positions cuestack at first cue",
+                   _gtfl_cs.current == _gtfl_first)
+            run_command("FADER 1 GOTO LAST")
+            _check("FADER GOTO LAST positions cuestack at last cue",
+                   _gtfl_cs.current == _gtfl_last)
 
         # DELETE CUE cleans up cue_pool
         run_command("ALL AT R 128 G 0 B 0")
