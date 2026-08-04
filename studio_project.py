@@ -5094,7 +5094,7 @@ class GUIEngine:
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
         "color_picker_window", "speed_master_window", "fader_page_window",
-        "audio_window",
+        "audio_window", "fx_params_window",
     ]
     _POPUP_LAYOUT_FILE = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "studio_data", "popup_layout.json"
@@ -5190,6 +5190,7 @@ class GUIEngine:
         self._build_changelog_popup()
         self._build_pages_popup()
         self._build_attr_popup()
+        self._build_fx_params_popup()
         self._build_monitors_popup()
         self._build_ai_bar_popup()
         self._build_ai_history_popup()
@@ -5398,26 +5399,30 @@ class GUIEngine:
                 dpg.add_text("cue timing", color=_C_DIM)
                 dpg.add_spacer(width=4)
                 dpg.add_text("—", tag="cue_timing_label", color=_C_DIM)
-            _tw = _W - 96
-            dpg.add_drag_float(tag="cue_fade_input", label="Fade s",
-                               default_value=0.0, min_value=0.0, max_value=30.0,
-                               speed=0.05, format="%.2f", width=_tw,
-                               callback=self._on_cue_fade_edit)
-            dpg.add_drag_float(tag="cue_delay_input", label="Dly  s",
-                               default_value=0.0, min_value=0.0, max_value=30.0,
-                               speed=0.05, format="%.2f", width=_tw,
-                               callback=self._on_cue_delay_edit)
-            dpg.add_drag_float(tag="cue_follow_input", label="Auto→s",
-                               default_value=0.0, min_value=0.0, max_value=300.0,
-                               speed=0.05, format="%.2f", width=_tw,
-                               callback=self._on_cue_follow_edit)
+            _tw  = _W - 96
+            _htw = 108   # two drag_floats + labels per row, fits inside the
+                         # 349px content width left after left_col's scrollbar
+            with dpg.group(horizontal=True):
+                dpg.add_drag_float(tag="cue_fade_input", label="Fade s",
+                                   default_value=0.0, min_value=0.0, max_value=30.0,
+                                   speed=0.05, format="%.2f", width=_htw,
+                                   callback=self._on_cue_fade_edit)
+                dpg.add_drag_float(tag="cue_delay_input", label="Dly  s",
+                                   default_value=0.0, min_value=0.0, max_value=30.0,
+                                   speed=0.05, format="%.2f", width=_htw,
+                                   callback=self._on_cue_delay_edit)
+            with dpg.group(horizontal=True):
+                dpg.add_drag_float(tag="cue_follow_input", label="Auto→s",
+                                   default_value=0.0, min_value=0.0, max_value=300.0,
+                                   speed=0.05, format="%.2f", width=_htw,
+                                   callback=self._on_cue_follow_edit)
+                dpg.add_drag_float(tag="cue_fxoutfade_input", label="FXOut s",
+                                   default_value=0.0, min_value=0.0, max_value=30.0,
+                                   speed=0.05, format="%.2f", width=_htw,
+                                   callback=self._on_cue_fxoutfade_edit)
             dpg.add_input_text(tag="cue_note_input", label="Note",
                                hint="production note...", width=_tw,
                                callback=self._on_cue_note_edit)
-            dpg.add_drag_float(tag="cue_fxoutfade_input", label="FXOut s",
-                               default_value=0.0, min_value=0.0, max_value=30.0,
-                               speed=0.05, format="%.2f", width=_tw,
-                               callback=self._on_cue_fxoutfade_edit)
 
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
@@ -5441,86 +5446,11 @@ class GUIEngine:
                                  default_value=0.0, min_value=0.0,
                                  max_value=100.0, width=_sw,
                                  callback=self._on_fx_spread)
-            dpg.add_button(label="kill fx", width=_W - 20,
-                           callback=lambda: self._cmd("KILL FX") if self._cmd else None)
-            # Rate / Size / Spread pool quick-recall rows (4 slots each)
-            _POOL_BTN = (_W - 20 - 3 * 4) // 4   # 4 buttons per row, 4px gaps
-            dpg.add_spacer(height=2)
-            dpg.add_text("rate", color=_C_DIM)
             with dpg.group(horizontal=True):
-                for n in range(1, 5):
-                    dpg.add_button(tag=f"rate_btn_{n}", label=f"R{n}",
-                                   width=_POOL_BTN, height=18,
-                                   callback=self._on_rate_click, user_data=n)
-                    with dpg.tooltip(f"rate_btn_{n}"):
-                        dpg.add_text(f"Rate {n}", tag=f"rate_tip_{n}")
-                    with dpg.popup(f"rate_btn_{n}", mousebutton=1):
-                        dpg.add_text(f"Rate {n}", color=_C_DIM)
-                        dpg.add_separator()
-                        dpg.add_menu_item(label="Recall Rate",
-                            callback=self._ctx_exec, user_data=f"RATE {n}")
-                        dpg.add_menu_item(label="Record Rate Here...",
-                            callback=self._ctx_prefill,
-                            user_data=f"RECORD RATE {n} ")
-                        dpg.add_menu_item(label="Rename...",
-                            callback=self._ctx_prefill,
-                            user_data=f"RENAME RATE {n} ")
-                        dpg.add_menu_item(label="Copy to slot...",
-                            callback=self._ctx_prefill,
-                            user_data=f"COPY RATE {n} TO ")
-                        dpg.add_separator()
-                        dpg.add_menu_item(label="Delete Rate",
-                            callback=self._ctx_exec, user_data=f"DELETE RATE {n}")
-            dpg.add_text("size", color=_C_DIM)
-            with dpg.group(horizontal=True):
-                for n in range(1, 5):
-                    dpg.add_button(tag=f"size_btn_{n}", label=f"S{n}",
-                                   width=_POOL_BTN, height=18,
-                                   callback=self._on_size_click, user_data=n)
-                    with dpg.tooltip(f"size_btn_{n}"):
-                        dpg.add_text(f"Size {n}", tag=f"size_tip_{n}")
-                    with dpg.popup(f"size_btn_{n}", mousebutton=1):
-                        dpg.add_text(f"Size {n}", color=_C_DIM)
-                        dpg.add_separator()
-                        dpg.add_menu_item(label="Recall Size",
-                            callback=self._ctx_exec, user_data=f"SIZEP {n}")
-                        dpg.add_menu_item(label="Record Size Here...",
-                            callback=self._ctx_prefill,
-                            user_data=f"RECORD SIZEP {n} ")
-                        dpg.add_menu_item(label="Rename...",
-                            callback=self._ctx_prefill,
-                            user_data=f"RENAME SIZEP {n} ")
-                        dpg.add_menu_item(label="Copy to slot...",
-                            callback=self._ctx_prefill,
-                            user_data=f"COPY SIZEP {n} TO ")
-                        dpg.add_separator()
-                        dpg.add_menu_item(label="Delete Size",
-                            callback=self._ctx_exec, user_data=f"DELETE SIZEP {n}")
-            dpg.add_text("spread", color=_C_DIM)
-            with dpg.group(horizontal=True):
-                for n in range(1, 5):
-                    dpg.add_button(tag=f"spread_btn_{n}", label=f"Sp{n}",
-                                   width=_POOL_BTN, height=18,
-                                   callback=self._on_spread_click, user_data=n)
-                    with dpg.tooltip(f"spread_btn_{n}"):
-                        dpg.add_text(f"Spread {n}", tag=f"spread_tip_{n}")
-                    with dpg.popup(f"spread_btn_{n}", mousebutton=1):
-                        dpg.add_text(f"Spread {n}", color=_C_DIM)
-                        dpg.add_separator()
-                        dpg.add_menu_item(label="Recall Spread",
-                            callback=self._ctx_exec, user_data=f"SPREADP {n}")
-                        dpg.add_menu_item(label="Record Spread Here...",
-                            callback=self._ctx_prefill,
-                            user_data=f"RECORD SPREADP {n} ")
-                        dpg.add_menu_item(label="Rename...",
-                            callback=self._ctx_prefill,
-                            user_data=f"RENAME SPREADP {n} ")
-                        dpg.add_menu_item(label="Copy to slot...",
-                            callback=self._ctx_prefill,
-                            user_data=f"COPY SPREADP {n} TO ")
-                        dpg.add_separator()
-                        dpg.add_menu_item(label="Delete Spread",
-                            callback=self._ctx_exec, user_data=f"DELETE SPREADP {n}")
+                dpg.add_button(label="kill fx", width=_W - 20 - 80 - 4,
+                               callback=lambda: self._cmd("KILL FX") if self._cmd else None)
+                dpg.add_button(label="rsp pool", width=80,
+                               callback=self._on_fx_params_toggle)
 
     # ── numpad helpers ───────────────────────────────────────────
     def _numpad_append(self, sender, app_data, user_data):
@@ -5930,7 +5860,7 @@ class GUIEngine:
     _H          = 1080
     # Section heights — sized to fit 1040px viewport with no scroll.
     # Budget: 1040px viewport - 12px WindowPadding - gaps ≈ 988px for content.
-    # Header~70 + 3-col row~480 + sep~2 + P1~170 + P2~170 + Forms~88 = 980px ✓
+    # Header~70 + 3-col row~512 + sep~2 + P1~170 + P2~170 + Forms~88 = 1012px ✓
     # This budget no longer varies with AI config: the AI prompt bar (chips +
     # input, formerly inlined into the main window only when
     # self._ai._enabled, which busted this budget by ~70px for any user with
@@ -5941,7 +5871,19 @@ class GUIEngine:
     # _build_pools_row. The main window keeps scrolling enabled as a fallback
     # regardless, since exact pixel behavior can't be verified without a real
     # display.
-    _H_MAIN     = 480   # main 3-col area — tall enough for all left-col FX controls
+    #
+    # _H_MAIN was 480, but pixel measurement (dpg.get_y_scroll_max on the real
+    # rendered left_col) showed its content overflowing that budget by 224px —
+    # left_col had a permanent scrollbar cutting off the bottom third of the
+    # FX controls. Moved the Rate/Size/Spread pool quick-recall grid to its own
+    # popup (_build_fx_params_popup, "rsp pool" button — same pattern as the
+    # attribute-pool and speed-master popups) and paired the cue timing fields
+    # two-per-row instead of one-per-row, which closed all but 32px of the gap
+    # (re-verified by the same pixel measurement after each change). The
+    # remaining 32px came out of real spare viewport budget confirmed by
+    # measurement, not a guess: raising _H_MAIN this far still leaves the
+    # forms row inside the 1040px viewport with room to spare.
+    _H_MAIN     = 512   # main 3-col area — tall enough for all left-col FX controls
     _H_P1       = 170   # pool row 1: 4×24btn + 3×4gap + 26header + 12WP = 146 content, 170 total
     _H_P2       = 170   # pool row 2
     _H_FORMS    =  56   # forms single row (unused — _build_forms_panel computes own height)
@@ -6593,6 +6535,105 @@ class GUIEngine:
                 self._build_attr_pool_panel("focus",    _C_P_FOCUS,    "focus")
                 self._build_attr_pool_panel("beam",     _C_P_BEAM,     "beam")
                 self._build_attr_pool_panel("control",  _C_P_CONTROL,  "ctrl")
+
+    def _build_fx_params_popup(self):
+        """Floating Rate/Size/Spread pool panel — hidden by default, opened via
+        the 'rsp pool' button next to the inline FX sliders. Moved out of the
+        left column (was pushing left_col 224px past its 480px budget, the
+        largest single contributor) — the sliders themselves (live values)
+        and kill fx stay inline since those are used every cue; recall/record/
+        rename of the 4-slot pools is used far less often and fits the same
+        popup-for-pool pattern already used for attribute pools and speed
+        masters."""
+        _POOL_BTN = 90
+        with dpg.window(tag="fx_params_window", label="Rate / Size / Spread Pools",
+                        width=420, height=190, show=False,
+                        pos=(600, 80), no_collapse=False):
+            dpg.add_text("rate", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                for n in range(1, 5):
+                    dpg.add_button(tag=f"rate_btn_{n}", label=f"R{n}",
+                                   width=_POOL_BTN, height=22,
+                                   callback=self._on_rate_click, user_data=n)
+                    with dpg.tooltip(f"rate_btn_{n}"):
+                        dpg.add_text(f"Rate {n}", tag=f"rate_tip_{n}")
+                    with dpg.popup(f"rate_btn_{n}", mousebutton=1):
+                        dpg.add_text(f"Rate {n}", color=_C_DIM)
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Recall Rate",
+                            callback=self._ctx_exec, user_data=f"RATE {n}")
+                        dpg.add_menu_item(label="Record Rate Here...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RECORD RATE {n} ")
+                        dpg.add_menu_item(label="Rename...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RENAME RATE {n} ")
+                        dpg.add_menu_item(label="Copy to slot...",
+                            callback=self._ctx_prefill,
+                            user_data=f"COPY RATE {n} TO ")
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Delete Rate",
+                            callback=self._ctx_exec, user_data=f"DELETE RATE {n}")
+            dpg.add_text("size", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                for n in range(1, 5):
+                    dpg.add_button(tag=f"size_btn_{n}", label=f"S{n}",
+                                   width=_POOL_BTN, height=22,
+                                   callback=self._on_size_click, user_data=n)
+                    with dpg.tooltip(f"size_btn_{n}"):
+                        dpg.add_text(f"Size {n}", tag=f"size_tip_{n}")
+                    with dpg.popup(f"size_btn_{n}", mousebutton=1):
+                        dpg.add_text(f"Size {n}", color=_C_DIM)
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Recall Size",
+                            callback=self._ctx_exec, user_data=f"SIZEP {n}")
+                        dpg.add_menu_item(label="Record Size Here...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RECORD SIZEP {n} ")
+                        dpg.add_menu_item(label="Rename...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RENAME SIZEP {n} ")
+                        dpg.add_menu_item(label="Copy to slot...",
+                            callback=self._ctx_prefill,
+                            user_data=f"COPY SIZEP {n} TO ")
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Delete Size",
+                            callback=self._ctx_exec, user_data=f"DELETE SIZEP {n}")
+            dpg.add_text("spread", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                for n in range(1, 5):
+                    dpg.add_button(tag=f"spread_btn_{n}", label=f"Sp{n}",
+                                   width=_POOL_BTN, height=22,
+                                   callback=self._on_spread_click, user_data=n)
+                    with dpg.tooltip(f"spread_btn_{n}"):
+                        dpg.add_text(f"Spread {n}", tag=f"spread_tip_{n}")
+                    with dpg.popup(f"spread_btn_{n}", mousebutton=1):
+                        dpg.add_text(f"Spread {n}", color=_C_DIM)
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Recall Spread",
+                            callback=self._ctx_exec, user_data=f"SPREADP {n}")
+                        dpg.add_menu_item(label="Record Spread Here...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RECORD SPREADP {n} ")
+                        dpg.add_menu_item(label="Rename...",
+                            callback=self._ctx_prefill,
+                            user_data=f"RENAME SPREADP {n} ")
+                        dpg.add_menu_item(label="Copy to slot...",
+                            callback=self._ctx_prefill,
+                            user_data=f"COPY SPREADP {n} TO ")
+                        dpg.add_separator()
+                        dpg.add_menu_item(label="Delete Spread",
+                            callback=self._ctx_exec, user_data=f"DELETE SPREADP {n}")
+
+    def _on_fx_params_toggle(self, *_):
+        try:
+            if dpg.is_item_shown("fx_params_window"):
+                self._save_popup_layout()
+                dpg.hide_item("fx_params_window")
+            else:
+                dpg.show_item("fx_params_window")
+        except Exception:
+            pass
 
     def _build_forms_panel(self):
         # Spans the same width as the 3 pool panels above (3 × _PANEL_W).
