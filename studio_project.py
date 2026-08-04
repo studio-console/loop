@@ -11727,6 +11727,7 @@ executor_pool.default_attr_pools = _attr_pools
 
 macro_pool       = {}    # {slot_int: {"name": str, "commands": [str, ...]}}
 _macro_recording = {"slot": None, "cmds": []}
+_macro_play_stack = []   # slot ints currently mid-playback, innermost last — guards against MACRO N containing MACRO N (direct or indirect cycle)
 
 # ── Load all data files (migrate legacy file if present) ──
 ShowFile.load_fx(_fx_params)
@@ -14276,12 +14277,19 @@ def run_command(cmd_str):
             return f"MACRO: unknown subcommand '{t1}'"
         if slot not in macro_pool:
             return f"MACRO {slot}: empty slot"
+        if slot in _macro_play_stack:
+            chain = " -> ".join(str(s) for s in _macro_play_stack) + f" -> {slot}"
+            return f"MACRO {slot}: blocked — recursive playback ({chain})"
         cmds = macro_pool[slot]["commands"]
         results = []
-        for c in cmds:
-            r = run_command(c)
-            if r:
-                results.append(r)
+        _macro_play_stack.append(slot)
+        try:
+            for c in cmds:
+                r = run_command(c)
+                if r:
+                    results.append(r)
+        finally:
+            _macro_play_stack.pop()
         return f"MACRO {slot} '{macro_pool[slot]['name']}' — {len(cmds)} cmd(s) played\n" + "\n".join(results)
 
     if t0 == 'FREEZE':
@@ -17045,6 +17053,25 @@ if STUDIO_HEADLESS:
         run_command("MACRO DELETE 99")
         _check("MACRO DELETE removes slot", 99 not in macro_pool)
         prog.clear_programmer()
+
+        # ── MACRO RECURSION GUARD TESTS ───────────────────────────────────────
+        # A macro whose commands (directly or via another macro) play itself
+        # again used to recurse with no depth limit -> RecursionError crash.
+        macro_pool[97] = {"name": "SelfRef", "commands": ["MACRO 97"]}
+        r_self = run_command("MACRO 97")
+        _check("MACRO self-recursion blocked, not a crash", "blocked" in r_self)
+        _check("MACRO play stack cleaned up after self-recursion block",
+               len(_macro_play_stack) == 0)
+        macro_pool[95] = {"name": "A", "commands": ["MACRO 96"]}
+        macro_pool[96] = {"name": "B", "commands": ["MACRO 95"]}
+        r_cycle = run_command("MACRO 95")
+        _check("MACRO indirect A->B->A cycle blocked, not a crash",
+               "blocked" in r_cycle)
+        _check("MACRO play stack cleaned up after cycle block",
+               len(_macro_play_stack) == 0)
+        del macro_pool[97]
+        del macro_pool[95]
+        del macro_pool[96]
 
         # ── PARK / UNPARK TESTS ───────────────────────────────────────────────
         prog.clear_programmer()
