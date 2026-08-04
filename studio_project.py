@@ -1007,6 +1007,30 @@ class Programmer:
             'UV':      ( 80,   0, 200), 'PURPLE':  (120,   0, 220),
             'LIME':    (  0, 255,  60), 'TEAL':    (  0, 180, 140),
         }
+
+        # Current programmer values — used for relative +/- adjustments
+        _first_fid     = str(self.selection[0].fixture_id) if self.selection else ''
+        _first_sub_fid = (f"{self.selection[0].fixture_id}.1"
+                          if self.selection else '')
+        _cur_dim_pct   = self.data.get(_first_fid, {}).get('dim', 0.0) * 100
+        _cur_sub       = self.data.get(_first_sub_fid, {})
+
+        def _parse_num(tok, base=0.0, lo=0.0, hi=255.0):
+            """Parse absolute or relative (+/-) numeric token. Returns float or None."""
+            raw = tok.rstrip('%')
+            if raw and raw[0] in ('+', '-') and raw[1:].replace('.', '', 1).isdigit():
+                try:
+                    return max(lo, min(hi, base + float(raw)))
+                except ValueError:
+                    return None
+            stripped = raw.replace('.', '', 1).lstrip('-')
+            if stripped.isdigit():
+                try:
+                    return max(lo, min(hi, float(raw)))
+                except ValueError:
+                    return None
+            return None
+
         if tokens[0] == 'FULL':
             self.set_dimmer(100)
             return
@@ -1019,36 +1043,33 @@ class Programmer:
             self.set_channel('green', g)
             self.set_channel('blue', b)
             return
-        # bare number / percent → dimmer  (e.g. AT 80  or  AT 80%)
+        # bare number / percent / relative → dimmer  (e.g. AT 80  AT 80%  AT +10  AT -5)
         # Only applies when it's the sole token to avoid consuming a selection number.
         if len(tokens) == 1:
-            bare = tokens[0].rstrip('%')
-            if bare.replace('.', '', 1).lstrip('-').isdigit():
-                try:
-                    self.set_dimmer(float(bare))
-                except ValueError:
-                    pass
-                return
+            val = _parse_num(tokens[0], _cur_dim_pct, 0, 100)
+            if val is not None:
+                self.set_dimmer(val)
+            return
         # Multi-channel sequence: DIM 100 R 255 G 0 B 128 PAN 200 TILT 64 etc.
         # DIM is handled inline so "AT DIM 100 PAN 200" works in a single call.
+        # Relative values allowed: AT DIM +10  AT PAN -30  AT R +50
         i = 0
         while i < len(tokens) - 1:
             tok = tokens[i]
             if tok == 'DIM':
-                try:
-                    self.set_dimmer(float(tokens[i + 1].rstrip('%')))
+                val = _parse_num(tokens[i + 1], _cur_dim_pct, 0, 100)
+                if val is not None:
+                    self.set_dimmer(val)
                     i += 2
                     continue
-                except ValueError:
-                    pass
             ch = _CH.get(tok)
             if ch:
-                try:
-                    self.set_channel(ch, int(tokens[i + 1]))
+                base_ch = float(_cur_sub.get(ch, 0))
+                val = _parse_num(tokens[i + 1], base_ch, 0, 255)
+                if val is not None:
+                    self.set_channel(ch, int(round(val)))
                     i += 2
                     continue
-                except ValueError:
-                    pass
             i += 1
 
     # ----------------------------------------------------------
@@ -7276,6 +7297,10 @@ class GUIEngine:
                 ("1 AT FULL",             "Full brightness (dim = 1.0)"),
                 ("1 AT OUT",              "Output off (dim = 0.0)"),
                 ("1 AT DIM 75",           "Dim to 75%"),
+                ("1 AT +10",             "Relative dim: add 10 percentage points to current programmer dim"),
+                ("1 AT -20",             "Relative dim: subtract 20 percentage points"),
+                ("1 AT R +50",           "Relative channel: add 50 to current red in programmer"),
+                ("1 AT PAN +30",         "Relative attribute: add 30 to current pan value"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -16192,6 +16217,29 @@ if STUDIO_HEADLESS:
             prog.clear_programmer()
             run_command("FX CLEAR")
             del patch.fixtures[50]
+
+        # ── RELATIVE AT TESTS ─────────────────────────────────────────────────
+        run_command("1")
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT 50")                      # set dim to 50%
+        _check("AT 50 sets dim to 50%",
+               abs(prog.data.get('1', {}).get('dim', 0) - 0.5) < 0.01)
+        run_command("AT +20")                     # relative: 50 + 20 = 70%
+        _check("AT +20 increases dim by 20pp",
+               abs(prog.data.get('1', {}).get('dim', 0) - 0.7) < 0.01)
+        run_command("AT -10")                     # relative: 70 - 10 = 60%
+        _check("AT -10 decreases dim by 10pp",
+               abs(prog.data.get('1', {}).get('dim', 0) - 0.6) < 0.01)
+        # RGB relative
+        run_command("AT R 100")
+        run_command("AT R +50")                   # 100 + 50 = 150
+        _check("AT R +50 increases red by 50",
+               prog.data.get('1.1', {}).get('red') == 150)
+        run_command("AT R +200")                  # clamp at 255
+        _check("AT R +200 clamps to 255",
+               prog.data.get('1.1', {}).get('red') == 255)
+        prog.clear_programmer()
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
