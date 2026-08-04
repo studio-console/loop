@@ -7732,6 +7732,7 @@ class GUIEngine:
                 ("LIST COLOR",            "List all color presets with RGB sample"),
                 ("LIST DIM",             "List all dim presets with level"),
                 ("LIST GROUP",            "List all groups and member counts"),
+                ("GROUP 2 INFO",          "Show group 2's name and all member fixture IDs and names"),
                 ("LIST FX",               "List all FX presets with waveform/channel"),
                 ("LIST RATE / SIZE / SPREAD / FORM", "List pool presets"),
                 ("LIST POSITION / GOBO / ZOOM / FOCUS / BEAM / CONTROL", "List attr pool presets"),
@@ -15362,6 +15363,19 @@ def run_command(cmd_str):
             gid = int(tokens[1])
         except ValueError:
             return f"GROUP: bad id '{tokens[1]}'"
+        # GROUP <n> INFO/STATUS — show group members
+        if len(tokens) >= 3 and tokens[2] in ('INFO', 'STATUS', 'SHOW'):
+            g = group_pool.get(gid)
+            if not g:
+                return f"Group {gid} not found"
+            # Resolve member fixture IDs to names; members are ("master", fid) tuples
+            member_strs = []
+            for entry in g.members:
+                fid = entry[1] if isinstance(entry, tuple) else int(entry)
+                m = patch.get(fid)
+                member_strs.append(f"{fid}:{m.name}" if m else str(fid))
+            return (f"Group {gid}: {g.name}\n"
+                    f"  Members ({len(g.members)}): {', '.join(member_strs) or '(empty)'}")
         group_pool.recall(gid, prog)
         g = group_pool.get(gid)
         return f"Group {gid} recalled" if g else f"Group {gid} not found"
@@ -17002,6 +17016,9 @@ if STUDIO_HEADLESS:
         _check("RECORD GROUP from selection", "Recorded" in r_grp)
         r_grp_recall = run_command("GROUP 9")
         _check("GROUP recall", "recalled" in r_grp_recall.lower())
+        r_gi = run_command("GROUP 9 INFO")
+        _check("GROUP INFO shows group name", "SmokeGroup" in r_gi)
+        _check("GROUP INFO shows member count", "Members" in r_gi)
 
         # RECORD FORM (custom breakpoint curve) — untested prior to this session
         r_form = run_command("RECORD FORM 6 SmokeWave 0.0,0.0 0.5,1.0 1.0,0.0")
