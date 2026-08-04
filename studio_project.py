@@ -7783,6 +7783,7 @@ class GUIEngine:
                 ("CLEAR FORM 7",          "Delete custom form 7 (built-ins 1-4 protected)"),
                 ("CLEAR POSITION 1",      "Delete position preset 1 (works for all 6 attr types)"),
                 ("RATE 3 / SIZEP 2 / SPREADP 1", "Recall a rate/size/spread preset onto the live BPM/size/spread"),
+                ("CS 2 INFO",             "Detailed status of cuestack 2: cue list, current cue, loop/wrap, assigned faders"),
                 ("CUE 5 SHOW",            "Inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "Set a production note on cue 5"),
                 ("CUE 5 FADE 3",          "Set fade time on cue 5 (no programmer needed)"),
@@ -13077,6 +13078,35 @@ def run_command(cmd_str):
             n = int(tokens[1])
         except ValueError:
             return f"CUESTACK: bad number '{tokens[1]}'"
+        # CS n INFO/STATUS — detailed cuestack status
+        if len(tokens) >= 3 and tokens[2] in ('INFO', 'STATUS', 'SHOW'):
+            cs = cuestack_pool.get(n)
+            if not cs:
+                return f"Cuestack {n} not found"
+            # Which faders are running this cuestack?
+            faders = [str(eid) for eid, ex in executor_pool.executors.items()
+                      if ex.cuestack and ex.cuestack.stack_id == n]
+            sorted_nums = cs._sorted_cue_numbers()
+            lines = [f"Cuestack {n}: {cs.name}",
+                     f"  Cues      : {len(sorted_nums)}",
+                     f"  Loop/Wrap : {'ON' if getattr(cs, 'wrap', False) else 'OFF'}",
+                     f"  Faders    : {', '.join(faders) or '(none)'}"]
+            if cs.current is not None:
+                cue = cs.cues.get(cs.current)
+                cue_name = cue.name if cue else "?"
+                lines.append(f"  Current   : Cue {cs.current:.0f} — {cue_name}")
+            else:
+                lines.append("  Current   : (not started)")
+            if sorted_nums:
+                lines.append("  Cue list  :")
+                for num in sorted_nums[:10]:
+                    c = cs.cues[num]
+                    cur_m = " ◀" if num == cs.current else ""
+                    note_s = f"  [{c.note}]" if getattr(c, 'note', '') else ""
+                    lines.append(f"    [{num:.0f}] {c.name}  fade:{c.fade_time}s{note_s}{cur_m}")
+                if len(sorted_nums) > 10:
+                    lines.append(f"    … ({len(sorted_nums) - 10} more cues)")
+            return "\n".join(lines)
         # CS n WRAP ON/OFF — clean restart at top after last cue
         if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
             cs = cuestack_pool.get(n)
@@ -17350,6 +17380,13 @@ if STUDIO_HEADLESS:
         _check("CS 99 WRAP ON sets .wrap = True", _cs99.wrap is True)
         run_command("CS 99 WRAP OFF")
         _check("CS 99 WRAP OFF sets .wrap = False", _cs99.wrap is False)
+
+        # CS INFO
+        r_csi = run_command("CS 99 INFO")
+        _check("CS INFO shows cuestack name", "WrapTest" in r_csi)
+        _check("CS INFO shows wrap/loop state", "Wrap" in r_csi or "Loop" in r_csi)
+        r_csi_bad = run_command("CS 9999 INFO")
+        _check("CS INFO rejects unknown cuestack", "not found" in r_csi_bad)
 
         # CS BACK on wrap-around (first cue -> last cue) must also clear the
         # LTP-bleed layer when WRAP is ON -- CS GO already did this on forward
