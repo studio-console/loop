@@ -873,7 +873,7 @@ class Programmer:
                              'GOBO', 'GOBO_ROT', 'GOBO2', 'GOBO2_ROT',
                              'ZOOM', 'FOCUS', 'IRIS', 'SHUTTER1',
                              'DIMMER', 'COLOR', 'PRISM', 'FROST', 'ANIMATION',
-                             'CONTROL', 'MACRO', 'FAN', 'HUE'}
+                             'CONTROL', 'MACRO', 'FAN', 'HUE', 'CT'}
         if 'AT' in tokens:
             at_index         = tokens.index('AT')
             selection_tokens = tokens[:at_index]
@@ -1146,6 +1146,27 @@ class Programmer:
             r = int(round((r1 + m) * 255))
             g = int(round((g1 + m) * 255))
             b = int(round((b1 + m) * 255))
+            self.set_channel('red', r)
+            self.set_channel('green', g)
+            self.set_channel('blue', b)
+            return
+
+        # CT <kelvin> — set RGB from color temperature (1000K–10000K)
+        # Uses Tanner Helland algorithm — no import needed (math already loaded)
+        if tokens[0] == 'CT':
+            try:
+                K = float(tokens[1])
+            except (IndexError, ValueError):
+                return
+            import math as _m
+            t = max(1000.0, min(10000.0, K)) / 100.0
+            r = 255 if t <= 66 else max(0, min(255, int(329.698727446 * (t - 60) ** -0.1332047592)))
+            g_raw = (99.4708025861 * _m.log(t) - 161.1195681661 if t <= 66
+                     else 288.1221695283 * (t - 60) ** -0.0755148492)
+            g = max(0, min(255, int(g_raw)))
+            b = (255 if t >= 66 else
+                 (0 if t <= 19 else
+                  max(0, min(255, int(138.5177312231 * _m.log(t - 10) - 305.0447927307)))))
             self.set_channel('red', r)
             self.set_channel('green', g)
             self.set_channel('blue', b)
@@ -7557,6 +7578,8 @@ class GUIEngine:
                 ("1 AT HUE 120",           "Set colour from hue (0–360°), full saturation and brightness"),
                 ("1 AT HUE 30 SAT 80",    "Hue + saturation (0–100%), full brightness"),
                 ("1 AT HUE 60 SAT 100 VAL 70", "Full HSV control — hue, saturation, and value (brightness)"),
+                ("1 AT CT 3200",          "Set colour from color temperature in Kelvin (1000–10000K) — warm to cool"),
+                ("1 AT CT 5600",          "Daylight-balanced white (5600K)"),
                 ("1 AT WHITE",            "Named colour shorthand — sets R/G/B directly"),
                 ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "Other named colours"),
                 ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "More named colours"),
@@ -17290,6 +17313,23 @@ if STUDIO_HEADLESS:
                prog.data.get('1.1', {}).get('red') == 255 and
                prog.data.get('1.1', {}).get('green') == 255 and
                prog.data.get('1.1', {}).get('blue') == 255)
+        prog.clear_programmer()
+
+        # ── CT (color temperature) COMMAND TESTS ──────────────────────────────
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT CT 9000")   # very cool — blue=255, red < 255
+        _check("CT 9000 (cool) sets blue=255",
+               prog.data.get('1.1', {}).get('blue') == 255)
+        _check("CT 9000 (cool) sets red < 255",
+               (prog.data.get('1.1', {}).get('red') or 0) < 255)
+        prog.clear_programmer()
+        run_command("1")
+        run_command("AT CT 2700")   # warm tungsten — red = 255, blue ~ low
+        _check("CT 2700 (warm) sets red=255",
+               prog.data.get('1.1', {}).get('red') == 255)
+        _check("CT 2700 (warm) sets blue < 200",
+               (prog.data.get('1.1', {}).get('blue') or 0) < 200)
         prog.clear_programmer()
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
