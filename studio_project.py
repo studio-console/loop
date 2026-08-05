@@ -6996,7 +6996,7 @@ class GUIEngine:
             dpg.add_text("rate", color=_C_DIM)
             with dpg.group(horizontal=True):
                 for n in range(1, 5):
-                    dpg.add_button(tag=f"rate_btn_{n}", label=f"R{n}",
+                    dpg.add_button(tag=f"rate_btn_{n}", label=f"r{n}",
                                    width=_POOL_BTN, height=22,
                                    callback=self._on_rate_click, user_data=n)
                     with dpg.tooltip(f"rate_btn_{n}"):
@@ -7021,7 +7021,7 @@ class GUIEngine:
             dpg.add_text("size", color=_C_DIM)
             with dpg.group(horizontal=True):
                 for n in range(1, 5):
-                    dpg.add_button(tag=f"size_btn_{n}", label=f"S{n}",
+                    dpg.add_button(tag=f"size_btn_{n}", label=f"s{n}",
                                    width=_POOL_BTN, height=22,
                                    callback=self._on_size_click, user_data=n)
                     with dpg.tooltip(f"size_btn_{n}"):
@@ -7046,7 +7046,7 @@ class GUIEngine:
             dpg.add_text("spread", color=_C_DIM)
             with dpg.group(horizontal=True):
                 for n in range(1, 5):
-                    dpg.add_button(tag=f"spread_btn_{n}", label=f"Sp{n}",
+                    dpg.add_button(tag=f"spread_btn_{n}", label=f"sp{n}",
                                    width=_POOL_BTN, height=22,
                                    callback=self._on_spread_click, user_data=n)
                     with dpg.tooltip(f"spread_btn_{n}"):
@@ -11220,15 +11220,15 @@ class GUIEngine:
                 xp = self._spread_pool.get(n) if self._spread_pool else None
                 try:
                     dpg.set_item_label(f"rate_btn_{n}",
-                                       f"R{n}:{rp.bpm:.0f}" if rp else f"R{n}")
+                                       f"r{n}:{rp.bpm:.0f}" if rp else f"r{n}")
                     dpg.set_value(f"rate_tip_{n}",
-                                  f"rate {n}: {rp.name}  {rp.bpm:.0f} BPM" if rp
+                                  f"rate {n}: {rp.name}  {rp.bpm:.0f} bpm" if rp
                                   else f"rate {n} — empty  (RECORD RATE {n} Name bpm)")
                 except Exception:
                     pass
                 try:
                     dpg.set_item_label(f"size_btn_{n}",
-                                       f"S{n}:{sp.size:.0f}" if sp else f"S{n}")
+                                       f"s{n}:{sp.size:.0f}" if sp else f"s{n}")
                     dpg.set_value(f"size_tip_{n}",
                                   f"size {n}: {sp.name}  {sp.size:.0f}%" if sp
                                   else f"size {n} — empty  (RECORD SIZEP {n} Name size)")
@@ -11236,7 +11236,7 @@ class GUIEngine:
                     pass
                 try:
                     dpg.set_item_label(f"spread_btn_{n}",
-                                       f"Sp{n}:{xp.spread:.0f}" if xp else f"Sp{n}")
+                                       f"sp{n}:{xp.spread:.0f}" if xp else f"sp{n}")
                     dpg.set_value(f"spread_tip_{n}",
                                   f"spread {n}: {xp.name}  {xp.spread:.2f}" if xp
                                   else f"spread {n} — empty  (RECORD SPREADP {n} Name spread)")
