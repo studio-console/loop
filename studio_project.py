@@ -5237,7 +5237,7 @@ _C_HOT       = (212, 152, 255, 255) # bright violet-pink for live status
 _C_BTN       = (28,  20,  64, 255)  # resting button — more visible (was 15,10,36)
 _C_BTN_H     = (80,  56, 155, 255)  # hover — punchy (was 52,34,106)
 _C_BTN_A     = (122,  84, 215, 255) # active — bright violet (was 98,64,182)
-_C_CUE_ACT   = (46,  32,  95, 255)  # selected cue row (was 32,22,70)
+_C_CUE_ACT   = (72,  50, 148, 255)  # selected cue row — brighter violet
 _C_SLIDER_G  = _C_ACCENT
 
 # Pool panel header colours — violet family, varied lightness/hue for readability
@@ -5290,13 +5290,13 @@ def _apply_theme():
             # Input cursor and selection highlight
             dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, (80, 50, 160, 140))
             dpg.add_theme_color(dpg.mvThemeCol_NavHighlight,   _C_ACCENT)
-            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  4)
-            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   3)
-            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   4)
-            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    3)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  6)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   6)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   8)
+            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    6)
             dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 1)
-            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,     6, 4)
-            dpg.add_theme_style(dpg.mvStyleVar_FramePadding,    6, 3)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,     6, 5)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding,    8, 4)
             dpg.add_theme_style(dpg.mvStyleVar_WindowPadding,   8, 6)
             dpg.add_theme_style(dpg.mvStyleVar_CellPadding,     4, 3)
     dpg.bind_theme(t)
@@ -5786,20 +5786,20 @@ class GUIEngine:
             dpg.add_text("●", tag="sb_prog_dot",   color=_C_DIM)
             dpg.add_text("programmer", tag="sb_prog_lbl", color=_C_DIM)
             dpg.add_spacer(width=16)
-            dpg.add_button(label="blind", tag="sb_blind_lbl",
-                           width=58, height=24,
+            dpg.add_button(label="○ blind", tag="sb_blind_lbl",
+                           width=70, height=24,
                            callback=self._on_blind_toggle)
             dpg.add_spacer(width=6)
-            dpg.add_button(label="blackout", tag="sb_bbo_lbl",
-                           width=78, height=24,
+            dpg.add_button(label="○ blackout", tag="sb_bbo_lbl",
+                           width=94, height=24,
                            callback=lambda: self._cmd("BLACKOUT") if self._cmd else None)
             dpg.add_spacer(width=6)
-            dpg.add_button(label="highlight", tag="sb_hl_lbl",
-                           width=78, height=24,
+            dpg.add_button(label="○ highlight", tag="sb_hl_lbl",
+                           width=90, height=24,
                            callback=self._on_highlight_toggle)
             dpg.add_spacer(width=6)
-            dpg.add_button(label="pan·tilt", tag="sb_pt_lbl",
-                           width=70, height=24,
+            dpg.add_button(label="○ pan·tilt", tag="sb_pt_lbl",
+                           width=84, height=24,
                            callback=self._on_pt_toggle)
             dpg.add_spacer(width=16)
             dpg.add_text("sel", color=_C_DIM)
@@ -5824,7 +5824,7 @@ class GUIEngine:
                               border=True, no_scrollbar=False, no_scroll_with_mouse=False):
             # ── Cue list ─────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("cuestack", color=_C_ACCENT)
+                dpg.add_text("› cuestack", color=_C_ACCENT)
                 dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
                               width=-120, height_mode=dpg.mvComboHeight_Small,
                               callback=self._on_cs_combo_select)
@@ -5847,7 +5847,7 @@ class GUIEngine:
             dpg.add_spacer(height=4)
             # ── Active playbacks ─────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("active playbacks", color=_C_ACCENT)
+                dpg.add_text("› active playbacks", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_executors)
@@ -5891,7 +5891,7 @@ class GUIEngine:
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("fx", color=_C_ACCENT)
+                dpg.add_text("› fx", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=24,
                                callback=self._on_tap_tempo)
@@ -6187,7 +6187,7 @@ class GUIEngine:
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── Header ─────────────────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("command line", color=_C_ACCENT)
+                dpg.add_text("› command line", color=_C_ACCENT)
                 dpg.add_spacer(width=10)
                 dpg.add_text("sel: —", tag="cmd_sel_count", color=_C_DIM)
 
@@ -6325,8 +6325,8 @@ class GUIEngine:
     # measurement, not a guess: raising _H_MAIN this far still leaves the
     # forms row inside the 1040px viewport with room to spare.
     _H_MAIN     = 512   # main 3-col area — tall enough for all left-col FX controls
-    _H_P1       = 170   # pool row 1: 4×24btn + 3×4gap + 26header + 12WP = 146 content, 170 total
-    _H_P2       = 170   # pool row 2
+    _H_P1       = 182   # pool row 1: 4×30btn + 3×5gap + header + 12WP ≈ 170px content
+    _H_P2       = 182   # pool row 2
     _H_FORMS    =  56   # forms single row (unused — _build_forms_panel computes own height)
     _H_MON      = 270   # monitor popup panel height (not in main layout)
     # Column widths
@@ -6338,7 +6338,7 @@ class GUIEngine:
     _PANEL_W    = 634   # panels touch: 3 × 634 = 1902 fits 1920 w/ outer padding
     # BTN_W: (634 - 2×8pad - 2×1border - 5×6gap) / 6 = (616-30)/6 = 97.7 → 97
     _BTN_W      =  97   # exactly fits 6 columns in a 634-wide panel
-    _BTN_H      =  26   # 4 rows × 26 + 3 × 4gap + header = 140px content
+    _BTN_H      =  30   # 4 rows × 30 + 3 × 5gap + header = ~155px content
     _POOL_H     = _H_P1
 
     @staticmethod
@@ -6608,7 +6608,7 @@ class GUIEngine:
         with dpg.child_window(tag="pool_groups", width=self._PANEL_W,
                               height=self._POOL_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
-            dpg.add_text("groups", color=_C_P_GROUPS)
+            dpg.add_text("› groups", color=_C_P_GROUPS)
             dpg.add_separator()
             for row in range(rows):
                 with dpg.group(horizontal=True):
@@ -6645,7 +6645,7 @@ class GUIEngine:
         with dpg.child_window(tag="pool_colors", width=self._PANEL_W,
                               height=self._POOL_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
-            dpg.add_text("color presets", color=_C_P_COLORS)
+            dpg.add_text("› color presets", color=_C_P_COLORS)
             dpg.add_separator()
             for row in range(rows):
                 with dpg.group(horizontal=True):
@@ -6682,7 +6682,7 @@ class GUIEngine:
         with dpg.child_window(tag="pool_dims", width=self._PANEL_W,
                               height=self._POOL_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
-            dpg.add_text("dim presets", color=_C_P_DIMS)
+            dpg.add_text("› dim presets", color=_C_P_DIMS)
             dpg.add_separator()
             for row in range(rows):
                 with dpg.group(horizontal=True):
@@ -6781,7 +6781,7 @@ class GUIEngine:
         with dpg.child_window(tag="pool_cuestacks", width=self._PANEL_W,
                               height=self._POOL_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
-            dpg.add_text("cuestacks", color=_C_P_CS)
+            dpg.add_text("› cuestacks", color=_C_P_CS)
             dpg.add_separator()
             for row in range(rows):
                 with dpg.group(horizontal=True):
@@ -6818,7 +6818,7 @@ class GUIEngine:
         with dpg.child_window(tag="pool_cues", width=self._PANEL_W,
                               height=self._POOL_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
-            dpg.add_text("cues", color=_C_P_CUES)
+            dpg.add_text("› cues", color=_C_P_CUES)
             dpg.add_separator()
             for row in range(rows):
                 with dpg.group(horizontal=True):
@@ -6883,7 +6883,7 @@ class GUIEngine:
                               no_scrollbar=True, no_scroll_with_mouse=True):
             # Header: title + live summary + CLEAR FX all on one line
             with dpg.group(horizontal=True):
-                dpg.add_text("fx pool", color=_C_P_FX)
+                dpg.add_text("› fx pool", color=_C_P_FX)
                 dpg.add_spacer(width=6)
                 dpg.add_text("—", tag="fx_prog_summary", color=_C_DIM)
                 dpg.add_spacer(width=4)
@@ -7102,7 +7102,7 @@ class GUIEngine:
         with dpg.child_window(tag="pool_forms", width=_PANEL_TOTAL,
                               height=_FORMS_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
-            dpg.add_text("forms", color=_C_P_FORMS)
+            dpg.add_text("› forms", color=_C_P_FORMS)
             dpg.add_separator()
             for row in range(2):
                 with dpg.group(horizontal=True):
@@ -10369,21 +10369,34 @@ class GUIEngine:
         if not stack:
             return
         sid = stack.stack_id
-        for num in stack._sorted_cue_numbers():
-            cue    = stack.cues[num]
-            tag    = f"cue_row_{sid}_{num}"
-            ft     = f" {cue.fade_time:.1f}s" if cue.fade_time else ""
-            fw     = getattr(cue, 'follow_time', 0.0)
-            follow = f" →{fw:.0f}s" if fw > 0 else ""
-            label  = f"  [{num:.0f}]  {cue.name}{ft}{follow}"
-            note   = getattr(cue, 'note', '')
-            with dpg.group(parent="cue_list_group", horizontal=True):
-                dpg.add_selectable(label=label, tag=tag,
-                                   callback=lambda *_, u=num: self._goto(u),
-                                   user_data=num)
-                if note:
-                    with dpg.tooltip(tag):
-                        dpg.add_text(note, color=(200, 200, 160, 255))
+        with dpg.table(parent="cue_list_group", tag=f"cl_tbl_{sid}",
+                       header_row=False, resizable=False,
+                       borders_innerH=True, borders_innerV=False,
+                       borders_outerH=False, borders_outerV=False,
+                       row_background=True,
+                       scrollX=False, scrollY=False,
+                       policy=dpg.mvTable_SizingFixedFit):
+            dpg.add_table_column(label="#", width_fixed=True, init_width_or_weight=42)
+            dpg.add_table_column(label="name", width_stretch=True, init_width_or_weight=1.0)
+            dpg.add_table_column(label="t", width_fixed=True, init_width_or_weight=50)
+            for num in stack._sorted_cue_numbers():
+                cue  = stack.cues[num]
+                tag  = f"cue_row_{sid}_{num}"
+                ft   = f"{cue.fade_time:.1f}s" if cue.fade_time else ""
+                fw   = getattr(cue, 'follow_time', 0.0)
+                if fw > 0:
+                    ft = (ft + f" →{fw:.0f}s") if ft else f"→{fw:.0f}s"
+                note = getattr(cue, 'note', '')
+                with dpg.table_row():
+                    dpg.add_text(f"{num:.0f}", color=_C_ACCENT)
+                    dpg.add_selectable(label=cue.name, tag=tag,
+                                       span_columns=False,
+                                       callback=lambda *_, u=num: self._goto(u),
+                                       user_data=num)
+                    if note:
+                        with dpg.tooltip(tag):
+                            dpg.add_text(note, color=(200, 200, 160, 255))
+                    dpg.add_text(ft, color=_C_DIM)
 
     def _playbacks_state_hash(self):
         """Compact snapshot of active executor state — used to detect changes."""
@@ -10811,7 +10824,7 @@ class GUIEngine:
         try:
             blind = self._out.blind if self._out else False
             dpg.configure_item("sb_blind_lbl",
-                               label="■ blind" if blind else "blind")
+                               label="● blind" if blind else "○ blind")
             theme = self._alert_btn_theme if blind else self._dim_btn_theme
             if theme:
                 dpg.bind_item_theme("sb_blind_lbl", theme)
@@ -10822,7 +10835,7 @@ class GUIEngine:
         try:
             bbo = (self._out.master_level == 0.0) if self._out else False
             dpg.configure_item("sb_bbo_lbl",
-                               label="■ blackout" if bbo else "blackout")
+                               label="● blackout" if bbo else "○ blackout")
             theme = self._alert_btn_theme if bbo else self._dim_btn_theme
             if theme:
                 dpg.bind_item_theme("sb_bbo_lbl", theme)
@@ -10839,7 +10852,7 @@ class GUIEngine:
         # HIGHLIGHT indicator (button — clickable toggle; syncs selection each tick)
         try:
             hl = self._out.highlight_mode if self._out else False
-            dpg.configure_item("sb_hl_lbl", label="■ highlight" if hl else "highlight")
+            dpg.configure_item("sb_hl_lbl", label="● highlight" if hl else "○ highlight")
             theme = self._go_theme if hl else self._dim_btn_theme
             if theme:
                 dpg.bind_item_theme("sb_hl_lbl", theme)
@@ -10883,14 +10896,14 @@ class GUIEngine:
         try:
             pt = _prog_time
             if pt.get('on'):
-                pt_label = f"pan·tilt {pt['fade']:.1f}s"
+                pt_label = f"● pan·tilt {pt['fade']:.1f}s"
                 if pt.get('delay', 0.0):
                     pt_label += f" d{pt['delay']:.1f}"
                 dpg.configure_item("sb_pt_lbl", label=pt_label)
                 if self._go_theme:
                     dpg.bind_item_theme("sb_pt_lbl", self._go_theme)
             else:
-                dpg.configure_item("sb_pt_lbl", label="pt")
+                dpg.configure_item("sb_pt_lbl", label="○ pan·tilt")
                 if self._dim_btn_theme:
                     dpg.bind_item_theme("sb_pt_lbl", self._dim_btn_theme)
         except Exception:
@@ -11111,18 +11124,27 @@ class GUIEngine:
         if active_cs:
             sid = active_cs.stack_id
             sorted_nums = active_cs._sorted_cue_numbers()
+            tbl_tag = f"cl_tbl_{sid}"
             for idx, num in enumerate(sorted_nums):
                 tag = f"cue_row_{sid}_{num}"
+                is_cur = (num == cur)
                 try:
-                    dpg.set_value(tag, num == cur)
+                    dpg.set_value(tag, is_cur)
+                except Exception:
+                    pass
+                try:
+                    if is_cur:
+                        dpg.highlight_table_row(tbl_tag, idx, _C_CUE_ACT)
+                    else:
+                        dpg.unhighlight_table_row(tbl_tag, idx)
                 except Exception:
                     pass
             # Auto-scroll the cue list so the active cue stays visible
             if cur is not None:
                 try:
                     cur_idx = list(sorted_nums).index(cur) if cur in sorted_nums else 0
-                    row_h   = 19   # approximate selectable row height
-                    target  = max(0, cur_idx * row_h - 30)
+                    row_h   = 22   # approximate table row height with padding
+                    target  = max(0, cur_idx * row_h - 44)
                     dpg.set_y_scroll("cue_list_scroll", target)
                 except Exception:
                     pass
