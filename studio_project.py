@@ -2202,7 +2202,7 @@ class CuePool:
         self.cues.pop(int(n), None)
 
     def record(self, n, programmer, name="", fade_time=0.0):
-        cue = Cue(n, name or f"Cue {n}", fade_time)
+        cue = Cue(n, name or f"cue {n}", fade_time)
         cue.record(programmer)
         self.cues[int(n)] = cue
         return cue
@@ -2223,9 +2223,9 @@ class CueStackPool:
         existing = self.stacks.get(int(n))
         if existing:
             # Rename in-place — preserves cues and executor references
-            existing.name = name or f"Cuestack {n}"
+            existing.name = name or f"cuestack {n}"
             return existing
-        cs = CueStack(int(n), name or f"Cuestack {n}")
+        cs = CueStack(int(n), name or f"cuestack {n}")
         self.stacks[int(n)] = cs
         return cs
 
@@ -2626,7 +2626,7 @@ class FXPool:
 
     def record_from_active(self, n, active_fx_list, name=""):
         """Snapshot currently running FXLayer objects into a new preset, preserving pool refs."""
-        preset = FXPreset(int(n), name or f"FX {n}")
+        preset = FXPreset(int(n), name or f"fx {n}")
         for layer in active_fx_list:
             preset.add_layer(
                 layer.waveform, layer.channel,
@@ -6606,9 +6606,9 @@ class GUIEngine:
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_group_click, user_data=n)
                         with dpg.tooltip(f"grp_btn_{n}"):
-                            dpg.add_text(f"Group {n}", tag=f"grp_tip_{n}")
+                            dpg.add_text(f"group {n}", tag=f"grp_tip_{n}")
                         with dpg.popup(f"grp_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"Group {n}", color=_C_P_GROUPS)
+                            dpg.add_text(f"group {n}", color=_C_P_GROUPS)
                             dpg.add_separator()
                             dpg.add_menu_item(label="record group here",
                                 callback=self._ctx_prefill,
@@ -6643,9 +6643,9 @@ class GUIEngine:
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_color_click, user_data=n)
                         with dpg.tooltip(f"col_btn_{n}"):
-                            dpg.add_text(f"Color {n}", tag=f"col_tip_{n}")
+                            dpg.add_text(f"color {n}", tag=f"col_tip_{n}")
                         with dpg.popup(f"col_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"Color {n}", color=_C_P_COLORS)
+                            dpg.add_text(f"color {n}", color=_C_P_COLORS)
                             dpg.add_separator()
                             dpg.add_menu_item(label="record color here",
                                 callback=self._ctx_prefill,
@@ -6680,9 +6680,9 @@ class GUIEngine:
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_dim_click, user_data=n)
                         with dpg.tooltip(f"dim_btn_{n}"):
-                            dpg.add_text(f"Dim {n}", tag=f"dim_tip_{n}")
+                            dpg.add_text(f"dim {n}", tag=f"dim_tip_{n}")
                         with dpg.popup(f"dim_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"Dim {n}", color=_C_P_DIMS)
+                            dpg.add_text(f"dim {n}", color=_C_P_DIMS)
                             dpg.add_separator()
                             dpg.add_menu_item(label="record dim here",
                                 callback=self._ctx_prefill,
@@ -6779,9 +6779,9 @@ class GUIEngine:
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_cuestack_click, user_data=n)
                         with dpg.tooltip(f"cs_btn_{n}"):
-                            dpg.add_text(f"Cuestack {n}", tag=f"cs_tip_{n}")
+                            dpg.add_text(f"cuestack {n}", tag=f"cs_tip_{n}")
                         with dpg.popup(f"cs_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"Cuestack {n}", color=_C_P_CS)
+                            dpg.add_text(f"cuestack {n}", color=_C_P_CS)
                             dpg.add_separator()
                             dpg.add_menu_item(label="select / activate",
                                 callback=self._on_cuestack_click,
@@ -6816,9 +6816,9 @@ class GUIEngine:
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_cue_click, user_data=n)
                         with dpg.tooltip(f"cue_btn_{n}"):
-                            dpg.add_text(f"Cue {n}", tag=f"cue_tip_{n}")
+                            dpg.add_text(f"cue {n}", tag=f"cue_tip_{n}")
                         with dpg.popup(f"cue_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"Cue {n}", color=_C_P_CUES)
+                            dpg.add_text(f"cue {n}", color=_C_P_CUES)
                             dpg.add_separator()
                             dpg.add_menu_item(label="go to cue",
                                 callback=self._on_cue_click,
@@ -6888,9 +6888,9 @@ class GUIEngine:
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_fx_click, user_data=n)
                         with dpg.tooltip(f"fx_btn_{n}"):
-                            dpg.add_text(f"FX {n}", tag=f"fx_tip_{n}")
+                            dpg.add_text(f"fx {n}", tag=f"fx_tip_{n}")
                         with dpg.popup(f"fx_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"FX Preset {n}", color=_C_P_FX)
+                            dpg.add_text(f"fx preset {n}", color=_C_P_FX)
                             dpg.add_separator()
                             dpg.add_menu_item(label="fire fx",
                                 callback=self._ctx_exec,
@@ -7000,9 +7000,9 @@ class GUIEngine:
                                    width=_POOL_BTN, height=22,
                                    callback=self._on_rate_click, user_data=n)
                     with dpg.tooltip(f"rate_btn_{n}"):
-                        dpg.add_text(f"Rate {n}", tag=f"rate_tip_{n}")
+                        dpg.add_text(f"rate {n}", tag=f"rate_tip_{n}")
                     with dpg.popup(f"rate_btn_{n}", mousebutton=1):
-                        dpg.add_text(f"Rate {n}", color=_C_DIM)
+                        dpg.add_text(f"rate {n}", color=_C_DIM)
                         dpg.add_separator()
                         dpg.add_menu_item(label="recall rate",
                             callback=self._ctx_exec, user_data=f"RATE {n}")
@@ -7100,10 +7100,10 @@ class GUIEngine:
                             width=_FORMS_BTN_W, height=self._BTN_H,
                             callback=self._on_form_click, user_data=n)
                         with dpg.tooltip(f"form_btn_{n}"):
-                            dpg.add_text(f"Form {n}", tag=f"form_tip_{n}")
+                            dpg.add_text(f"form {n}", tag=f"form_tip_{n}")
                         if n >= FormPool.FIRST_CUSTOM_SLOT:
                             with dpg.popup(f"form_btn_{n}", mousebutton=1):
-                                dpg.add_text(f"Form {n}", color=_C_P_FORMS)
+                                dpg.add_text(f"form {n}", color=_C_P_FORMS)
                                 dpg.add_separator()
                                 dpg.add_menu_item(label="use form",
                                     callback=self._ctx_exec,
@@ -7213,9 +7213,9 @@ class GUIEngine:
                 if g:
                     ids = [str(fid) for _, fid in g.members]
                     id_str = ", ".join(ids[:8]) + ("…" if len(ids) > 8 else "")
-                    tip = f"Group {n}: {g.name}\n{len(ids)} fixture(s): [{id_str}]"
+                    tip = f"group {n}: {g.name}\n{len(ids)} fixture(s): [{id_str}]"
                 else:
-                    tip = f"Group {n} — empty"
+                    tip = f"group {n} — empty"
                 dpg.set_value(f"grp_tip_{n}", tip)
             except Exception:
                 pass
@@ -7228,9 +7228,9 @@ class GUIEngine:
                 pass
             try:
                 if c:
-                    col_tip = f"Color {n}: {c.name}\nR {int(c.red)}  G {int(c.green)}  B {int(c.blue)}"
+                    col_tip = f"color {n}: {c.name}\nR {int(c.red)}  G {int(c.green)}  B {int(c.blue)}"
                 else:
-                    col_tip = f"Color {n} — empty"
+                    col_tip = f"color {n} — empty"
                 dpg.set_value(f"col_tip_{n}", col_tip)
             except Exception:
                 pass
@@ -7279,7 +7279,7 @@ class GUIEngine:
             except Exception:
                 pass
             try:
-                tip = (f"Dim {n}: {d.name}  {d.level*100:.0f}%") if d else f"Dim {n} — empty"
+                tip = (f"dim {n}: {d.name}  {d.level*100:.0f}%") if d else f"dim {n} — empty"
                 dpg.set_value(f"dim_tip_{n}", tip)
             except Exception:
                 pass
@@ -7346,11 +7346,11 @@ class GUIEngine:
                 if cs:
                     ncues = len(cs.cues)
                     cur   = cs.current
-                    cs_tip = f"Cuestack {n}: {cs.name}\n{ncues} cue(s)"
+                    cs_tip = f"cuestack {n}: {cs.name}\n{ncues} cue(s)"
                     if cur is not None:
-                        cs_tip += f"\n▶ Cue {cur:.0f}"
+                        cs_tip += f"\n▶ cue {cur:.0f}"
                 else:
-                    cs_tip = f"Cuestack {n} — empty"
+                    cs_tip = f"cuestack {n} — empty"
                 dpg.set_value(f"cs_tip_{n}", cs_tip)
             except Exception:
                 pass
@@ -7380,10 +7380,10 @@ class GUIEngine:
                 fx_s  = f"\n{nfx} FX layer(s)" if nfx else ""
                 note  = getattr(cue, 'note', '')
                 note_s = f"\n📝 {note}" if note else ""
-                tip   = f"Cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fxo_s}{fix_s}{fx_s}{note_s}"
+                tip   = f"cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fxo_s}{fix_s}{fx_s}{note_s}"
             else:
                 lbl = f"{n}"
-                tip = f"Cue {n} — empty"
+                tip = f"cue {n} — empty"
             try:
                 dpg.set_item_label(f"cue_btn_{n}", lbl)
                 dpg.configure_item(f"cue_tip_{n}", default_value=tip)
@@ -7421,7 +7421,7 @@ class GUIEngine:
                 elif p:
                     fx_tip = f"FX {n}: {p.name} (empty)"
                 else:
-                    fx_tip = f"FX {n} — empty"
+                    fx_tip = f"fx {n} — empty"
                 dpg.set_value(f"fx_tip_{n}", fx_tip)
             except Exception:
                 pass
@@ -7461,14 +7461,14 @@ class GUIEngine:
             try:
                 if f:
                     ft = getattr(f, 'form_type', 'custom')
-                    form_tip = f"Form {n}: {f.name}  ({ft})"
+                    form_tip = f"form {n}: {f.name}  ({ft})"
                     if hasattr(f, 'points') and f.points:
                         form_tip += f"\n{len(f.points)} points"
                 elif n < FormPool.FIRST_CUSTOM_SLOT:
                     _BUILTIN = {1: "sine", 2: "ramp", 3: "pulse", 4: "square"}
-                    form_tip = f"Form {n}: {_BUILTIN.get(n, '?')} (built-in)"
+                    form_tip = f"form {n}: {_BUILTIN.get(n, '?')} (built-in)"
                 else:
-                    form_tip = f"Form {n} — empty  (RECORD FORM {n} ...)"
+                    form_tip = f"form {n} — empty  (RECORD FORM {n} ...)"
                 dpg.set_value(f"form_tip_{n}", form_tip)
             except Exception:
                 pass
@@ -8827,7 +8827,7 @@ class GUIEngine:
             dpg.set_value("fxed_name", preset.name)
             self._fx_ed_layers = [dict(ld) for ld in preset.layers]
         else:
-            dpg.set_value("fxed_name", f"FX {user_data}")
+            dpg.set_value("fxed_name", f"fx {user_data}")
             self._fx_ed_layers = []
         self._fxed_rebuild_rows()
 
@@ -8835,7 +8835,7 @@ class GUIEngine:
         for n in range(1, self._POOL_SLOTS + 1):
             if not (self._fx_pool and self._fx_pool.get(n)):
                 self._fx_ed_slot = n
-                dpg.set_value("fxed_name", f"FX {n}")
+                dpg.set_value("fxed_name", f"fx {n}")
                 self._fx_ed_layers = []
                 self._fxed_rebuild_rows()
                 return
@@ -11222,8 +11222,8 @@ class GUIEngine:
                     dpg.set_item_label(f"rate_btn_{n}",
                                        f"R{n}:{rp.bpm:.0f}" if rp else f"R{n}")
                     dpg.set_value(f"rate_tip_{n}",
-                                  f"Rate {n}: {rp.name}  {rp.bpm:.0f} BPM" if rp
-                                  else f"Rate {n} — empty  (RECORD RATE {n} Name bpm)")
+                                  f"rate {n}: {rp.name}  {rp.bpm:.0f} BPM" if rp
+                                  else f"rate {n} — empty  (RECORD RATE {n} Name bpm)")
                 except Exception:
                     pass
                 try:
@@ -13685,7 +13685,7 @@ def run_command(cmd_str):
             faders = [str(eid) for eid, ex in executor_pool.executors.items()
                       if ex.cuestack and ex.cuestack.stack_id == n]
             sorted_nums = cs._sorted_cue_numbers()
-            lines = [f"Cuestack {n}: {cs.name}",
+            lines = [f"cuestack {n}: {cs.name}",
                      f"  Cues      : {len(sorted_nums)}",
                      f"  Loop/Wrap : {'ON' if getattr(cs, 'wrap', False) else 'OFF'}",
                      f"  Chase     : {'ON  ' + str(round(getattr(cs,'chase_bpm',120.0),1)) + ' BPM' if getattr(cs,'chase_enabled',False) else 'OFF'}",
@@ -13970,7 +13970,7 @@ def run_command(cmd_str):
             n = int(tokens[2])
         except ValueError:
             return f"RECORD CUESTACK: bad number '{tokens[2]}'"
-        name = _name_after(raw, 3) or f"Cuestack {n}"
+        name = _name_after(raw, 3) or f"cuestack {n}"
         cs = cuestack_pool.create(n, name)
         executor_pool.assign(n, cs)
         active_executor[0] = n
