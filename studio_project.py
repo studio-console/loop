@@ -6925,20 +6925,20 @@ class GUIEngine:
                         n = row * _COLS + col + 1
                         dpg.add_button(
                             tag=f"{tag_prefix}_btn_{n}",
-                            label=f"{attr_name[0].upper()}{n}",
+                            label=f"{attr_name[0]}{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_attr_click,
                             user_data=(attr_name, n))
                         with dpg.tooltip(f"{tag_prefix}_btn_{n}"):
-                            dpg.add_text(f"{attr_name.title()} {n}",
+                            dpg.add_text(f"{attr_name} {n}",
                                          tag=f"{tag_prefix}_tip_{n}")
                         with dpg.popup(f"{tag_prefix}_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"{attr_name.title()} {n}", color=color)
+                            dpg.add_text(f"{attr_name} {n}", color=color)
                             dpg.add_separator()
-                            dpg.add_menu_item(label=f"Record {attr_name.title()} Here",
+                            dpg.add_menu_item(label=f"record {attr_name} here",
                                 callback=self._ctx_prefill,
                                 user_data=f"RECORD {attr_name.upper()} {n} ")
-                            dpg.add_menu_item(label=f"Apply {attr_name.title()}",
+                            dpg.add_menu_item(label=f"apply {attr_name}",
                                 callback=self._ctx_exec,
                                 user_data=f"{attr_name.upper()} {n}")
                             dpg.add_menu_item(label="rename...",
@@ -6948,7 +6948,7 @@ class GUIEngine:
                                 callback=self._ctx_prefill,
                                 user_data=f"COPY {attr_name.upper()} {n} TO ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label=f"Clear {attr_name.title()}",
+                            dpg.add_menu_item(label=f"clear {attr_name}",
                                 callback=self._ctx_exec,
                                 user_data=f"CLEAR {attr_name.upper()} {n}")
 
@@ -7436,11 +7436,14 @@ class GUIEngine:
             pool = self._attr_pools.get(attr_name) if self._attr_pools else None
             for n in range(1, _ATTR_SLOTS + 1):
                 p = pool.get(n) if pool else None
-                lbl = f"{n}:{p.name[:6]}" if p else f"{pfx[0].upper()}{n}"
+                lbl = f"{n}:{p.name[:6]}" if p else f"{pfx[0]}{n}"
                 try:
                     dpg.set_item_label(f"{pfx}_btn_{n}", lbl)
-                    tip = f"{attr_name.title()} {n}: {p.name}" if p else f"{attr_name.title()} {n} — empty"
+                    tip = f"{attr_name} {n}: {p.name}" if p else f"{attr_name} {n} — empty"
                     dpg.set_value(f"{pfx}_tip_{n}", tip)
+                    _at = self._pool_live_theme if p else self._pool_empty_theme
+                    if _at:
+                        dpg.bind_item_theme(f"{pfx}_btn_{n}", _at)
                 except Exception:
                     pass
 
