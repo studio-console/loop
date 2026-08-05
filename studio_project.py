@@ -488,7 +488,7 @@ class Patch:
         """
         profile = self.library.get(profile_name)
         if not profile:
-            print(f"Error: Profile '{profile_name}' not found in library.")
+            print(f"error: Profile '{profile_name}' not found in library.")
             return None
 
         master = MasterFixture(fixture_id, name, profile)
@@ -553,19 +553,19 @@ class Patch:
             print(f"  Last pixel:  {last}")
         print("=================\n")
 
-# (first Programmer draft removed — active class is below)
+# (first programmer draft removed — active class is below)
 # ============================================================
 # STUDIO CONSOLE - Core Object Model
-# Block 3 UPDATE: Programmer
+# Block 3 UPDATE: programmer
 # Added: self.disabled dict, REMOVE and ENABLE commands
 # ============================================================
 
-class Programmer:
+class programmer:
     def __init__(self, patch):
         self.patch     = patch
         self.selection = []
         self.data      = {}         # Active parameters — will be recorded/output
-        self.disabled  = {}         # Removed parameters — remembered but inactive
+        self.disabled  = {}         # removed parameters — remembered but inactive
         self._clear_stage     = 0   # 0=fresh, 1=values cleared, 2=selection cleared
         self._last_clear_time = 0.0
         self._undo_stack      = []  # list of (data_snapshot, selection_ids) dicts
@@ -573,7 +573,7 @@ class Programmer:
         self.live_fades       = []  # [{fid,channel,src,dst,start,duration}, ...] for AT…IN fades
 
     def _push_undo(self):
-        """Snapshot current programmer state onto the undo stack."""
+        """snapshot current programmer state onto the undo stack."""
         self._undo_stack.append({
             'data':      copy.deepcopy(self.data),
             'disabled':  copy.deepcopy(self.disabled),
@@ -585,7 +585,7 @@ class Programmer:
     def undo(self):
         """Restore the previous programmer snapshot. Returns result string."""
         if not self._undo_stack:
-            return "Nothing to undo"
+            return "nothing to undo"
         snap = self._undo_stack.pop()
         # Mutate self.data/self.disabled in place (clear + update) rather than
         # rebinding them to new dict objects. OutputState.link_programmer()
@@ -605,7 +605,7 @@ class Programmer:
                 restored.append(m)
                 restored += m.all_subs()
         self.selection = restored
-        return f"Undo — programmer restored  ({len(self._undo_stack)} step(s) remaining)"
+        return f"undo — programmer restored  ({len(self._undo_stack)} step(s) remaining)"
 
     # ----------------------------------------------------------
     # Selection Management
@@ -646,7 +646,7 @@ class Programmer:
         self.data.clear()
         self.disabled  = {}
         self._clear_stage = 0
-        print("Programmer cleared.")
+        print("programmer cleared.")
 
     def do_clear(self):
         """MA3-style three-tap CLEAR.
@@ -668,7 +668,7 @@ class Programmer:
             for vals in self.data.values():
                 vals.pop('fx_kill', None)
             self._clear_stage = 1
-            return "Selection cleared  (CLEAR again to clear programmer)"
+            return "selection cleared  (clear again to clear programmer)"
         elif self._clear_stage == 1:
             for fid in list(self.data.keys()):
                 fixture = self._get_fixture_by_fid(fid)
@@ -679,7 +679,7 @@ class Programmer:
             self.data.clear()
             self.disabled = {}
             self._clear_stage = 2
-            return "Programmer cleared  (CLEAR again to clear output)"
+            return "programmer cleared  (clear again to clear output)"
         else:
             self._clear_stage = 0
             return "output_clear"  # signal to caller to blackout
@@ -781,7 +781,7 @@ class Programmer:
                         self.disabled[fid] = {}
                     self.disabled[fid][channel] = self.data[fid].pop(channel)
 
-        print(f"Removed '{channel}' from programmer for current selection.")
+        print(f"removed '{channel}' from programmer for current selection.")
         self._print_programmer()
 
     def enable_parameter(self, channel):
@@ -827,7 +827,7 @@ class Programmer:
     def _get_targets_for_channel(self, channel):
         """
         Returns the right fixture objects for a given channel type.
-        Dim targets masters. RGB and attribute channels target sub-fixtures.
+        dim targets masters. RGB and attribute channels target sub-fixtures.
         All targets both.
         """
         if channel == 'dim':
@@ -907,7 +907,7 @@ class Programmer:
 
             if _fade_dur is not None and _fade_dur > 0 and self.selection:
                 import time as _t
-                # Snapshot pre-action programmer state for the selection
+                # snapshot pre-action programmer state for the selection
                 _pre = {}
                 for f in self.selection:
                     fid = str(f.fixture_id)
@@ -1196,10 +1196,10 @@ class Programmer:
             for j in range(2, len(tokens) - 1):
                 if tokens[j] == 'SAT':
                     try: s = float(tokens[j + 1])
-                    except ValueError: pass
+                    except Valueerror: pass
                 elif tokens[j] == 'VAL':
                     try: v = float(tokens[j + 1])
-                    except ValueError: pass
+                    except Valueerror: pass
             s = max(0.0, min(100.0, s))
             v = max(0.0, min(100.0, v))
             h1, s1, v1 = h / 360.0, s / 100.0, v / 100.0
@@ -1459,7 +1459,7 @@ class Programmer:
         if tokens[0] == 'CLEAR':
             ch = _CH.get(tokens[1]) if len(tokens) >= 2 else None
             if len(tokens) >= 2 and not ch:
-                # Unknown channel name — ignore silently so CLEAR without a ch arg still works
+                # unknown channel name — ignore silently so CLEAR without a ch arg still works
                 pass
             self._push_undo()
             if ch:
@@ -1564,10 +1564,10 @@ class Programmer:
     def _print_programmer(self):
         active = {fid: vals for fid, vals in self.data.items() if vals}
         if not active:
-            print("Programmer empty.")
+            print("programmer empty.")
             return
 
-        print("\n--- Programmer ---")
+        print("\n--- programmer ---")
         for fid, vals in active.items():
             if '.' not in fid:
                 master = self.patch.get(int(fid))
@@ -1609,7 +1609,7 @@ class Programmer:
             px_label = f"({count} pixels)" if count > 1 else ""
             print(f"  {label}{' ' + px_label if px_label else ''}: {' '.join(parts)}")
 
-        # Show disabled summary if anything is disabled
+        # show disabled summary if anything is disabled
         disabled_active = {
             fid: vals for fid, vals in self.disabled.items() if vals
         }
@@ -1630,11 +1630,11 @@ class Programmer:
 
 # ============================================================
 # Blocks 4 & 5: Presets, Pools, Groups
-# ColorPreset / ColorPool — referenced RGB presets
-# DimmerPreset / DimmerPool — referenced dimmer presets
-# AttributePreset / AttributePool — generic attribute presets
+# Colorpreset / ColorPool — referenced RGB presets
+# Dimmerpreset / DimmerPool — referenced dimmer presets
+# Attributepreset / AttributePool — generic attribute presets
 #   (position, gobo, zoom, focus, beam, control)
-# Group / GroupPool — fixture selection groups
+# group / GroupPool — fixture selection groups
 # ============================================================
 
 class ColorPreset:
@@ -1648,7 +1648,7 @@ class ColorPreset:
     """
     def __init__(self, preset_id, name=""):
         self.preset_id = preset_id
-        self.name      = name if name else f"Color {preset_id}"
+        self.name      = name if name else f"color {preset_id}"
         self.red   = 0
         self.green = 0
         self.blue  = 0
@@ -1661,7 +1661,7 @@ class ColorPreset:
                 self.green = vals.get('green', 0)
                 self.blue  = vals.get('blue',  0)
                 break
-        print(f"Recorded: {self}")
+        print(f"recorded: {self}")
 
     def apply(self, programmer):
         applied = 0
@@ -1680,19 +1680,19 @@ class ColorPreset:
         print(f"Applied {self} to {applied} sub-fixture(s).")
 
     def __repr__(self):
-        return (f"[Color Preset {self.preset_id}] \"{self.name}\" "
+        return (f"[color preset {self.preset_id}] \"{self.name}\" "
                 f"RGB({self.red},{self.green},{self.blue})")
 
 
 class ColorPool:
     def __init__(self):
-        self.presets = {}   # { preset_id (int): ColorPreset }
+        self.presets = {}   # { preset_id (int): Colorpreset }
 
     def get(self, pid):
         return self.presets.get(int(pid))
 
     def record(self, preset_id, programmer, name=""):
-        preset = ColorPreset(preset_id, name or f"Color {preset_id}")
+        preset = ColorPreset(preset_id, name or f"color {preset_id}")
         preset.record(programmer)
         self.presets[preset.preset_id] = preset
         return preset
@@ -1702,7 +1702,7 @@ class ColorPool:
         if p:
             p.apply(programmer)
         else:
-            print(f"Color Preset {preset_id} not found.")
+            print(f"color preset {preset_id} not found.")
 
     def delete(self, preset_id):
         self.presets.pop(int(preset_id), None)
@@ -1734,7 +1734,7 @@ class DimmerPreset:
                 if 'dim' in vals:
                     self.level = vals['dim']
                     break
-        print(f"Recorded: {self}")
+        print(f"recorded: {self}")
 
     def apply(self, programmer):
         applied = 0
@@ -1749,12 +1749,12 @@ class DimmerPreset:
         print(f"Applied {self} to {applied} fixture(s).")
 
     def __repr__(self):
-        return f"[Dimmer Preset {self.preset_id}] \"{self.name}\" ({self.level:.0%})"
+        return f"[Dimmer preset {self.preset_id}] \"{self.name}\" ({self.level:.0%})"
 
 
 class DimmerPool:
     def __init__(self):
-        self.presets = {}   # { preset_id (int): DimmerPreset }
+        self.presets = {}   # { preset_id (int): Dimmerpreset }
 
     def get(self, pid):
         return self.presets.get(int(pid))
@@ -1770,7 +1770,7 @@ class DimmerPool:
         if p:
             p.apply(programmer)
         else:
-            print(f"Dimmer Preset {preset_id} not found.")
+            print(f"Dimmer preset {preset_id} not found.")
 
     def delete(self, preset_id):
         self.presets.pop(int(preset_id), None)
@@ -1831,7 +1831,7 @@ class AttributePreset:
         return p
 
     def __repr__(self):
-        return (f"[{self.attribute.upper()} Preset {self.preset_id}] "
+        return (f"[{self.attribute.upper()} preset {self.preset_id}] "
                 f"{self.name}  ({len(self.data)} fixtures)")
 
 
@@ -1840,7 +1840,7 @@ class AttributePool:
     def __init__(self, attribute, relevant_channels=None):
         self.attribute         = attribute
         self.relevant_channels = list(relevant_channels or [attribute])
-        self.presets           = {}   # { preset_id: AttributePreset }
+        self.presets           = {}   # { preset_id: Attributepreset }
 
     def get(self, preset_id):
         return self.presets.get(int(preset_id))
@@ -1856,7 +1856,7 @@ class AttributePool:
         if p:
             p.apply(programmer)
         else:
-            print(f"{self.attribute.title()} Preset {preset_id} not found.")
+            print(f"{self.attribute.title()} preset {preset_id} not found.")
 
     def delete(self, preset_id):
         self.presets.pop(int(preset_id), None)
@@ -1875,7 +1875,7 @@ class Group:
     """
     def __init__(self, group_id, name=""):
         self.group_id = group_id
-        self.name     = name or f"Group {group_id}"
+        self.name     = name or f"group {group_id}"
         self.members  = []   # [ ("master", fixture_id_int), ... ]
 
     def record(self, programmer):
@@ -1883,7 +1883,7 @@ class Group:
         for f in programmer.selection:
             if isinstance(f, MasterFixture):
                 self.members.append(("master", f.fixture_id))
-        print(f"Recorded: {self}")
+        print(f"recorded: {self}")
 
     def recall(self, patch):
         """Return list of MasterFixture objects for this group."""
@@ -1895,18 +1895,18 @@ class Group:
         return fixtures
 
     def __repr__(self):
-        return f"[Group {self.group_id}] \"{self.name}\" ({len(self.members)} fixture(s))"
+        return f"[group {self.group_id}] \"{self.name}\" ({len(self.members)} fixture(s))"
 
 
 class GroupPool:
     def __init__(self):
-        self.groups = {}   # { group_id (int): Group }
+        self.groups = {}   # { group_id (int): group }
 
     def get(self, gid):
         return self.groups.get(int(gid))
 
     def record(self, group_id, programmer, name=""):
-        g = Group(group_id, name or f"Group {group_id}")
+        g = Group(group_id, name or f"group {group_id}")
         g.record(programmer)
         self.groups[g.group_id] = g
         return g
@@ -1930,7 +1930,7 @@ class GroupPool:
 
 # ============================================================
 # STUDIO CONSOLE - Core Object Model
-# Block 6: Cue and CueStack
+# Block 6: cue and CueStack
 # Delta-based tracking, decimal cue numbers,
 # fade/delay times, GO/BACK/GOTO playback.
 # ============================================================
@@ -1953,7 +1953,7 @@ class Cue:
     def __init__(self, cue_number, name="", fade_time=0.0, delay_time=0.0,
                  fade_times=None, delay_times=None, follow_time=0.0):
         self.cue_number  = float(cue_number)
-        self.name        = name if name else f"Cue {cue_number}"
+        self.name        = name if name else f"cue {cue_number}"
         self.fade_time   = float(fade_time)
         self.delay_time  = float(delay_time)
         self.fade_times  = dict(fade_times)  if fade_times  else {}
@@ -1968,7 +1968,7 @@ class Cue:
 
     def record(self, programmer):
         """
-        Snapshot active programmer data into this cue.
+        snapshot active programmer data into this cue.
         When a master entry carries color_ref, sub-fixture RGB entries are
         omitted — the reference resolves them live at playback time.
         dim_ref is stored alongside the inline dim value as a fallback.
@@ -1986,7 +1986,7 @@ class Cue:
             self.data[fid] = copy.deepcopy(vals)
 
         count = len(self.data)
-        print(f"Recorded: {self} ({count} fixture/pixel entries)")
+        print(f"recorded: {self} ({count} fixture/pixel entries)")
 
     def update(self, programmer):
         """
@@ -2010,7 +2010,7 @@ class Cue:
             self.data[fid].update(copy.deepcopy(vals))
 
         count = len(self.data)
-        print(f"Updated: {self} ({count} fixture/pixel entries total)")
+        print(f"updated: {self} ({count} fixture/pixel entries total)")
 
     def __repr__(self):
         timing = f"Fade:{self.fade_time}s"
@@ -2024,7 +2024,7 @@ class Cue:
                     timing += f"+{dt}s"
         if getattr(self, 'fx_outfade', None) is not None:
             timing += f" FXOut:{self.fx_outfade}s"
-        return f"[Cue {self.cue_number}] \"{self.name}\" | {timing}"
+        return f"[cue {self.cue_number}] \"{self.name}\" | {timing}"
 
 
 class CueStack:
@@ -2040,8 +2040,8 @@ class CueStack:
     """
     def __init__(self, stack_id, name=""):
         self.stack_id        = stack_id
-        self.name            = name if name else f"CueStack {stack_id}"
-        self.cues            = {}        # { cue_number (float): Cue }
+        self.name            = name if name else f"cuestack {stack_id}"
+        self.cues            = {}        # { cue_number (float): cue }
         self.current         = None      # Current cue number (float) or None
         self.allow_exec_time = True      # False = ignore executor time override for this stack
         self.wrap            = False     # True = fire cue 1 clean on wrap-around (no LTP bleed)
@@ -2064,7 +2064,7 @@ class CueStack:
         If cue_number already exists it gets overwritten.
         """
         if not programmer.data:
-            print("Programmer is empty — nothing to record.")
+            print("programmer is empty — nothing to record.")
             return None
 
         cue = Cue(cue_number, name, fade_time, delay_time)
@@ -2081,9 +2081,9 @@ class CueStack:
             del self.cues[num]
             if self.current == num:
                 self.current = None
-            print(f"Deleted Cue {cue_number} from {self.name}")
+            print(f"deleted cue {cue_number} from {self.name}")
         else:
-            print(f"Cue {cue_number} not found.")
+            print(f"cue {cue_number} not found.")
 
     # ----------------------------------------------------------
     # Playback
@@ -2096,7 +2096,7 @@ class CueStack:
         """
         numbers = self._sorted_cue_numbers()
         if not numbers:
-            print("CueStack is empty.")
+            print("cuestack is empty.")
             return
 
         if self.current is None:
@@ -2114,7 +2114,7 @@ class CueStack:
         """Step to the previous cue."""
         numbers = self._sorted_cue_numbers()
         if not numbers:
-            print("CueStack is empty.")
+            print("cuestack is empty.")
             return
 
         if self.current is None:
@@ -2132,7 +2132,7 @@ class CueStack:
         """Jump directly to a specific cue number."""
         num = float(cue_number)
         if num not in self.cues:
-            print(f"Cue {cue_number} not found in {self.name}.")
+            print(f"cue {cue_number} not found in {self.name}.")
             return
         self._fire_cue(num, patch)
 
@@ -2140,7 +2140,7 @@ class CueStack:
         """
         Apply a cue's data directly to fixtures.
         This is the playback output layer — separate from
-        the programmer. Cue data goes straight to fixtures.
+        the programmer. cue data goes straight to fixtures.
 
         Note: In the full engine this will merge with the
         output merger (HTP/LTP). For now it writes directly
@@ -2188,9 +2188,9 @@ class CueStack:
 
 
 class CuePool:
-    """Numbered library of standalone Cue objects (1-based slots)."""
+    """Numbered library of standalone cue objects (1-based slots)."""
     def __init__(self):
-        self.cues = {}      # { int slot: Cue }
+        self.cues = {}      # { int slot: cue }
 
     def get(self, n):
         return self.cues.get(int(n))
@@ -2209,9 +2209,9 @@ class CuePool:
 
 
 class CueStackPool:
-    """Pool of CueStack objects (executors), numbered 1-based."""
+    """Pool of cuestack objects (executors), numbered 1-based."""
     def __init__(self):
-        self.stacks = {}    # { int slot: CueStack }
+        self.stacks = {}    # { int slot: cuestack }
 
     def get(self, n):
         return self.stacks.get(int(n))
@@ -2391,26 +2391,26 @@ class Executor:
 
     def go(self, patch, fade_engine):
         if not self.cuestack:
-            return f"Fader {self.exec_id}: no cuestack assigned"
+            return f"fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.go(patch, fade_engine, self)
 
     def back(self, patch, fade_engine):
         if not self.cuestack:
-            return f"Fader {self.exec_id}: no cuestack assigned"
+            return f"fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.back(patch, fade_engine, self)
 
     def goto(self, num, patch, fade_engine):
         if not self.cuestack:
-            return f"Fader {self.exec_id}: no cuestack assigned"
+            return f"fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.goto(num, patch, fade_engine, self)
 
     def reload(self, patch, fade_engine):
         """Re-fire the current cue from scratch without advancing."""
         if not self.cuestack:
-            return f"Fader {self.exec_id}: no cuestack assigned"
+            return f"fader {self.exec_id}: no cuestack assigned"
         self.is_active = True
         return self.cuestack.reload(patch, fade_engine, self)
 
@@ -2423,7 +2423,7 @@ class Executor:
         a separate instant-fire path.
         """
         if not self.cuestack:
-            return f"Fader {self.exec_id}: no cuestack assigned"
+            return f"fader {self.exec_id}: no cuestack assigned"
         prev_override = (self.time_override_on, self.time_override_fade, self.time_override_delay)
         self.time_override_on    = True
         self.time_override_fade  = 0.0
@@ -2538,7 +2538,7 @@ class ExecutorPool:
 
 
 # ============================================================
-# FXPreset + FXPool
+# FXpreset + FXPool
 # A preset is a snapshot of one or more FX layer definitions.
 # Targets are NOT stored — resolved at fire time from patch/group.
 # ============================================================
@@ -2610,7 +2610,7 @@ class FXPreset:
 
 
 class FXPool:
-    """Numbered library of FXPreset objects (1-based slots)."""
+    """Numbered library of FXpreset objects (1-based slots)."""
 
     def __init__(self):
         self.presets = {}   # {int: FXPreset}
@@ -2625,7 +2625,7 @@ class FXPool:
         self.presets.pop(int(n), None)
 
     def record_from_active(self, n, active_fx_list, name=""):
-        """Snapshot currently running FXLayer objects into a new preset, preserving pool refs."""
+        """snapshot currently running FXLayer objects into a new preset, preserving pool refs."""
         preset = FXPreset(int(n), name or f"fx {n}")
         for layer in active_fx_list:
             preset.add_layer(
@@ -2762,7 +2762,7 @@ class FadeEngine:
 
     def fire(self, cue, executor, data_to=None,
              override_fade=None, override_delay=None):
-        """Snapshot executor's current layer and fade to new cue state.
+        """snapshot executor's current layer and fade to new cue state.
         data_to: pre-resolved DMX dict; falls back to cue.data if not provided.
         override_fade / override_delay: time override from executor or programmer."""
         ft = override_fade  if override_fade  is not None else cue.fade_time
@@ -2902,7 +2902,7 @@ class NetworkEngine:
 
 
 # ------------------------------------------------------------
-# Updated CueStack playback methods
+# Updated cuestack playback methods
 # go / back / goto now route through FadeEngine
 # ------------------------------------------------------------
 
@@ -3016,7 +3016,7 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
             ov_fade  = executor.time_override_fade
         if executor.time_override_delay is not None:
             ov_delay = executor.time_override_delay
-    # Programmer time fallback — only if no executor override applied
+    # programmer time fallback — only if no executor override applied
     if ov_fade is None and _prog_time.get('on'):
         ov_fade  = float(_prog_time['fade'])
         ov_delay = float(_prog_time['delay'])
@@ -3065,7 +3065,7 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
 def _cuestack_go(self, patch, fade_engine, executor):
     numbers = self._sorted_cue_numbers()
     if not numbers:
-        return "CueStack is empty"
+        return "cuestack is empty"
     if getattr(self, 'bounce', False):
         if self.current is None:
             self._bounce_dir = 1
@@ -3106,7 +3106,7 @@ def _cuestack_go(self, patch, fade_engine, executor):
 def _cuestack_back(self, patch, fade_engine, executor):
     numbers = self._sorted_cue_numbers()
     if not numbers:
-        return "CueStack is empty"
+        return "cuestack is empty"
     wrap_occurred = False
     if self.current is None:
         prev_num = numbers[-1]
@@ -3125,13 +3125,13 @@ def _cuestack_back(self, patch, fade_engine, executor):
 def _cuestack_goto(self, cue_number, patch, fade_engine, executor):
     num = float(cue_number)
     if num not in self.cues:
-        return f"Cue {cue_number} not found"
+        return f"cue {cue_number} not found"
     return _cuestack_fire_cue(self, num, patch, fade_engine, executor)
 
 def _cuestack_reload(self, patch, fade_engine, executor):
     """Re-fire the current cue without advancing the pointer."""
     if self.current is None:
-        return "No active cue — use GO to start"
+        return "no active cue — use go to start"
     return _cuestack_fire_cue(self, self.current, patch, fade_engine, executor)
 
 CueStack.go     = _cuestack_go
@@ -3203,8 +3203,8 @@ class Waveform:
 
 
 # ============================================================
-# FormPreset + FormPool
-# A FormPreset is a waveform shape: either a reference to one
+# Formpreset + FormPool
+# A Formpreset is a waveform shape: either a reference to one
 # of the built-in Waveform functions, or a user-defined
 # breakpoint curve (list of [phase, value] pairs, 0.0-1.0).
 #
@@ -3253,14 +3253,14 @@ class FormPreset:
 
     def __repr__(self):
         if self.form_type == 'builtin':
-            return f"[Form {self.form_id}] {self.name}  (builtin: {self.builtin_name})"
-        return (f"[Form {self.form_id}] {self.name}  "
+            return f"[form {self.form_id}] {self.name}  (builtin: {self.builtin_name})"
+        return (f"[form {self.form_id}] {self.name}  "
                 f"(custom breakpoints: {len(self.breakpoints)} pts)")
 
 
 class FormPool:
-    """Numbered library of FormPreset waveform shapes (1-based).
-    Slots 1-4 are always the built-ins; 5+ are user-defined."""
+    """Numbered library of Formpreset waveform shapes (1-based).
+    slots 1-4 are always the built-ins; 5+ are user-defined."""
 
     _BUILTINS = [
         (1, 'Sine',   'sine'),
@@ -3331,7 +3331,7 @@ class RatePreset:
         self.name      = name
         self.bpm       = float(bpm)
     def __repr__(self):
-        return f"[Rate {self.preset_id}] {self.name}  ({self.bpm:.1f} BPM)"
+        return f"[rate {self.preset_id}] {self.name}  ({self.bpm:.1f} BPM)"
 
 class RatePool:
     def __init__(self):
@@ -3351,7 +3351,7 @@ class SizePreset:
         self.name      = name
         self.size      = float(size)
     def __repr__(self):
-        return f"[Size {self.preset_id}] {self.name}  (size={self.size:.0f})"
+        return f"[size {self.preset_id}] {self.name}  (size={self.size:.0f})"
 
 class SizePool:
     def __init__(self):
@@ -3371,7 +3371,7 @@ class SpreadPreset:
         self.name      = name
         self.spread    = float(spread)
     def __repr__(self):
-        return f"[Spread {self.preset_id}] {self.name}  (spread={self.spread:.2f})"
+        return f"[spread {self.preset_id}] {self.name}  (spread={self.spread:.2f})"
 
 class SpreadPool:
     def __init__(self):
@@ -3431,7 +3431,7 @@ class FXLayer:
     """
     A single FX running across a list of sub-fixtures.
 
-    Pool references (form_id, rate_id, size_id, spread_id) are live-tracked:
+    pool references (form_id, rate_id, size_id, spread_id) are live-tracked:
     updating a pool entry propagates to all FXLayers referencing it on the
     next tick. Inline values (_bpm_inline, _size_inline, _spread_inline) are
     used as fallbacks when no pool ID is set.
@@ -3468,7 +3468,7 @@ class FXLayer:
         self.outfade     = float(outfade)   # seconds to ramp 1→0 when fading out
         self._out_start  = None             # set by begin_outfade()
 
-        # Pool references
+        # pool references
         self._form_pool         = form_pool
         self._rate_pool         = rate_pool
         self._size_pool         = size_pool
@@ -3476,7 +3476,7 @@ class FXLayer:
         self._dim_pool          = dim_pool
         self._speed_master_pool = speed_master_pool
 
-        # Pool IDs — live-tracked via properties
+        # pool IDs — live-tracked via properties
         self.form_id     = form_id
         self._rate_id    = rate_id
         self._size_id    = size_id
@@ -3930,14 +3930,14 @@ def _expand_group_fx(fx_defs_by_fid, patch, group_pool):
 # ------------------------------------------------------------
 
 # ============================================================
-# STUDIO CONSOLE - Block 9: Audio Engine
+# STUDIO CONSOLE - Block 9: audio Engine
 # Real-time audio analysis: level + 3-band EQ (low/mid/high)
 # Attack/release envelope following
 # AudioMapper connects audio values to the lighting output
 # ============================================================
 
-# sounddevice binds to the native PortAudio library at import time (not
-# lazily like mido/rtmidi), so a missing/broken PortAudio install raises
+# sounddevice binds to the native Portaudio library at import time (not
+# lazily like mido/rtmidi), so a missing/broken Portaudio install raises
 # OSError here rather than on first use. AudioEngine/AudioMapper are not
 # wired into any command handler or GUI panel yet (see changelog), but the
 # import used to be unconditional, so any environment without a working
@@ -3994,7 +3994,7 @@ class AudioEngine:
     @staticmethod
     def list_devices():
         if not _AUDIO_AVAILABLE:
-            print(f"Audio engine unavailable ({_AUDIO_IMPORT_ERROR}); no input devices to list.")
+            print(f"audio engine unavailable ({_AUDIO_IMPORT_ERROR}); no input devices to list.")
             return
         print("\n===== AUDIO INPUT DEVICES =====")
         for i, dev in enumerate(sd.query_devices()):
@@ -4008,7 +4008,7 @@ class AudioEngine:
         Pass a device index from list_devices() to pick a specific input.
         """
         if not _AUDIO_AVAILABLE:
-            raise RuntimeError(f"Audio engine unavailable: {_AUDIO_IMPORT_ERROR}")
+            raise RuntimeError(f"audio engine unavailable: {_AUDIO_IMPORT_ERROR}")
         self._running = True
         self._stream  = sd.InputStream(
             samplerate = self.SAMPLE_RATE,
@@ -4021,14 +4021,14 @@ class AudioEngine:
         self._stream.start()
         idx  = device if device is not None else sd.default.device[0]
         name = sd.query_devices(idx)['name']
-        print(f"Audio engine started — input: {name}")
+        print(f"audio engine started — input: {name}")
 
     def stop(self):
         self._running = False
         if self._stream:
             self._stream.stop()
             self._stream.close()
-        print("Audio engine stopped.")
+        print("audio engine stopped.")
 
     def _callback(self, indata, frames, time_info, status):
         samples = indata[:, 0]
@@ -4086,7 +4086,7 @@ class AudioMapper:
       mid   → green on all sub-fixtures  (mids = green)
       high  → blue  on all sub-fixtures  (treble = blue)
 
-    Audio layer sits between FX+cue and programmer —
+    audio layer sits between FX+cue and programmer —
     programmer still overrides everything when active.
     """
 
@@ -4101,12 +4101,12 @@ class AudioMapper:
 
     def enable(self):
         self.enabled = True
-        print("Audio mapping enabled — bass=red, mid=green, high=blue, level=dim")
+        print("audio mapping enabled — bass=red, mid=green, high=blue, level=dim")
 
     def disable(self):
         self.enabled = False
         self.output_state.audio_layer = {}
-        print("Audio mapping disabled.")
+        print("audio mapping disabled.")
 
     def _run(self):
         while self._running:
@@ -4234,14 +4234,14 @@ class OutputState:
                 # Priority model:
                 #   Colour FX (red/green/blue) → replaces base colour on that channel
                 #     (highest priority: FX > programmer > audio > cue)
-                #   Dim FX (dim channel) → multiplied against the base dim hierarchy
+                #   dim FX (dim channel) → multiplied against the base dim hierarchy
                 #     (programmer dim × FX_dim, so programmer can still kill output)
                 #   RGB FX implicit dim → when colour FX is running but no explicit dim
                 #     source exists (FX-only cue), default to 1.0 so fixtures are visible.
                 #     Explicit cue/programmer dim is respected and NOT overridden.
                 # fx_kill in programmer or cue explicitly suppresses all FX for this fixture
                 #
-                # Dim FX can target this whole fixture (target_scope='fixture' —
+                # dim FX can target this whole fixture (target_scope='fixture' —
                 # fx_layer[master_fid]['dim']) or drive each pixel independently
                 # (target_scope='pixel' — fx_layer[sub_fid]['dim']). Per-pixel value
                 # wins when present; otherwise it falls back to the fixture-level one.
@@ -4278,7 +4278,7 @@ class OutputState:
 
                     fx_dim_raw = fx_vals.get('dim', _fixture_dim_fx)
                     if fx_dim_raw is not None:
-                        # Dim FX: multiplicative on top of static dim hierarchy
+                        # dim FX: multiplicative on top of static dim hierarchy
                         sub_dim = max(0.0, min(1.0, _base_dim * (fx_dim_raw / 255.0)))
                     elif _rgb_fx_on:
                         # Colour FX running: respect explicit programmer/cue dim;
@@ -4344,7 +4344,7 @@ class OutputState:
                             if addr + offset > 511:
                                 break
                             dmx[addr + offset] = 0 if _solo_suppress else ch_resolved.get(ch, 0)
-            # Direct DMX overrides — applied after all other layers
+            # direct DMX overrides — applied after all other layers
             for addr1, val in self.direct_dmx.get(universe, {}).items():
                 if 1 <= addr1 <= 512:
                     dmx[addr1 - 1] = max(0, min(255, int(val)))
@@ -4683,7 +4683,7 @@ class OSCEngine:
              send() fires a message to one or all targets.
 
     grandMA3-compatible addresses (input):
-      /gma3/cmd              string   — command line (e.g. "Go+ Cue 1")
+      /gma3/cmd              string   — command line (e.g. "Go+ cue 1")
       /gma3/fader/P/E        float    — fader 0.0-1.0 (page P, exec E)
       /gma3/key/P/E/K        int      — key 0/1 press/release
 
@@ -4871,7 +4871,7 @@ class AIEngine:
     - Your fixtures and their IDs
     - All cuestacks and their cues
     - Available FX waveforms and parameters
-    - Programmer commands (same syntax as command line)
+    - programmer commands (same syntax as command line)
     """
 
     ACTION_SCHEMA = """
@@ -4967,7 +4967,7 @@ Rules:
                                "bpm": layer.rate_bpm,
                                "size": layer.size,
                                "spread": layer.spread})
-        # Programmer contents (what's currently edited, not yet stored in a cue)
+        # programmer contents (what's currently edited, not yet stored in a cue)
         prog_data = {}
         try:
             for fid, vals in self._prog.data.items():
@@ -5016,7 +5016,7 @@ Rules:
             "Be creative with lighting — colour, movement, mood. "
             "Available waveforms: sine, ramp, pulse, square. "
             "Available channels: red, green, blue. "
-            "Programmer commands use MA3-style syntax: "
+            "programmer commands use MA3-style syntax: "
             "'FIXTURE_ID AT VALUE', 'R 255 G 0 B 0', 'AT FULL', 'AT OUT'.\n"
             "The console state includes recent_commands — the last few commands the "
             "operator ran. Use them to resolve pronouns and implicit references: "
@@ -5137,7 +5137,7 @@ Rules:
                         self._executor_pool.bump_priority(ex.exec_id)
                         self._fire(ex, ex.back, self._patch, self._fade)
                 elif act == "dim":
-                    # Clamp like every sibling dim-setter (Programmer.set_dimmer,
+                    # Clamp like every sibling dim-setter (programmer.set_dimmer,
                     # the GUI fixture-dim slider, MasterFixture.set_dimmer) --
                     # this value comes straight from the model's JSON with no
                     # bounds of its own. Unclamped, an out-of-range value here
@@ -5214,8 +5214,8 @@ Rules:
 # Panels:
 #   - Header: title bar + current cue status
 #   - Cuestack: cue list, GO / BACK, live indicator
-#   - FX: Rate / Size / Spread sliders, Kill button
-#   - Output monitor: per-tube RGB+Dim bars
+#   - FX: rate / size / spread sliders, Kill button
+#   - Output monitor: per-tube RGB+dim bars
 #   - MIDI mapping: table with add / remove / learn
 #   - AI prompt: text input → ai.ask()
 # ============================================================
@@ -5240,7 +5240,7 @@ _C_BTN_A     = (122,  84, 215, 255) # active — bright violet (was 98,64,182)
 _C_CUE_ACT   = (72,  50, 148, 255)  # selected cue row — brighter violet
 _C_SLIDER_G  = _C_ACCENT
 
-# Pool panel header colours — violet family, varied lightness/hue for readability
+# pool panel header colours — violet family, varied lightness/hue for readability
 _C_P_GROUPS  = (160, 120, 255, 255)  # mid violet
 _C_P_COLORS  = (210,  98, 220, 255)  # pink-violet
 _C_P_DIMS    = (180, 160, 255, 255)  # pale lavender
@@ -5825,7 +5825,7 @@ class GUIEngine:
         _W = self._W_LEFT
         with dpg.child_window(tag="left_col", width=_W, height=self._H_MAIN,
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
-            # ── Cue list ─────────────────────────
+            # ── cue list ─────────────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("› cuestack", color=_C_ACCENT)
                 dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
@@ -6205,7 +6205,7 @@ class GUIEngine:
                     ("fx",      "FX "),           ("rec grp", "RECORD GROUP "),
                     ("group",   "GROUP "),        ("snap",    "SNAPSHOT "),
                 ]:
-                    dpg.add_button(label=label, height=_BH,
+                    dpg.add_button(label=label, width=82, height=_BH,
                                    callback=self._numpad_append, user_data=ud)
 
             # ── Quick action row 2: timing / CLEAR / transport ─
@@ -6214,15 +6214,15 @@ class GUIEngine:
                     ("fade",  " FADE "), ("cfade", " CFADE "),
                     ("dfade", " DFADE "), ("delay", " DELAY "),
                 ]:
-                    dpg.add_button(label=label, height=_BH,
+                    dpg.add_button(label=label, width=72, height=_BH,
                                    callback=self._numpad_append, user_data=ud)
-                dpg.add_spacer(width=6)
+                dpg.add_spacer(width=8)
                 for label, ud in [
                     ("clear", "CLEAR"), ("reload", "RELOAD"),
                     ("go",    "GO"),    ("back",   "BACK"),
                     ("undo",  "UNDO"),
                 ]:
-                    dpg.add_button(label=label, height=_BH,
+                    dpg.add_button(label=label, width=72, height=_BH,
                                    callback=self._numpad_exec, user_data=ud)
 
             dpg.add_separator()
@@ -6303,7 +6303,7 @@ class GUIEngine:
     # _H_MAIN was 480, but pixel measurement (dpg.get_y_scroll_max on the real
     # rendered left_col) showed its content overflowing that budget by 224px —
     # left_col had a permanent scrollbar cutting off the bottom third of the
-    # FX controls. Moved the Rate/Size/Spread pool quick-recall grid to its own
+    # FX controls. Moved the Rate/Size/spread pool quick-recall grid to its own
     # popup (_build_fx_params_popup, "rsp pool" button — same pattern as the
     # attribute-pool and speed-master popups) and paired the cue timing fields
     # two-per-row instead of one-per-row, which closed all but 32px of the gap
@@ -6319,7 +6319,7 @@ class GUIEngine:
     # Column widths
     _W_LEFT     = 380
     _W_RIGHT    = 720
-    # Pool grid
+    # pool grid
     _POOL_SLOTS = 24    # 4 rows × 6 cols per panel
     _POOL_COLS  = 6
     _PANEL_W    = 634   # panels touch: 3 × 634 = 1902 fits 1920 w/ outer padding
@@ -6705,7 +6705,7 @@ class GUIEngine:
     def _focus_cmd(self):
         pass  # key routing via global handlers; no focus transfer needed
 
-    # ── Pool right-click context menu callbacks ──────────────────────────
+    # ── pool right-click context menu callbacks ──────────────────────────
     def _ctx_exec(self, _s, _a, cmd):
         """Execute cmd immediately and log result."""
         if not self._cmd:
@@ -6982,7 +6982,7 @@ class GUIEngine:
                 self._build_attr_pool_panel("control",  _C_P_CONTROL,  "ctrl")
 
     def _build_fx_params_popup(self):
-        """Floating Rate/Size/Spread pool panel — hidden by default, opened via
+        """Floating Rate/Size/spread pool panel — hidden by default, opened via
         the 'rsp pool' button next to the inline FX sliders. Moved out of the
         left column (was pushing left_col 224px past its 480px budget, the
         largest single contributor) — the sliders themselves (live values)
@@ -7168,7 +7168,7 @@ class GUIEngine:
         else:
             self._log(f"> FORM {n} is empty")
             if n < FormPool.FIRST_CUSTOM_SLOT:
-                self._log(f"  Slots 1-4 are built-ins (sine/ramp/pulse/square)")
+                self._log(f"  slots 1-4 are built-ins (sine/ramp/pulse/square)")
             else:
                 self._log(f"  To record: RECORD FORM {n} Name 0.0,0.0 0.5,1.0 1.0,0.0")
         self._focus_cmd()
@@ -7260,7 +7260,7 @@ class GUIEngine:
                         pass
             else:
                 if n in self._col_btn_themes:
-                    # Preset deleted — remove custom theme
+                    # preset deleted — remove custom theme
                     try:
                         dpg.delete_item(self._col_btn_themes[n][1])
                     except Exception:
@@ -7401,7 +7401,7 @@ class GUIEngine:
             except Exception:
                 pass
 
-        # FX Pool (slots 1-48)
+        # FX pool (slots 1-48)
         for n in range(1, self._POOL_SLOTS + 1):
             p = self._fx_pool.get(n) if self._fx_pool else None
             lbl = f"{n}:{p.name[:6]}" if p else f"fx{n}"
@@ -7544,7 +7544,7 @@ class GUIEngine:
                 seen_fx.append(part)
         fx_summary = "  |  ".join(seen_fx) if seen_fx else "— no FX in programmer"
 
-        # Color / dim line
+        # color / dim line
         color_str = "  ".join(f"C{rid}:{name}" for rid, name in color_seen.items())
         dim_str   = "  ".join(f"D{rid}:{name}" for rid, name in dim_seen.items())
         other_str = "  ".join(filter(None, [color_str, dim_str]))
@@ -7725,7 +7725,7 @@ class GUIEngine:
                           width=300)
             dpg.add_text("click learn, then move the control (cc) or press a key/pad (note).", color=_C_DIM)
 
-            # ── Direct entry (no physical MIDI needed) ────────
+            # ── direct entry (no physical MIDI needed) ────────
             with dpg.group(horizontal=True):
                 dpg.add_text("direct:", color=_C_DIM)
                 dpg.add_text("ch", color=_C_DIM)
@@ -7923,20 +7923,20 @@ class GUIEngine:
         except Exception:
             return
         if fid in self._patch.fixtures:
-            self._log(f"Fixture ID {fid} already patched — remove it first")
+            self._log(f"fixture {fid} already patched — remove it first")
             return
         master = self._patch.patch_fixture(fid, name, profile, universe, addr)
         if master:
-            self._log(f"Patched: {master.name} (ID {fid}) — {profile} U{universe}@{addr}")
+            self._log(f"patched: {master.name} (id {fid}) — {profile} u{universe}@{addr}")
             if clone_src and clone_src != 0 and clone_src in self._patch.fixtures:
                 msg = self._cmd(f"CLONE {clone_src} TO {fid}") if self._cmd else ""
                 if msg:
                     self._log(msg)
             elif clone_src and clone_src != 0:
-                self._log(f"  Clone src {clone_src} not in patch — skipped")
+                self._log(f"  clone src {clone_src} not in patch — skipped")
             self._refresh_patch_table()
         else:
-            self._log(f"Failed to patch — check profile name '{profile}'")
+            self._log(f"failed to patch — check profile name '{profile}'")
 
     def _on_patch_remove(self, _sender, _app_data, user_data):
         fid = int(user_data)
@@ -7949,7 +7949,7 @@ class GUIEngine:
             keys_to_del = [k for k in self._prog.data if k.startswith(fid_str + '.')]
             for k in keys_to_del:
                 del self._prog.data[k]
-            self._log(f"Removed: {name} (ID {fid})")
+            self._log(f"removed: {name} (id {fid})")
             self._refresh_patch_table()
 
     def _on_patch_save(self):
@@ -8037,7 +8037,7 @@ class GUIEngine:
                 ("1 AT FOCUS 128",        "set focus channel"),
                 ("1 AT IRIS 64",          "set iris (0=open, 255=closed typical)"),
                 ("1 AT DIMMER 255",       "set dimmer channel if in profile"),
-                ("RECORD POSITION 1 Wide","Snapshot pan/tilt from programmer"),
+                ("RECORD POSITION 1 Wide","snapshot pan/tilt from programmer"),
                 ("POSITION 1",            "apply position preset to programmer"),
                 ("RECORD GOBO 1 Open",    "snapshot gobo from programmer"),
                 ("GOBO 1",                "apply gobo preset to programmer"),
@@ -8063,11 +8063,11 @@ class GUIEngine:
                 ("TAP",                   "tap-tempo: tap 2+ times within 3 s to lock BPM"),
                 ("SIZE 100",              "set global FX size (0–100)"),
                 ("SPREAD 50",             "set global FX spread (0–100)"),
-                ("FX FORM 5",             "set waveform to Form Pool slot 5"),
-                ("FX COLOR 3",            "drive R/G/B from Color Preset 3 (sine default)"),
-                ("FX RAMP COLOR 3",       "ramp waveform toward Color Preset 3's hue"),
-                ("FX SINE RED GROUP 2",   "sine red on Group 2 fixtures only"),
-                ("FX SINE RED DIMREF 1",  "size ceiling: live from Dim Preset 1's level"),
+                ("FX FORM 5",             "set waveform to form pool slot 5"),
+                ("FX COLOR 3",            "drive R/G/B from color preset 3 (sine default)"),
+                ("FX RAMP COLOR 3",       "ramp waveform toward color preset 3's hue"),
+                ("FX SINE RED GROUP 2",   "sine red on group 2 fixtures only"),
+                ("FX SINE RED DIMREF 1",  "size ceiling: live from dim preset 1's level"),
                 ("FIRE FX 3",             "load FX preset 3 into programmer"),
                 ("FIRE FX 3 GROUP 2",     "fire preset 3, override target to group 2"),
                 ("FX LIST",               "show all programmer FX defs + pool contents"),
@@ -8205,10 +8205,10 @@ class GUIEngine:
                 ("FADER 1 TIMELOCK OFF",    "lock cuestack on fader 1 to its own times"),
                 ("FADER 1 TIMELOCK ON",     "re-enable fader time override for cuestack"),
                 ("CS 1 CLEAR",              "delete all cues from cuestack 1 — keeps the slot and name, ready to re-record"),
-                ("CS 1 BOUNCE ON",          "cS 1: ping-pong — reverse direction at last/first cue instead of looping"),
-                ("CS 1 BOUNCE OFF",         "cS 1: restore normal forward loop (default)"),
-                ("FADER 1 BOUNCE ON",       "same as CS BOUNCE ON but addressed through the fader slot"),
-                ("FADER 1 BOUNCE OFF",      "disable ping-pong on the cuestack assigned to fader 1"),
+                ("CS 1 bounce on",          "cS 1: ping-pong — reverse direction at last/first cue instead of looping"),
+                ("CS 1 bounce off",         "cS 1: restore normal forward loop (default)"),
+                ("FADER 1 bounce on",       "same as CS bounce on but addressed through the fader slot"),
+                ("FADER 1 bounce off",      "disable ping-pong on the cuestack assigned to fader 1"),
                 ("CS 1 WRAP ON",            "cS 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
                 ("CS 1 WRAP OFF",           "cS 1: restore normal LTP tracking across wrap-around (default)"),
                 ("CS 1 NOTE",               "view production note on cuestack 1 (blank if none set)"),
@@ -8216,19 +8216,19 @@ class GUIEngine:
                 ("CS 1 CHASE ON BPM 120",   "auto-advance CS 1 through cues at 120 BPM (chase mode)"),
                 ("CS 1 CHASE OFF",          "disable chase mode — cuestack returns to manual GO"),
                 ("CS 1 CHASE BPM 90",       "change chase speed to 90 BPM while chase is running"),
-                ("CS 1 CHASE SPEED 2",      "link CS 1 chase tempo to Speed Master 2"),
+                ("CS 1 CHASE SPEED 2",      "link CS 1 chase tempo to speed Master 2"),
                 ("PROG TIME 2",             "programmer time: all cues fade at 2s"),
                 ("PROG TIME OFF",           "disable programmer time override"),
             ]),
             ("faders & pages", [
-                ("FADER 1 GO / BACK / STOP","Direct fader control"),
+                ("FADER 1 GO / BACK / STOP","direct fader control"),
                 ("FADER 1 GOTO FIRST",      "jump fader 1 to the first cue in its cuestack and fire it"),
                 ("FADER 1 GOTO LAST",       "jump fader 1 to the last cue in its cuestack and fire it"),
                 ("FADER 1 LEVEL 75",        "set fader 1 master level to 75% (GUI slider also works)"),
                 ("FADER 1 MODE FLASH",      "set trigger mode: live only while held"),
                 ("FADER 1 MODE TOGGLE",     "set trigger mode: GO/BACK advance (default)"),
-                ("FADER 1 FLASH ON",        "fire instantly (0s), works regardless of mode"),
-                ("FADER 1 FLASH OFF",       "release a flash — fully stops the fader"),
+                ("FADER 1 flash on",        "fire instantly (0s), works regardless of mode"),
+                ("FADER 1 flash off",       "release a flash — fully stops the fader"),
                 ("FADER 1 BTN A GO",        "set fader 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH/RATE+/RATE-)"),
                 ("FADER 1 RATE+ / RATE-",   "nudge playback speed ×1.25 / ÷1.25 (divides fade times)"),
                 ("FADER 1 RATE RESET",      "restore normal playback speed"),
@@ -8344,8 +8344,8 @@ class GUIEngine:
                 ("LIST SPEED",          "show all 16 speed masters with names and current BPM"),
                 ("spd button",          "open the speed master panel — 16 draggable BPM faders (20–480 BPM)"),
                 ("FX editor SPD col",   "pin an FX layer to a speed master slot — that master overrides the layer's BPM live"),
-                ("MIDI target",         "'Speed Master 1' … 'Speed Master 16' — assign a CC fader for live control"),
-                ("priority chain",      "speed master > Rate preset > inline BPM — highest priority wins"),
+                ("MIDI target",         "'speed Master 1' … 'speed Master 16' — assign a CC fader for live control"),
+                ("priority chain",      "speed master > rate preset > inline BPM — highest priority wins"),
             ]),
             ("midi clock", [
                 ("MIDI CLOCK ON",  "lock FX BPM to incoming MIDI beat clock (24 ppqn); shows CLK in header"),
@@ -8398,7 +8398,7 @@ class GUIEngine:
                 ("Shift + chip click",    "add/remove that fixture from the current selection without clearing others"),
                 ("hl button",             "toggle HIGHLIGHT — selected fixtures go full white at 100%; glows green when active"),
                 ("PT button",             "toggle programmer time: click to set 2s fade on all cues; click again to turn off"),
-                ("flash button (fader)",    "hold for FLASH ON; release for FLASH OFF — button shows ■ FLASH while held"),
+                ("flash button (fader)",    "hold for flash on; release for flash off — button shows ■ FLASH while held"),
             ]),
             ("fixture dim panel (right column)", [
                 ("sliders",               "per-fixture master dim — drag to set; writes directly into programmer layer"),
@@ -8434,7 +8434,7 @@ class GUIEngine:
                                 dpg.add_text(desc, color=_C_DIM,  wrap=380)
                     dpg.add_spacer(height=6)
 
-    # ── Cue timing popup ─────────────────────────────────────────
+    # ── cue timing popup ─────────────────────────────────────────
 
     def _build_cue_timing_popup(self):
         """Floating cue timing editor — fade/delay/follow/fxout + note for active cue."""
@@ -8541,7 +8541,7 @@ class GUIEngine:
 
             dpg.add_separator()
 
-            # ── Cuestack list for selected page ──────────────────
+            # ── cuestack list for selected page ──────────────────
             dpg.add_text("cuestacks on this page:", color=_C_DIM)
             with dpg.child_window(tag="pg_cs_list", width=-1, height=210,
                                   border=True, no_scrollbar=False):
@@ -8613,7 +8613,7 @@ class GUIEngine:
         page = self._executor_pool.pages.get(self._pages_current) if self._executor_pool else None
         try:
             dpg.set_value("pg_name_input",
-                          page['name'] if page else f"Page {self._pages_current}")
+                          page['name'] if page else f"page {self._pages_current}")
         except Exception:
             pass
         self._refresh_pages_table()
@@ -8698,11 +8698,11 @@ class GUIEngine:
                         width=1100, height=580, show=False,
                         pos=(120, 100), no_collapse=False):
 
-            # ── Preset selector row ───────────────────────────
+            # ── preset selector row ───────────────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("preset", color=_C_ACCENT)
                 dpg.add_spacer(width=6)
-            # Pool slots: _POOL_SLOTS in rows of _FXED_COLS
+            # pool slots: _POOL_SLOTS in rows of _FXED_COLS
             for _fxed_row in range(self._POOL_SLOTS // _FXED_COLS):
                 with dpg.group(horizontal=True):
                     for _fxed_col in range(_FXED_COLS):
@@ -8840,7 +8840,7 @@ class GUIEngine:
                 self._fx_ed_layers = []
                 self._fxed_rebuild_rows()
                 return
-        self._log(f"All {self._POOL_SLOTS} FX slots are full — delete one first")
+        self._log(f"all {self._POOL_SLOTS} fx slots are full — delete one first")
 
     def _fxed_delete_preset(self, *_):
         if self._fx_ed_slot and self._fx_pool:
@@ -9053,7 +9053,7 @@ class GUIEngine:
             for gid in sorted(self._groups.groups):
                 g = self._groups.groups[gid]
                 if g.members:
-                    items.append(f"Group {gid}: {g.name}")
+                    items.append(f"group {gid}: {g.name}")
         try:
             dpg.configure_item("fxed_target", items=items)
         except Exception:
@@ -9074,7 +9074,7 @@ class GUIEngine:
 
         if target == "all fixtures":
             self._prog.clear_selection()
-        elif target.startswith("Group "):
+        elif target.startswith("group "):
             try:
                 gid = int(target.split(":")[0].split()[-1])
                 self._groups.recall(gid, self._prog)
@@ -9504,7 +9504,7 @@ class GUIEngine:
         except Exception:
             pass
 
-    # ── Speed Master panel ───────────────────────────────────
+    # ── speed Master panel ───────────────────────────────────
 
     def _build_speed_master_popup(self):
         """Floating 16-slot speed master panel — drag a fader to set BPM live."""
@@ -9581,7 +9581,7 @@ class GUIEngine:
             except Exception:
                 pass
 
-    # ── Fader page popup ─────────────────────────────────────────────────────
+    # ── fader page popup ─────────────────────────────────────────────────────
 
     _FPG_SLOTS  = 15
     _FPG_SLOT_W = 78     # per-slot child_window width (includes borders)
@@ -9780,7 +9780,7 @@ class GUIEngine:
                         width=1600, height=360, show=False,
                         pos=(160, 360), no_collapse=False):
             with dpg.group(horizontal=True):
-                # ── Programmer ──────────────────────────────────────
+                # ── programmer ──────────────────────────────────────
                 with dpg.group(tag="prog_panel"):
                     dpg.add_text("programmer", tag="prog_mon_title", color=_C_DIM)
                     dpg.add_separator()
@@ -9903,7 +9903,7 @@ class GUIEngine:
             dpg.add_text("audio reactive", color=_C_ACCENT)
             dpg.add_separator()
             if not (self._audio_engine and _AUDIO_AVAILABLE):
-                dpg.add_text("audio backend unavailable — sounddevice/PortAudio "
+                dpg.add_text("audio backend unavailable — sounddevice/Portaudio "
                              "not installed or no input device.", color=_C_DIM,
                              wrap=380)
             with dpg.group(horizontal=True):
@@ -10068,7 +10068,7 @@ class GUIEngine:
 
     def _toggle_learn(self):
         if self._learn_armed:
-            # Already armed — cancel
+            # already armed — cancel
             self._learn_armed = False
             self._midi.cancel_learn()
             dpg.set_item_label("learn_btn", "learn")
@@ -10117,9 +10117,9 @@ class GUIEngine:
             ex_n = int(dpg.get_value("midi_flash_exec"))
         except Exception:
             return
-        name    = f"Fader {ex_n} Flash"
-        on_cmd  = f"FADER {ex_n} FLASH ON"
-        off_cmd = f"FADER {ex_n} FLASH OFF"
+        name    = f"fader {ex_n} Flash"
+        on_cmd  = f"FADER {ex_n} flash on"
+        off_cmd = f"FADER {ex_n} flash off"
         on_cb   = (lambda c=on_cmd:  self._cmd(c)) if self._cmd else (lambda: None)
         off_cb  = (lambda c=off_cmd: self._cmd(c)) if self._cmd else (lambda: None)
         GUIEngine.target_registry[name] = (on_cb, False, True, off_cb)
@@ -10468,7 +10468,7 @@ class GUIEngine:
         Rebuild the executor-slot list inside the left column. Lists every
         executor with a cuestack assigned, not just ones currently playing
         a cue — an idle executor (assigned but never GO'd, or stopped via
-        FLASH OFF) still needs its flash/stop/priority buttons reachable
+        flash off) still needs its flash/stop/priority buttons reachable
         by mouse, since those are the only way to trigger it without MIDI.
         """
         try:
@@ -10552,7 +10552,7 @@ class GUIEngine:
                                    width=40, height=20,
                                    callback=self._on_exec_slot_btn,
                                    user_data=(ex.exec_id, _slot))
-            # Fader level row
+            # fader level row
             dpg.add_slider_float(
                 tag=f"exec_fader_{ex.exec_id}",
                 default_value=ex.level,
@@ -10593,7 +10593,7 @@ class GUIEngine:
         self._last_playbacks_hash = None
 
     def _on_exec_flash_btn(self, sender, app_data, user_data):
-        # FLASH ON/OFF is handled by the tick loop via is_item_active() polling.
+        # flash on/OFF is handled by the tick loop via is_item_active() polling.
         pass
 
     def _on_exec_slot_btn(self, sender, app_data, user_data):
@@ -10650,7 +10650,7 @@ class GUIEngine:
             # own docstring) -- dim is already that fraction. A stray "* 100"
             # here meant any drag above ~1% clamped virtual_dimmer to 1.0
             # (max(0.0, min(1.0, dim*100)) == 1.0 for basically all inputs).
-            # Programmer.set_dimmer() and the AI dim action both pass the
+            # programmer.set_dimmer() and the AI dim action both pass the
             # already-normalized fraction straight through; match that.
             self._patch.fixtures[fid].set_dimmer(dim)
 
@@ -10688,7 +10688,7 @@ class GUIEngine:
             self._cmd("LIVE" if self._out.blind else "BLIND")
 
     def _on_pt_toggle(self):
-        """Programmer time toggle: click to set 2s fade, click again to turn off."""
+        """programmer time toggle: click to set 2s fade, click again to turn off."""
         if self._cmd:
             pt = _prog_time
             if pt.get('on'):
@@ -11044,7 +11044,7 @@ class GUIEngine:
                 if eid not in active_eids:
                     if self._flash_held.pop(eid, False):
                         try:
-                            self._cmd(f"FADER {eid} FLASH OFF")
+                            self._cmd(f"FADER {eid} flash off")
                         except Exception:
                             pass
             for eid in active_eids:
@@ -11068,12 +11068,12 @@ class GUIEngine:
                 was_held = self._flash_held.get(eid, False)
                 if held and not was_held:
                     try:
-                        self._cmd(f"FADER {eid} FLASH ON")
+                        self._cmd(f"FADER {eid} flash on")
                     except Exception:
                         pass
                 elif not held and was_held:
                     try:
-                        self._cmd(f"FADER {eid} FLASH OFF")
+                        self._cmd(f"FADER {eid} flash off")
                     except Exception:
                         pass
                 self._flash_held[eid] = held
@@ -11090,7 +11090,7 @@ class GUIEngine:
         # Active stack — refresh left column when executor changes
         active_n = self._active_executor[0] if self._active_executor else 1
         active_cs   = self._cuestack_pool.get(active_n) if self._cuestack_pool else None
-        current_name = active_cs.name if active_cs else f"Cuestack {active_n}"
+        current_name = active_cs.name if active_cs else f"cuestack {active_n}"
         # Build cuestack combo items from pool
         if self._cuestack_pool:
             cs_items = ["—"] + [
@@ -11140,7 +11140,7 @@ class GUIEngine:
         except Exception:
             pass
 
-        # Cue timing editor — sync drag floats to active cue's fade/delay
+        # cue timing editor — sync drag floats to active cue's fade/delay
         try:
             _, cue_t = self._cue_timing_target()
             if cue_t:
@@ -11213,7 +11213,7 @@ class GUIEngine:
             except Exception:
                 pass
 
-        # Rate/Size/Spread pool button labels + tooltips
+        # Rate/Size/spread pool button labels + tooltips
         try:
             for n in range(1, 5):
                 rp = self._rate_pool.get(n) if self._rate_pool else None
@@ -11252,7 +11252,7 @@ class GUIEngine:
         if any_dim is not None:
             dpg.set_value("hdr_dim", f"dim: {any_dim:.0%}")
 
-        # Programmer monitor title colour (mirrors status bar)
+        # programmer monitor title colour (mirrors status bar)
         try:
             dpg.configure_item("prog_mon_title",
                                color=_C_ACCENT if prog_active else _C_DIM)
@@ -11370,7 +11370,7 @@ class GUIEngine:
             fid     = str(master.fixture_id)          # e.g. "1"
             sub_fid = f"{master.fixture_id}.1"        # e.g. "1.1" — first pixel
 
-            # Dim lives on the master entry
+            # dim lives on the master entry
             pl_master  = self._out.programmer_layer.get(fid, {})
             cue_merged = self._out._merged_cue_layer()
             cue_master = cue_merged.get(fid, {})
@@ -11531,7 +11531,7 @@ class GUIEngine:
 
 
 # ============================================================
-# STUDIO CONSOLE - Block 14: Show File Persistence
+# STUDIO CONSOLE - Block 14: show File Persistence
 #
 # Saves/loads the entire show state to studio_show.json so
 # you don't re-record cues or re-wire MIDI on every startup.
@@ -11953,7 +11953,7 @@ class ShowFile:
             return False
         for gid_str, gdata in doc.get("groups", {}).items():
             gid   = int(gid_str)
-            group = Group(gid, gdata.get("name", f"Group {gid}"))
+            group = Group(gid, gdata.get("name", f"group {gid}"))
             group.members = [(m["type"], m["fixture_id"])
                              for m in gdata.get("members", [])]
             group_pool.groups[gid] = group
@@ -11967,7 +11967,7 @@ class ShowFile:
             return False
         for pid_str, pdata in doc.get("colors", {}).items():
             pid    = int(pid_str)
-            preset = ColorPreset(pid, pdata.get("name", f"Color {pid}"))
+            preset = ColorPreset(pid, pdata.get("name", f"color {pid}"))
             if "data" in pdata:
                 # Migrate old per-fixture format: sample first entry
                 for fdata in pdata["data"].values():
@@ -12134,7 +12134,7 @@ class ShowFile:
             fid  = int(fid_str)
             form = FormPreset(
                 fid,
-                fdata.get("name", f"Form {fid}"),
+                fdata.get("name", f"form {fid}"),
                 fdata.get("form_type", "breakpoints"),
                 breakpoints=fdata.get("breakpoints", []),
             )
@@ -12158,7 +12158,7 @@ class ShowFile:
         if not doc: return False
         for pid_str, pd in doc.get("rate_presets", {}).items():
             pid = int(pid_str)
-            rate_pool.store(pid, RatePreset(pid, pd.get("name", f"Rate {pid}"),
+            rate_pool.store(pid, RatePreset(pid, pd.get("name", f"rate {pid}"),
                                             pd.get("bpm", 60.0)))
         n = len(doc.get("rate_presets", {}))
         if n: print(f"  Loaded rate_pool — {n}")
@@ -12178,7 +12178,7 @@ class ShowFile:
         if not doc: return False
         for pid_str, pd in doc.get("size_presets", {}).items():
             pid = int(pid_str)
-            size_pool.store(pid, SizePreset(pid, pd.get("name", f"Size {pid}"),
+            size_pool.store(pid, SizePreset(pid, pd.get("name", f"size {pid}"),
                                             pd.get("size", 200.0)))
         n = len(doc.get("size_presets", {}))
         if n: print(f"  Loaded size_pool — {n}")
@@ -12198,7 +12198,7 @@ class ShowFile:
         if not doc: return False
         for pid_str, pd in doc.get("spread_presets", {}).items():
             pid = int(pid_str)
-            spread_pool.store(pid, SpreadPreset(pid, pd.get("name", f"Spread {pid}"),
+            spread_pool.store(pid, SpreadPreset(pid, pd.get("name", f"spread {pid}"),
                                                 pd.get("spread", 1.0)))
         n = len(doc.get("spread_presets", {}))
         if n: print(f"  Loaded spread_pool — {n}")
@@ -12390,7 +12390,7 @@ class ShowFile:
             except ValueError:
                 continue
             macro_pool[slot] = {
-                "name":     m.get("name", f"Macro {slot}"),
+                "name":     m.get("name", f"macro {slot}"),
                 "commands": list(m.get("commands", [])),
             }
         print(f"  Loaded macros    — {len(macro_pool)} macro(s)")
@@ -12431,7 +12431,7 @@ class ShowFile:
         # Groups
         for gid_str, gdata in old.get("groups", {}).items():
             gid   = int(gid_str)
-            group = Group(gid, gdata.get("name", f"Group {gid}"))
+            group = Group(gid, gdata.get("name", f"group {gid}"))
             group.members = [(m["type"], m["fixture_id"])
                              for m in gdata.get("members", [])]
             group_pool.groups[gid] = group
@@ -12441,7 +12441,7 @@ class ShowFile:
         # Colors — old format stored per-fixture data dict; migrate to global RGB
         for pid_str, pdata in old.get("color_presets", {}).items():
             pid    = int(pid_str)
-            preset = ColorPreset(pid, pdata.get("name", f"Color {pid}"))
+            preset = ColorPreset(pid, pdata.get("name", f"color {pid}"))
             old_data = pdata.get("data", {})
             # Take first fixture's RGB as the global value
             for fvals in old_data.values():
@@ -12481,7 +12481,7 @@ class ShowFile:
 
 # ============================================================
 # STUDIO CONSOLE — Live Session
-# Cuestack 1 / Axiom 25 MkII mapped
+# cuestack 1 / Axiom 25 MkII mapped
 # ============================================================
 
 # ----------------------------------------------------------
@@ -12509,7 +12509,7 @@ if not ShowFile.load_patch(patch):
     patch.patch_fixture(6, "Tube 6", "SGM_RGB_54", universe=2, start_address=325)
     ShowFile.save_patch(patch)
 
-prog         = Programmer(patch)
+prog         = programmer(patch)
 _prog_snapshots = {}  # { int slot: {"name": str, "data": dict} } — session-only
 group_pool   = GroupPool()
 color_pool   = ColorPool()
@@ -12570,7 +12570,7 @@ osc.start(port=8001)
 
 osc.list_targets()
 
-# Audio engine (Block 9) — reactive audio→light mapping. Unlike MIDI (control
+# audio engine (Block 9) — reactive audio→light mapping. Unlike MIDI (control
 # surface hardware the console expects on every launch) or OSC (a passive
 # network listener), microphone capture is opt-in: the engine and mapper
 # construct safely with no input device present and sit idle until an
@@ -12614,7 +12614,7 @@ fx_pool        = FXPool()
 active_executor = [1]   # list so closures can rebind it
 _tap_times: list = []   # monotonic timestamps for tap-tempo; shared between GUI and TAP command
 
-# Programmer time override — when on, overrides cue fade/delay for manually fired cues
+# programmer time override — when on, overrides cue fade/delay for manually fired cues
 _prog_time = {
     'on':    False,
     'fade':  0.0,
@@ -12704,7 +12704,7 @@ if not _cs_loaded:
 
         ShowFile.save_forms(form_pool)
 
-        # ── FX Pool (slots 1-8) ───────────────────────────────────────
+        # ── FX pool (slots 1-8) ───────────────────────────────────────
         def _fx(pid, name, layers):
             p = FXPreset(pid, name)
             for lyr in layers:
@@ -12734,8 +12734,8 @@ if not _cs_loaded:
 
         ShowFile.save_fx_pool(fx_pool)
 
-        # ── Cuestack 1: Color Show ────────────────────────────────────
-        cs1 = CueStack(1, "Color Show")
+        # ── cuestack 1: color show ────────────────────────────────────
+        cs1 = CueStack(1, "color Show")
 
         _set_all(255, 0, 0)
         cs1.record_cue(1, prog, name="Red", fade_time=2.0)
@@ -12757,7 +12757,7 @@ if not _cs_loaded:
         cs1.record_cue(5, prog, name="Off", fade_time=2.0)
         prog.execute("CLEAR")
 
-        # ── Cuestack 2: Dynamic ───────────────────────────────────────
+        # ── cuestack 2: Dynamic ───────────────────────────────────────
         cs2 = CueStack(2, "Dynamic")
 
         _set_all(255, 255, 255)
@@ -12780,7 +12780,7 @@ if not _cs_loaded:
         cs2.record_cue(5, prog, name="Fade Out", fade_time=3.0)
         prog.execute("CLEAR")
 
-        # ── Cuestack 3: Warm Tones ────────────────────────────────────
+        # ── cuestack 3: Warm Tones ────────────────────────────────────
         cs3 = CueStack(3, "Warm")
 
         _set_all(255, 30, 0)
@@ -12813,7 +12813,7 @@ if not _cs_loaded:
 
         ShowFile.save_cuestacks(cuestack_pool)
 
-cs1 = cuestack_pool.get(1) or CueStack(1, "Cuestack 1")
+cs1 = cuestack_pool.get(1) or CueStack(1, "cuestack 1")
 cuestack_pool.store(1, cs1)
 
 # Wire every loaded cuestack into an executor slot (1:1 by default)
@@ -12825,7 +12825,7 @@ for _slot, _stack in cuestack_pool.stacks.items():
 output_state.link_programmer(prog)
 
 def _active_stack():
-    """Returns the CueStack for the current active executor."""
+    """Returns the cuestack for the current active executor."""
     return cuestack_pool.get(active_executor[0])
 
 def _active_executor():
@@ -12852,7 +12852,7 @@ def _start_magenta_sine():
           f"spread={_fx_params['spread']:.2f}")
 
 def _stop_fx():
-    # Programmer-based kill: sets fx_kill in programmer so CLEAR can release it.
+    # programmer-based kill: sets fx_kill in programmer so CLEAR can release it.
     # Equivalent to typing KILL FX at the command line.
     run_command("KILL FX")
 
@@ -12860,10 +12860,10 @@ def _stop_fx():
 # Edit the address/value to match your Lightform Creator OSC setup.
 # These are sent automatically every time a cue fires.
 LIGHTFORM_CUE_MAP = {
-    1.0: ("/lightform/layer/show", 1),   # Cue 1 Red   → Lightform layer 1
-    2.0: ("/lightform/layer/show", 2),   # Cue 2 Blue  → Lightform layer 2
-    3.0: ("/lightform/layer/show", 3),   # Cue 3 Sine  → Lightform layer 3
-    4.0: ("/lightform/layer/show", 0),   # Cue 4 Off   → Lightform layer 0 (hide)
+    1.0: ("/lightform/layer/show", 1),   # cue 1 Red   → Lightform layer 1
+    2.0: ("/lightform/layer/show", 2),   # cue 2 Blue  → Lightform layer 2
+    3.0: ("/lightform/layer/show", 3),   # cue 3 Sine  → Lightform layer 3
+    4.0: ("/lightform/layer/show", 0),   # cue 4 Off   → Lightform layer 0 (hide)
 }
 
 # Called every time a cue fires — manages FX and sends OSC.
@@ -12880,7 +12880,7 @@ def _on_cue_fire(cue_num):
 
 def _osc_cmd(_, *args):  # _ = OSC address, unused here
     """
-    /gma3/cmd  "Go+ Cue 1"
+    /gma3/cmd  "Go+ cue 1"
     Receives a grandMA3 command string and runs it through
     the programmer — same as typing it on the command line.
     """
@@ -12911,8 +12911,8 @@ def _osc_cmd(_, *args):  # _ = OSC address, unused here
 def _osc_fader(address, *args):
     """
     /gma3/fader/PAGE/EXEC  float(0.0-1.0)
-    Fader on page PAGE, executor EXEC.
-    Page 1 Exec 1 stays mapped to the grandmaster dim (legacy behavior,
+    fader on page PAGE, executor EXEC.
+    page 1 Exec 1 stays mapped to the grandmaster dim (legacy behavior,
     kept for existing OSC templates). Any other page/exec routes straight
     to that executor's own level fader — same field the GUI executor
     sliders write via _on_exec_fader — so a surface like TouchOSC can
@@ -12935,7 +12935,7 @@ def _osc_key(address, *args):
     """
     /gma3/key/PAGE/EXEC/TYPE  int(0/1)
     Key press on a fader.  1=press, 0=release.
-    Page 1 Fader 1 Go/Back stay mapped to the active fader (legacy
+    page 1 fader 1 Go/Back stay mapped to the active fader (legacy
     behavior, kept for existing OSC templates). Any other page/fader fires
     GO/BACK on that specific fader via the same "FADER <n> GO|BACK"
     command MIDI and the command line already use.
@@ -12982,12 +12982,12 @@ def set_all_dim(val):
     _fader_dim[0] = val
     for master in patch.all_fixtures():
         output_state.programmer_layer.setdefault(str(master.fixture_id), {})['dim'] = val
-    print(f"\r  Dim → {val:.0%}      ", end='', flush=True)
+    print(f"\r  dim → {val:.0%}      ", end='', flush=True)
 
 # ----------------------------------------------------------
 # Knob callbacks
 # Each knob saves to _fx_params AND updates any running FX live.
-# If no FX is active the value is remembered for when Cue 3 fires.
+# If no FX is active the value is remembered for when cue 3 fires.
 # ----------------------------------------------------------
 
 def set_fx_rate(val):
@@ -12996,7 +12996,7 @@ def set_fx_rate(val):
     now = time.monotonic()
     for fx in active_fx:
         fx.set_rate_smooth(bpm, now)
-    suffix = f"  ({len(active_fx)} FX live)" if active_fx else "  (pending — fire Cue 3)"
+    suffix = f"  ({len(active_fx)} FX live)" if active_fx else "  (pending — fire cue 3)"
     print(f"\r  FX rate → {bpm:.0f} BPM{suffix}   ", end='', flush=True)
 
 def set_fx_size(val):
@@ -13020,11 +13020,11 @@ def _make_set_speed_master(slot_id):
     def _set_speed(val):
         bpm = 20 + val * 460   # 20 – 480 BPM  (same range as global FX rate)
         speed_master_pool.set_bpm(slot_id, bpm)
-        print(f"\r  Speed master {slot_id} → {bpm:.0f} BPM   ", end='', flush=True)
+        print(f"\r  speed master {slot_id} → {bpm:.0f} BPM   ", end='', flush=True)
     return _set_speed
 
 # ----------------------------------------------------------
-# Cue navigation — GO/BACK auto-trigger _on_cue_fire
+# cue navigation — GO/BACK auto-trigger _on_cue_fire
 # ----------------------------------------------------------
 
 def cue_go():
@@ -13051,7 +13051,7 @@ def cue_reload():
     ex = _active_executor()
     cs = ex.cuestack
     if not cs or cs.current is None:
-        return "No active cue to reload"
+        return "no active cue to reload"
     executor_pool.bump_priority(ex.exec_id)
     result = ex.reload(patch, fade_engine)
     _on_cue_fire(cs.current)
@@ -13067,7 +13067,7 @@ def goto_cue(num):
     return result
 
 # ----------------------------------------------------------
-# Direct cue triggers (pads 1-4)
+# direct cue triggers (pads 1-4)
 # ----------------------------------------------------------
 
 def goto_1(): goto_cue(1)
@@ -13146,10 +13146,10 @@ midi.map_cc(channel=1, cc=93, callback=set_fx_spread, name="FX Spread",  soft_ta
 
 # Pads (ch=10)
 # Row 1 — direct cue jumps
-midi.map_note(channel=10, note=36, on_callback=goto_1,   name="Cue 1 Red")
-midi.map_note(channel=10, note=38, on_callback=goto_2,   name="Cue 2 Blue")
-midi.map_note(channel=10, note=42, on_callback=goto_3,   name="Cue 3 Magenta")
-midi.map_note(channel=10, note=46, on_callback=goto_4,   name="Cue 4 Off")
+midi.map_note(channel=10, note=36, on_callback=goto_1,   name="cue 1 Red")
+midi.map_note(channel=10, note=38, on_callback=goto_2,   name="cue 2 Blue")
+midi.map_note(channel=10, note=42, on_callback=goto_3,   name="cue 3 Magenta")
+midi.map_note(channel=10, note=46, on_callback=goto_4,   name="cue 4 Off")
 # Row 2 — navigation + flash
 midi.map_note(channel=10, note=50, on_callback=cue_back, name="BACK")
 midi.map_note(channel=10, note=45, on_callback=cue_go,   name="GO")
@@ -13193,17 +13193,17 @@ GUIEngine.target_registry = {
     "Transport GO":     (transport_go,     False, False),
     "Transport BACK":   (transport_back,   False, False),
     "Transport Rewind": (transport_rewind, False, False),
-    "Cue 1 Red":        (goto_1,           False, True),
-    "Cue 2 Blue":       (goto_2,           False, True),
-    "Cue 3 Magenta":    (goto_3,           False, True),
-    "Cue 4 Off":        (goto_4,           False, True),
+    "cue 1 Red":        (goto_1,           False, True),
+    "cue 2 Blue":       (goto_2,           False, True),
+    "cue 3 Magenta":    (goto_3,           False, True),
+    "cue 4 Off":        (goto_4,           False, True),
     "GO":               (cue_go,           False, True),
     "BACK":             (cue_back,         False, True),
     "FX Kill":          (_stop_fx,         False, True),
     "Tap Tempo":          (tap_tempo,        False, True),
     # 4-tuple: (on_cb, soft_takeover, is_note, off_cb)
     "Flash White (hold)": (flash_on,       False, True, flash_off),
-    **{f"Speed Master {i}": (_make_set_speed_master(i), False, False)
+    **{f"speed Master {i}": (_make_set_speed_master(i), False, False)
        for i in range(1, SpeedMasterPool._DEFAULT_SLOTS + 1)},
 }
 
@@ -13249,7 +13249,7 @@ def save_show_as(name):
     for fname in os.listdir(DATA_DIR):
         if fname.endswith('.json') and not fname.endswith('.bak'):
             _sh.copy2(os.path.join(DATA_DIR, fname), os.path.join(dest, fname))
-    return f"Show saved as '{safe}'  →  studio_saves/{safe}/"
+    return f"show saved as '{safe}'  →  studio_saves/{safe}/"
 
 
 def load_show_from(name):
@@ -13320,7 +13320,7 @@ def load_show_from(name):
     osc._clients.clear()
     ShowFile.load_osc_targets(osc)
     ShowFile.load_fx(_fx_params)
-    return f"Show '{name}' loaded — restart may be needed for patch/MIDI changes"
+    return f"show '{name}' loaded — restart may be needed for patch/midi changes"
 
 
 def list_shows():
@@ -13329,9 +13329,9 @@ def list_shows():
         saves = [d for d in sorted(os.listdir(SAVES_DIR))
                  if os.path.isdir(os.path.join(SAVES_DIR, d))]
     except OSError:
-        return "No saves yet — use: SAVE AS <name>"
+        return "no saves yet — use: save as <name>"
     if not saves:
-        return "No saved shows — use: SAVE AS <name>"
+        return "no saved shows — use: save as <name>"
     import datetime as _dt
     lines = ["Saved shows:"]
     for s in saves:
@@ -13388,7 +13388,7 @@ def export_presets(what='all'):
         json.dump(bundle, f, indent=2)
     cats = [k for k in ('colors','dims','fx_pool','forms','rate_pool','size_pool','spread_pool')
             if k in bundle]
-    return f"Exported {', '.join(cats)} → {os.path.basename(out_path)}"
+    return f"exported {', '.join(cats)} → {os.path.basename(out_path)}"
 
 
 def import_presets(path):
@@ -13456,7 +13456,7 @@ def import_presets(path):
             fid = int(fid_s)
             if fid < FormPool.FIRST_CUSTOM_SLOT:
                 continue
-            form = FormPreset(fid, fdata.get("name", f"Form {fid}"),
+            form = FormPreset(fid, fdata.get("name", f"form {fid}"),
                               fdata.get("form_type", "breakpoints"),
                               breakpoints=fdata.get("breakpoints", []))
             form_pool.store(fid, form)
@@ -13468,7 +13468,7 @@ def import_presets(path):
         count = 0
         for pid_s, d in bundle['rate_pool'].items():
             pid = int(pid_s)
-            rate_pool.store(pid, RatePreset(pid, d.get("name", f"Rate {pid}"),
+            rate_pool.store(pid, RatePreset(pid, d.get("name", f"rate {pid}"),
                                             d.get("bpm", 60.0)))
             count += 1
         ShowFile.save_rate_pool(rate_pool)
@@ -13477,7 +13477,7 @@ def import_presets(path):
         count = 0
         for pid_s, d in bundle['size_pool'].items():
             pid = int(pid_s)
-            size_pool.store(pid, SizePreset(pid, d.get("name", f"Size {pid}"),
+            size_pool.store(pid, SizePreset(pid, d.get("name", f"size {pid}"),
                                             d.get("size", 100.0)))
             count += 1
         ShowFile.save_size_pool(size_pool)
@@ -13486,14 +13486,14 @@ def import_presets(path):
         count = 0
         for pid_s, d in bundle['spread_pool'].items():
             pid = int(pid_s)
-            spread_pool.store(pid, SpreadPreset(pid, d.get("name", f"Spread {pid}"),
+            spread_pool.store(pid, SpreadPreset(pid, d.get("name", f"spread {pid}"),
                                                 d.get("spread", 0.0)))
             count += 1
         ShowFile.save_spread_pool(spread_pool)
         imported.append(f"{count} spreads")
     if not imported:
         return "IMPORT PRESETS: nothing imported (bundle has no recognized preset categories)"
-    return "Imported: " + ", ".join(imported)
+    return "imported: " + ", ".join(imported)
 
 # ── MIDI restore (must happen after target_registry is built) ──
 _midi_doc = _read_file(ShowFile.MIDI)
@@ -13515,7 +13515,7 @@ if _midi_doc:
             _mf = _re_midi.match(r'^Exec (\d+) Flash$', _name)
             if _mf:
                 _ex_n = int(_mf.group(1))
-                def _make_flash(on_c=f"FADER {_ex_n} FLASH ON", off_c=f"FADER {_ex_n} FLASH OFF"):
+                def _make_flash(on_c=f"FADER {_ex_n} flash on", off_c=f"FADER {_ex_n} flash off"):
                     return (lambda: run_command(on_c)), (lambda: run_command(off_c))
                 _on_cb, _off_cb = _make_flash()
                 GUIEngine.target_registry[_name] = (_on_cb, False, True, _off_cb)
@@ -13536,7 +13536,7 @@ midi.print_maps()
 #   CUES  — list current stack
 #
 # Everything else is forwarded to prog.execute() (programmer).
-# Programmer syntax:  <fixtures> AT <value>  |  CLEAR  |  etc.
+# programmer syntax:  <fixtures> AT <value>  |  CLEAR  |  etc.
 
 import re as _re
 
@@ -13617,7 +13617,7 @@ def run_command(cmd_str):
 
     t0 = tokens[0]
 
-    # ── Macro record capture ──────────────────────────────────
+    # ── macro record capture ──────────────────────────────────
     # While recording, capture every command except MACRO STOP / MACRO ABORT.
     # The command still executes normally so the operator sees live feedback.
     if _macro_recording["slot"] is not None:
@@ -13631,13 +13631,13 @@ def run_command(cmd_str):
     if t0 in ('CUESTACK', 'CS') and len(tokens) > 1:
         if tokens[1] == 'MERGE':
             if 'INTO' not in tokens:
-                return "Usage: CUESTACK MERGE <src> INTO <dst>"
+                return "usage: cuestack merge <src> into <dst>"
             into_idx = tokens.index('INTO')
             try:
                 src_n = int(tokens[2])
                 dst_n = int(tokens[into_idx + 1])
             except (IndexError, ValueError):
-                return "Usage: CUESTACK MERGE <src> INTO <dst>"
+                return "usage: cuestack merge <src> into <dst>"
             src_cs = cuestack_pool.get(src_n)
             dst_cs = cuestack_pool.get(dst_n)
             if not src_cs:
@@ -13670,7 +13670,7 @@ def run_command(cmd_str):
                 dst_cs.cues[new_num] = nc
                 merged += 1
             save_show()
-            return (f"Merged CS {src_n} '{src_cs.name}' into CS {dst_n} '{dst_cs.name}' "
+            return (f"merged cs {src_n} '{src_cs.name}' into cs {dst_n} '{dst_cs.name}' "
                     f"— {merged} cue(s) appended (renumbered from {base:.0f})")
         # All remaining subcommands require tokens[1] to be a cuestack number
         try:
@@ -13681,7 +13681,7 @@ def run_command(cmd_str):
         if len(tokens) >= 3 and tokens[2] in ('INFO', 'STATUS', 'SHOW'):
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             # Which faders are running this cuestack?
             faders = [str(eid) for eid, ex in executor_pool.executors.items()
                       if ex.cuestack and ex.cuestack.stack_id == n]
@@ -13694,11 +13694,11 @@ def run_command(cmd_str):
             if cs.current is not None:
                 cue = cs.cues.get(cs.current)
                 cue_name = cue.name if cue else "?"
-                lines.append(f"  Current   : Cue {cs.current:.0f} — {cue_name}")
+                lines.append(f"  Current   : cue {cs.current:.0f} — {cue_name}")
             else:
                 lines.append("  Current   : (not started)")
             if sorted_nums:
-                lines.append("  Cue list  :")
+                lines.append("  cue list  :")
                 for num in sorted_nums[:10]:
                     c = cs.cues[num]
                     cur_m = " ◀" if num == cs.current else ""
@@ -13711,10 +13711,10 @@ def run_command(cmd_str):
         if len(tokens) >= 3 and tokens[2].upper() == 'REVERSE':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             sorted_nums = cs._sorted_cue_numbers()
             if not sorted_nums:
-                return f"Cuestack {n} is empty"
+                return f"cuestack {n} is empty"
             rev_cues = [cs.cues[num] for num in reversed(sorted_nums)]
             cs.cues.clear()
             cs.current = None
@@ -13727,7 +13727,7 @@ def run_command(cmd_str):
         if len(tokens) >= 4 and tokens[2].upper() == 'EXTRACT':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             try:
                 cue_num = float(tokens[3])
             except ValueError:
@@ -13750,7 +13750,7 @@ def run_command(cmd_str):
             if cuestack_pool.get(into_slot):
                 return (f"CS EXTRACT: slot {into_slot} already occupied — "
                         f"use  CS {n} EXTRACT {cue_num:.0f} INTO <slot>")
-            new_cs = cuestack_pool.create(into_slot, f"{cs.name} — Cue {cue_num:.0f}")
+            new_cs = cuestack_pool.create(into_slot, f"{cs.name} — cue {cue_num:.0f}")
             nc = Cue(cue_number=1.0, name=cue.name, fade_time=cue.fade_time,
                      delay_time=cue.delay_time, fade_times=copy.deepcopy(cue.fade_times),
                      delay_times=copy.deepcopy(cue.delay_times), follow_time=cue.follow_time)
@@ -13762,17 +13762,17 @@ def run_command(cmd_str):
             new_cs.note = getattr(cs, 'note', '')
             executor_pool.assign(into_slot, new_cs)
             save_show()
-            return (f"Extracted: CS {n} cue {cue_num:.0f} '{cue.name}' "
+            return (f"extracted: cs {n} cue {cue_num:.0f} '{cue.name}' "
                     f"→ new cuestack {into_slot} on fader {into_slot}")
 
         # CS n RENUMBER STEP <s> — renumber cues at multiples of s (10→10,20,30…)
         if len(tokens) >= 4 and tokens[2].upper() == 'RENUMBER' and tokens[3].upper() == 'STEP':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             sorted_nums = cs._sorted_cue_numbers()
             if not sorted_nums:
-                return f"Cuestack {n} is empty"
+                return f"cuestack {n} is empty"
             try:
                 step = int(tokens[4])
             except (IndexError, ValueError):
@@ -13798,7 +13798,7 @@ def run_command(cmd_str):
         if len(tokens) >= 3 and tokens[2].upper() in ('DUPLICATE', 'DUP', 'CLONE'):
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             into_slot = None
             if 'INTO' in tokens:
                 into_idx = tokens.index('INTO')
@@ -13828,17 +13828,17 @@ def run_command(cmd_str):
             cuestack_pool.store(into_slot, new_cs)
             executor_pool.assign(into_slot, new_cs)
             save_show()
-            return (f"Duplicated CS {n} '{cs.name}' → CS {into_slot} '{new_cs.name}' "
+            return (f"duplicated cs {n} '{cs.name}' → cs {into_slot} '{new_cs.name}' "
                     f"({len(new_cs.cues)} cue(s))")
 
         # CS n COMPRESS — renumber cues to 1, 2, 3, … (collapse gaps)
         if len(tokens) >= 3 and tokens[2].upper() == 'COMPRESS':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             sorted_nums = cs._sorted_cue_numbers()
             if not sorted_nums:
-                return f"Cuestack {n} is empty"
+                return f"cuestack {n} is empty"
             ordered = [cs.cues[num] for num in sorted_nums]
             old_current = cs.current
             cs.cues.clear()
@@ -13856,7 +13856,7 @@ def run_command(cmd_str):
         if len(tokens) >= 3 and tokens[2].upper() == 'CLEAR':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             count = len(cs.cues)
             cs.cues.clear()
             cs.current = None
@@ -13867,7 +13867,7 @@ def run_command(cmd_str):
         if len(tokens) >= 3 and tokens[2].upper() == 'NOTE':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             if len(tokens) == 3:
                 note_val = getattr(cs, 'note', '')
                 if note_val:
@@ -13878,28 +13878,28 @@ def run_command(cmd_str):
             save_show()
             return f"CS {n} '{cs.name}' note set: {note_text}"
 
-        # CS n BOUNCE ON/OFF — ping-pong playback (reverse direction at each end)
+        # CS n bounce on/OFF — ping-pong playback (reverse direction at each end)
         if len(tokens) >= 4 and tokens[2].upper() == 'BOUNCE':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             state = tokens[3].upper()
             if state == 'ON':
                 cs.bounce = True
                 cs._bounce_dir = 1
                 save_show()
-                return f"CS {n} '{cs.name}': BOUNCE ON — reverses at last/first cue (ping-pong)"
+                return f"CS {n} '{cs.name}': bounce on — reverses at last/first cue (ping-pong)"
             elif state == 'OFF':
                 cs.bounce = False
                 cs._bounce_dir = 1
                 save_show()
-                return f"CS {n} '{cs.name}': BOUNCE OFF — normal forward loop"
+                return f"CS {n} '{cs.name}': bounce off — normal forward loop"
             return "BOUNCE: use ON or OFF"
         # CS n WRAP ON/OFF — clean restart at top after last cue
         if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             state = tokens[3].upper()
             if state == 'ON':
                 cs.wrap = True
@@ -13915,7 +13915,7 @@ def run_command(cmd_str):
         if len(tokens) >= 4 and tokens[2].upper() == 'CHASE':
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             sub = tokens[3].upper()
             if sub == 'ON':
                 if len(tokens) >= 6 and tokens[4].upper() == 'BPM':
@@ -13949,7 +13949,7 @@ def run_command(cmd_str):
                     return f"CHASE SPEED: bad slot '{tokens[4]}'"
                 cs.chase_speed_id = sid if sid > 0 else None
                 save_show()
-                return (f"CS {n} '{cs.name}': chase linked to Speed Master {sid}"
+                return (f"CS {n} '{cs.name}': chase linked to speed Master {sid}"
                         if sid > 0 else f"CS {n} '{cs.name}': chase speed link cleared")
             else:
                 bpm_s = f"{cs.chase_bpm:.1f} BPM"
@@ -13958,12 +13958,12 @@ def run_command(cmd_str):
                         f"  CS {n} CHASE ON [BPM x]  |  CHASE OFF  |  CHASE BPM x  |  CHASE SPEED k")
 
         if t0 == 'CS':
-            return f"Usage: CS <n> BOUNCE ON|OFF | WRAP ON|OFF | CHASE ON|OFF|BPM|SPEED"
+            return f"usage: cs <n> bounce on|off | wrap on|off | chase on|off|bpm|speed"
         if cuestack_pool.get(n):
             active_executor[0] = n
             cs = cuestack_pool.get(n)
-            return f"Active fader → Cuestack {n}: {cs.name}"
-        return f"Cuestack {n} is empty  (use: RECORD CUESTACK {n} My Show)"
+            return f"active fader → cuestack {n}: {cs.name}"
+        return f"cuestack {n} is empty  (use: record cuestack {n} <name>)"
 
     # RECORD CUESTACK N [name]  — create a new empty cuestack in slot N
     if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] == 'CUESTACK':
@@ -13976,7 +13976,7 @@ def run_command(cmd_str):
         executor_pool.assign(n, cs)
         active_executor[0] = n
         save_show()
-        return f"Created: Cuestack {n} '{name}'  (now active on fader {n})"
+        return f"created: cuestack {n} '{name}'  (now active on fader {n})"
 
     # ── Navigation ───────────────────────────────────────────
     # ── ASSIGN CS <n> TO FADER <n> ────────────────────────────
@@ -13989,10 +13989,10 @@ def run_command(cmd_str):
             cs_n     = int(tokens[cs_idx   + 1])
             ex_n     = int(tokens[exec_idx + 1])
         except (ValueError, IndexError):
-            return "Usage: ASSIGN CS <n> TO FADER <n>"
+            return "usage: assign cs <n> to fader <n>"
         stack = cuestack_pool.get(cs_n)
         if not stack:
-            return f"CueStack {cs_n} not found"
+            return f"cuestack {cs_n} not found"
         executor_pool.assign(ex_n, stack)
         save_show()
         return f"CS {cs_n} assigned to fader {ex_n}  (saved)"
@@ -14002,14 +14002,14 @@ def run_command(cmd_str):
         try:
             fa, fb = int(tokens[2]), int(tokens[3])
         except ValueError:
-            return "Usage: FADER SWAP <n> <m>"
+            return "usage: fader swap <n> <m>"
         ex_a = executor_pool.get(fa)
         ex_b = executor_pool.get(fb)
         ex_a.cuestack, ex_b.cuestack = ex_b.cuestack, ex_a.cuestack
         save_show()
         name_a = ex_a.cuestack.name if ex_a.cuestack else "(empty)"
         name_b = ex_b.cuestack.name if ex_b.cuestack else "(empty)"
-        return f"Swapped fader {fa} ↔ fader {fb}  ({name_a} / {name_b})"
+        return f"swapped fader {fa} ↔ fader {fb}  ({name_a} / {name_b})"
 
     # ── FADER ALL CLEAR — stop and reset every fader at once ──────
     if t0 in ('FADER', 'EXEC') and len(tokens) >= 3 and tokens[1] == 'ALL' and tokens[2].upper() == 'CLEAR':
@@ -14019,7 +14019,7 @@ def run_command(cmd_str):
             if ex.cuestack:
                 ex.cuestack.current = None
             cleared += 1
-        return f"All {cleared} fader(s) cleared"
+        return f"all {cleared} fader(s) cleared"
 
     # ── EXEC <n> GO / BACK / STOP ────────────────────────────
     if t0 in ('FADER', 'EXEC') and len(tokens) >= 2:
@@ -14034,35 +14034,35 @@ def run_command(cmd_str):
             msg = ex.go(patch, fade_engine)
             if ex.cuestack:
                 _on_cue_fire(ex.cuestack.current)
-            return msg or f"Fader {ex_n} GO"
+            return msg or f"fader {ex_n} GO"
         elif verb == 'BACK':
             executor_pool.bump_priority(ex_n)
             msg = ex.back(patch, fade_engine)
             if ex.cuestack:
                 _on_cue_fire(ex.cuestack.current)
-            return msg or f"Fader {ex_n} BACK"
+            return msg or f"fader {ex_n} BACK"
         elif verb == 'STOP':
             ex.stop()
-            return f"Fader {ex_n} stopped"
+            return f"fader {ex_n} stopped"
         elif verb == 'CLEAR':
             # FADER <n> CLEAR  — stop fader and reset cuestack position to "not started"
             ex.stop()
             if ex.cuestack:
                 ex.cuestack.current = None
                 cs_name = ex.cuestack.name
-                return f"Fader {ex_n} cleared — '{cs_name}' reset to start"
-            return f"Fader {ex_n} stopped (no cuestack)"
+                return f"fader {ex_n} cleared — '{cs_name}' reset to start"
+            return f"fader {ex_n} stopped (no cuestack)"
         elif verb == 'GOTO' and len(tokens) > 3:
             cs = ex.cuestack
             # GOTO FIRST / LAST — jump to first or last cue
             dest_kw = tokens[3].upper() if len(tokens) > 3 else ''
             if dest_kw == 'FIRST':
                 if not cs or not cs.cues:
-                    return f"Fader {ex_n}: no cues"
+                    return f"fader {ex_n}: no cues"
                 num = cs._sorted_cue_numbers()[0]
             elif dest_kw == 'LAST':
                 if not cs or not cs.cues:
-                    return f"Fader {ex_n}: no cues"
+                    return f"fader {ex_n}: no cues"
                 num = cs._sorted_cue_numbers()[-1]
             else:
                 try:
@@ -14073,14 +14073,14 @@ def run_command(cmd_str):
             msg = ex.goto(num, patch, fade_engine)
             if not msg or 'not found' not in msg:
                 _on_cue_fire(num)
-            return msg or f"Fader {ex_n} GOTO {num}"
+            return msg or f"fader {ex_n} GOTO {num}"
         elif verb == 'TIME':
             # EXEC <n> TIME <fade> [DELAY <delay>]  |  EXEC <n> TIME OFF
             if len(tokens) > 3 and tokens[3] == 'OFF':
                 ex.time_override_on   = False
                 ex.time_override_fade  = None
                 ex.time_override_delay = None
-                return f"Fader {ex_n} time override OFF"
+                return f"fader {ex_n} time override off"
             try:
                 fade_t = float(tokens[3]) if len(tokens) > 3 else None
             except ValueError:
@@ -14096,50 +14096,50 @@ def run_command(cmd_str):
             ex.time_override_delay = delay_t if delay_t is not None else 0.0
             ex.time_override_on    = True
             delay_str = f"  delay {delay_t}s" if delay_t else ""
-            return f"Fader {ex_n} time override → {fade_t}s{delay_str}"
+            return f"fader {ex_n} time override → {fade_t}s{delay_str}"
         elif verb == 'TIMELOCK':
             # EXEC <n> TIMELOCK ON/OFF  — whether this executor's cuestack accepts overrides
             if len(tokens) < 4:
-                return "Usage: EXEC <n> TIMELOCK ON | OFF"
+                return "usage: EXEC <n> TIMELOCK ON | OFF"
             state = tokens[3]
             cs = ex.cuestack
             if not cs:
-                return f"Fader {ex_n} has no cuestack"
+                return f"fader {ex_n} has no cuestack"
             if state == 'ON':
                 cs.allow_exec_time = True
-                return f"Fader {ex_n}: time override ENABLED for '{cs.name}'"
+                return f"fader {ex_n}: time override enabled for '{cs.name}'"
             elif state == 'OFF':
                 cs.allow_exec_time = False
-                return f"Fader {ex_n}: time override locked out for '{cs.name}'"
+                return f"fader {ex_n}: time override locked out for '{cs.name}'"
             return "TIMELOCK: use ON or OFF"
         elif verb == 'FLASH':
-            # EXEC <n> FLASH ON | OFF  — instant on-while-held, for trigger_mode='flash'.
+            # EXEC <n> flash on | OFF  — instant on-while-held, for trigger_mode='flash'.
             # Independent of trigger_mode itself so GUI/MIDI press/release can call
             # this directly regardless of how the mode was set.
             if len(tokens) < 4 or tokens[3] not in ('ON', 'OFF'):
-                return "Usage: EXEC <n> FLASH ON | OFF"
+                return "usage: EXEC <n> flash on | OFF"
             if tokens[3] == 'ON':
                 executor_pool.bump_priority(ex_n)
                 msg = ex.flash_on(patch, fade_engine)
                 if ex.cuestack:
                     _on_cue_fire(ex.cuestack.current)
-                return msg or f"Fader {ex_n} FLASH ON"
+                return msg or f"fader {ex_n} flash on"
             else:
                 ex.flash_off()
-                return f"Fader {ex_n} FLASH OFF"
+                return f"fader {ex_n} flash off"
         elif verb == 'MODE':
             # EXEC <n> MODE TOGGLE | FLASH — how GUI/MIDI should trigger this executor.
             # 'toggle' = GO/BACK advance normally. 'flash' = live only while held
-            # (use EXEC <n> FLASH ON/OFF, or a MIDI note's on/off callbacks).
+            # (use EXEC <n> flash on/OFF, or a MIDI note's on/off callbacks).
             if len(tokens) < 4 or tokens[3] not in ('TOGGLE', 'FLASH'):
-                return "Usage: EXEC <n> MODE TOGGLE | FLASH"
+                return "usage: EXEC <n> MODE TOGGLE | FLASH"
             ex.trigger_mode = tokens[3].lower()
-            return f"Fader {ex_n} trigger_mode → {ex.trigger_mode}"
+            return f"fader {ex_n} trigger_mode → {ex.trigger_mode}"
         elif verb == 'BTN':
             # EXEC <n> BTN A|B|C GO|BACK|STOP|FLASH — assign action button function
             if len(tokens) < 4:
-                return (f"Fader {ex_n} buttons: A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}\n"
-                        f"  Usage: FADER {ex_n} BTN A|B|C GO|BACK|STOP|FLASH|RATE+|RATE-")
+                return (f"fader {ex_n} buttons: A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}\n"
+                        f"  usage: FADER {ex_n} BTN A|B|C GO|BACK|STOP|FLASH|RATE+|RATE-")
             slot = tokens[3].upper()
             if slot not in ('A', 'B', 'C'):
                 return "BTN: slot must be A, B, or C"
@@ -14148,28 +14148,28 @@ def run_command(cmd_str):
                 return "BTN: function must be GO, BACK, STOP, FLASH, RATE+, RATE-, SIZE+ or SIZE-"
             setattr(ex, f'btn_{slot.lower()}', fn)
             save_show()
-            return f"Fader {ex_n} button {slot} → {fn}"
+            return f"fader {ex_n} button {slot} → {fn}"
         elif verb == 'LEVEL':
             # EXEC <n> LEVEL <0-100>  — set master fader (0 = blackout, 100 = full)
             if len(tokens) < 4:
-                return f"Fader {ex_n} level: {ex.level * 100:.0f}%  (usage: FADER {ex_n} LEVEL 0–100)"
+                return f"fader {ex_n} level: {ex.level * 100:.0f}%  (usage: FADER {ex_n} LEVEL 0–100)"
             try:
                 pct = float(tokens[3])
             except ValueError:
                 return "FADER LEVEL: usage  FADER <n> LEVEL <0-100>"
             ex.level = max(0.0, min(1.0, pct / 100.0))
             save_show()
-            return f"Fader {ex_n} level → {ex.level * 100:.0f}%"
+            return f"fader {ex_n} level → {ex.level * 100:.0f}%"
         elif verb in ('RATE+', 'RATE-'):
             # EXEC <n> RATE+ / RATE- — nudge playback speed by ×1.25 / ÷1.25
             step = 1.25 if verb == 'RATE+' else (1.0 / 1.25)
             ex.rate_factor = max(0.1, min(8.0, ex.rate_factor * step))
             save_show()
-            return f"Fader {ex_n} rate → ×{ex.rate_factor:.2f}"
+            return f"fader {ex_n} rate → ×{ex.rate_factor:.2f}"
         elif verb == 'RATE' and len(tokens) >= 4 and tokens[3].upper() == 'RESET':
             ex.rate_factor = 1.0
             save_show()
-            return f"Fader {ex_n} rate reset → ×1.00"
+            return f"fader {ex_n} rate reset → ×1.00"
         elif verb == 'RATE' and len(tokens) >= 4:
             try:
                 rv = float(tokens[3])
@@ -14177,18 +14177,18 @@ def run_command(cmd_str):
                 return f"FADER RATE: bad value '{tokens[3]}' — use a number (e.g. 2.0) or RESET"
             ex.rate_factor = max(0.1, min(8.0, rv))
             save_show()
-            return f"Fader {ex_n} rate → ×{ex.rate_factor:.2f}"
+            return f"fader {ex_n} rate → ×{ex.rate_factor:.2f}"
         elif verb in ('SIZE+', 'SIZE-'):
             step = 1.25 if verb == 'SIZE+' else (1.0 / 1.25)
             ex.size_factor = max(0.0, min(4.0, ex.size_factor * step))
             ex._apply_size_factor()
             save_show()
-            return f"Fader {ex_n} fx size → ×{ex.size_factor:.2f}"
+            return f"fader {ex_n} fx size → ×{ex.size_factor:.2f}"
         elif verb == 'SIZE' and len(tokens) >= 4 and tokens[3].upper() == 'RESET':
             ex.size_factor = 1.0
             ex._apply_size_factor()
             save_show()
-            return f"Fader {ex_n} fx size reset → ×1.00"
+            return f"fader {ex_n} fx size reset → ×1.00"
         elif verb == 'SIZE' and len(tokens) >= 4:
             try:
                 sv = float(tokens[3])
@@ -14197,23 +14197,23 @@ def run_command(cmd_str):
             ex.size_factor = max(0.0, min(4.0, sv))
             ex._apply_size_factor()
             save_show()
-            return f"Fader {ex_n} fx size → ×{ex.size_factor:.2f}"
+            return f"fader {ex_n} fx size → ×{ex.size_factor:.2f}"
         elif verb == 'LABEL':
             # FADER <n> LABEL <text>  |  FADER <n> LABEL  (clear)
             raw_parts = raw.split(None, 3)
             label_text = raw_parts[3].strip() if len(raw_parts) >= 4 else ""
             ex.label = label_text
             save_show()
-            return (f"Fader {ex_n} label → '{label_text}'"
-                    if label_text else f"Fader {ex_n} label cleared")
+            return (f"fader {ex_n} label → '{label_text}'"
+                    if label_text else f"fader {ex_n} label cleared")
         elif verb in ('UNASSIGN', 'DETACH'):
             prev_cs = ex.cuestack
             if not prev_cs:
-                return f"Fader {ex_n} has no cuestack assigned"
+                return f"fader {ex_n} has no cuestack assigned"
             ex.stop()
             ex.cuestack = None
             save_show()
-            return f"Fader {ex_n}: unassigned (was '{prev_cs.name}')"
+            return f"fader {ex_n}: unassigned (was '{prev_cs.name}')"
         elif verb == 'ASSIGN' and len(tokens) >= 5 and tokens[3].upper() == 'CS':
             try:
                 cs_n = int(tokens[4])
@@ -14228,52 +14228,52 @@ def run_command(cmd_str):
         elif verb == 'BOUNCE' and len(tokens) >= 4:
             cs = ex.cuestack
             if not cs:
-                return f"Fader {ex_n} has no cuestack assigned"
+                return f"fader {ex_n} has no cuestack assigned"
             state = tokens[3].upper()
             if state == 'ON':
                 cs.bounce = True
                 cs._bounce_dir = 1
                 save_show()
-                return f"Fader {ex_n} BOUNCE ON — CS '{cs.name}' ping-pongs at each end"
+                return f"fader {ex_n} bounce on — CS '{cs.name}' ping-pongs at each end"
             elif state == 'OFF':
                 cs.bounce = False
                 cs._bounce_dir = 1
                 save_show()
-                return f"Fader {ex_n} BOUNCE OFF — CS '{cs.name}' normal forward loop"
+                return f"fader {ex_n} bounce off — CS '{cs.name}' normal forward loop"
             return "FADER BOUNCE: use ON or OFF"
         elif verb == 'LOOP' and len(tokens) >= 4:
             cs = ex.cuestack
             if not cs:
-                return f"Fader {ex_n} has no cuestack assigned"
+                return f"fader {ex_n} has no cuestack assigned"
             state = tokens[3].upper()
             if state == 'ON':
                 cs.wrap = True
                 save_show()
-                return f"Fader {ex_n} loop ON — CS '{cs.name}' wraps after last cue"
+                return f"fader {ex_n} loop ON — CS '{cs.name}' wraps after last cue"
             elif state == 'OFF':
                 cs.wrap = False
                 save_show()
-                return f"Fader {ex_n} loop OFF — CS '{cs.name}' stops after last cue"
+                return f"fader {ex_n} loop OFF — CS '{cs.name}' stops after last cue"
             return "FADER LOOP: use ON or OFF"
         elif verb in ('INFO', 'STATUS', 'SHOW'):
             cs = ex.cuestack
             lbl_s = f"  Label     : {ex.label}" if ex.label else ""
-            lines = [f"Fader {ex_n}:"]
+            lines = [f"fader {ex_n}:"]
             if lbl_s:
                 lines.append(lbl_s)
             lines.append(f"  Level     : {ex.level * 100:.0f}%")
             lines.append(f"  Priority  : {Executor.PRIORITY_LABELS[ex.priority]}")
             lines.append(f"  Trigger   : {ex.trigger_mode}")
-            lines.append(f"  Rate      : ×{ex.rate_factor:.2f}")
-            lines.append(f"  FX Size   : ×{ex.size_factor:.2f}")
+            lines.append(f"  rate      : ×{ex.rate_factor:.2f}")
+            lines.append(f"  FX size   : ×{ex.size_factor:.2f}")
             lines.append(f"  Buttons   : A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}")
             if cs:
-                lines.append(f"  CueStack  : [{cs.stack_id}] {cs.name}")
+                lines.append(f"  cuestack  : [{cs.stack_id}] {cs.name}")
                 lines.append(f"  State     : {'ACTIVE' if ex.is_active else 'idle'}")
                 if cs.current is not None:
                     cue = cs.cues.get(cs.current)
                     cue_name = cue.name if cue else "?"
-                    lines.append(f"  Current   : Cue {cs.current:.0f} — {cue_name}")
+                    lines.append(f"  Current   : cue {cs.current:.0f} — {cue_name}")
                 sorted_nums = cs._sorted_cue_numbers()
                 lines.append(f"  Cues      : {len(sorted_nums)} total")
                 if ex.time_override_on:
@@ -14281,7 +14281,7 @@ def run_command(cmd_str):
                                  + (f"  delay {ex.time_override_delay}s"
                                     if ex.time_override_delay else ""))
             else:
-                lines.append("  CueStack  : (unassigned)")
+                lines.append("  cuestack  : (unassigned)")
             return "\n".join(lines)
         else:
             return f"FADER {ex_n}: unknown verb '{verb}'"
@@ -14290,7 +14290,7 @@ def run_command(cmd_str):
     if t0 == 'PAGE':
         if len(tokens) >= 2 and tokens[1] == 'LIST':
             if not executor_pool.pages:
-                return "Pages: (none)"
+                return "pages: (none)"
             lines = ["Pages:"]
             for n in executor_pool.all_pages():
                 p = executor_pool.get_page(n)
@@ -14303,7 +14303,7 @@ def run_command(cmd_str):
             return "\n".join(lines)
 
         if len(tokens) < 2:
-            return "Usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
+            return "usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
         try:
             page_n = int(tokens[1])
         except ValueError:
@@ -14320,14 +14320,14 @@ def run_command(cmd_str):
 
         sub2 = tokens[2]
         if sub2 == 'NAME':
-            name = " ".join(raw.split()[3:]) if len(tokens) > 3 else f"Page {page_n}"
+            name = " ".join(raw.split()[3:]) if len(tokens) > 3 else f"page {page_n}"
             executor_pool.set_page_name(page_n, name)
             ShowFile.save_executor_pages(executor_pool)
-            return f"Page {page_n} → '{name}'"
+            return f"page {page_n} → '{name}'"
         if sub2 == 'DELETE':
             executor_pool.delete_page(page_n)
             ShowFile.save_executor_pages(executor_pool)
-            return f"Page {page_n} deleted"
+            return f"page {page_n} deleted"
         if sub2 in ('ADD', 'REMOVE') and len(tokens) >= 4 and tokens[3] == 'CS':
             try:
                 target_cs = int(tokens[4]) if len(tokens) > 4 else int(tokens[3])
@@ -14342,13 +14342,13 @@ def run_command(cmd_str):
                 executor_pool.remove_from_page(page_n, target_cs)
                 ShowFile.save_executor_pages(executor_pool)
                 return f"CS {target_cs} removed from page {page_n}"
-        return "Usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
+        return "usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
 
     # ── PROG TIME — programmer time override ──────────────────
     if t0 == 'PROG' and len(tokens) >= 2 and tokens[1] == 'TIME':
         if len(tokens) == 3 and tokens[2] == 'OFF':
             _prog_time['on'] = False
-            return "Programmer time override OFF"
+            return "programmer time override OFF"
         try:
             fade_t = float(tokens[2]) if len(tokens) > 2 else None
         except ValueError:
@@ -14366,13 +14366,13 @@ def run_command(cmd_str):
         _prog_time['delay'] = delay_t
         _prog_time['on']    = True
         delay_str = f"  delay {delay_t}s" if delay_t else ""
-        return f"Programmer time → {fade_t}s{delay_str}"
+        return f"programmer time → {fade_t}s{delay_str}"
 
     # PROG FADE CLEAR — cancel all live programmer fades immediately
     if t0 == 'PROG' and len(tokens) >= 3 and tokens[1] == 'FADE' and tokens[2] == 'CLEAR':
         n = len(prog.live_fades)
         prog.live_fades.clear()
-        return f"Prog fades cleared ({n} active)"
+        return f"prog fades cleared ({n} active)"
 
     # ── EXECUTOR <n> — switch active executor ─────────────────
     if t0 in ('FADER_SELECT', 'EXECUTOR') and len(tokens) == 2:
@@ -14383,7 +14383,7 @@ def run_command(cmd_str):
         active_executor[0] = n
         ex = executor_pool.get(n)
         cs_name = ex.cuestack.name if ex.cuestack else "(no cuestack)"
-        return f"Active fader → {n}  [{cs_name}]"
+        return f"active fader → {n}  [{cs_name}]"
 
     # GO FADE <t> [DELAY <d>] — one-shot fade override for next GO only
     if t0 == 'GO' and len(tokens) >= 3 and tokens[1] == 'FADE':
@@ -14407,25 +14407,25 @@ def run_command(cmd_str):
         cs = _active_stack()
         cur = cs.current if cs else None
         delay_s = f" delay {go_delay_t}s" if go_delay_t else ""
-        return f"GO → Cue {cur}  (fade {go_fade_t}s{delay_s})"
+        return f"GO → cue {cur}  (fade {go_fade_t}s{delay_s})"
 
     if t0 == 'GO' and len(tokens) == 1:
         cue_go()
         cs = _active_stack()
         cur = cs.current if cs else None
-        return f"GO → Cue {cur}" if cur else "GO (no cue)"
+        return f"GO → cue {cur}" if cur else "GO (no cue)"
 
     if t0 == 'BACK' and len(tokens) == 1:
         cue_back()
         cs = _active_stack()
         cur = cs.current if cs else None
-        return f"BACK → Cue {cur}" if cur else "BACK (no cue)"
+        return f"BACK → cue {cur}" if cur else "BACK (no cue)"
 
     if t0 == 'GOTO' and len(tokens) > 1:
         try:
             num = float(tokens[1])
             result = goto_cue(num)
-            return result or f"GOTO → Cue {num}"
+            return result or f"GOTO → cue {num}"
         except ValueError:
             return f"GOTO: bad cue number '{tokens[1]}'"
 
@@ -14434,7 +14434,7 @@ def run_command(cmd_str):
 
     if t0 == 'DELETE' and len(tokens) >= 2 and tokens[1] == 'CUE':
         if len(tokens) < 3:
-            return "Usage: DELETE CUE <n>  [CS <stack_n>]"
+            return "usage: DELETE CUE <n>  [CS <stack_n>]"
         try:
             cue_num = float(tokens[2])
         except ValueError:
@@ -14444,22 +14444,22 @@ def run_command(cmd_str):
             try:
                 cs_n = int(tokens[cs_idx + 1])
             except (ValueError, IndexError):
-                return "Usage: DELETE CUE <n> CS <stack_n>"
+                return "usage: DELETE CUE <n> CS <stack_n>"
             cs = cuestack_pool.get(cs_n)
             if not cs:
-                return f"CueStack {cs_n} not found"
+                return f"cuestack {cs_n} not found"
         else:
             active_n = active_executor[0] if active_executor else 1
             cs = cuestack_pool.get(active_n)
             if not cs:
-                return "No active cuestack"
+                return "no active cuestack"
         if cue_num not in cs.cues:
-            return f"Cue {cue_num} not found in {cs.name}"
+            return f"cue {cue_num} not found in {cs.name}"
         cs.delete_cue(cue_num)
         if cue_num == int(cue_num):
             cue_pool.delete(int(cue_num))
         save_show()
-        return f"Deleted Cue {cue_num} from {cs.name}"
+        return f"deleted cue {cue_num} from {cs.name}"
 
     # ── DELETE GROUP / COLOR / DIM / FX / FORM / CUESTACK ────
     if t0 == 'DELETE' and len(tokens) >= 3:
@@ -14470,39 +14470,39 @@ def run_command(cmd_str):
             return f"DELETE {sub}: bad slot number '{tokens[2]}'"
         if sub == 'GROUP':
             if not group_pool.get(n):
-                return f"Group {n} is empty"
+                return f"group {n} is empty"
             group_pool.delete(n)
             save_show()
-            return f"Deleted Group {n}"
+            return f"deleted group {n}"
         if sub in ('COLOR', 'COLOUR'):
             if not color_pool.get(n):
-                return f"Color {n} is empty"
+                return f"color {n} is empty"
             color_pool.delete(n)
             save_show()
-            return f"Deleted Color {n}"
+            return f"deleted color {n}"
         if sub == 'DIM':
             if not dim_pool.get(n):
-                return f"Dim {n} is empty"
+                return f"dim {n} is empty"
             dim_pool.delete(n)
             save_show()
-            return f"Deleted Dim {n}"
+            return f"deleted dim {n}"
         if sub == 'FX':
             if not fx_pool.get(n):
                 return f"FX {n} is empty"
             fx_pool.delete(n)
             save_show()
-            return f"Deleted FX {n}"
+            return f"deleted FX {n}"
         if sub == 'FORM':
             if n < FormPool.FIRST_CUSTOM_SLOT:
-                return f"Form {n} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be deleted"
+                return f"form {n} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be deleted"
             if not form_pool.get(n):
-                return f"Form {n} is empty"
+                return f"form {n} is empty"
             form_pool.delete(n)
             save_show()
-            return f"Deleted Form {n}"
+            return f"deleted form {n}"
         if sub in ('CUESTACK', 'CS'):
             if not cuestack_pool.get(n):
-                return f"Cuestack {n} is empty"
+                return f"cuestack {n} is empty"
             cs_name = cuestack_pool.get(n).name
             # Stop any executor currently running this cuestack
             for ex in list(executor_pool.executors.values()):
@@ -14510,25 +14510,25 @@ def run_command(cmd_str):
                     ex.stop()
             cuestack_pool.delete(n)
             save_show()
-            return f"Deleted Cuestack {n}: {cs_name}"
+            return f"deleted cuestack {n}: {cs_name}"
         if sub == 'RATE':
-            if not rate_pool.get(n): return f"Rate {n} is empty"
-            rate_pool.delete(n); save_show(); return f"Deleted Rate preset {n}"
+            if not rate_pool.get(n): return f"rate {n} is empty"
+            rate_pool.delete(n); save_show(); return f"deleted rate preset {n}"
         if sub in ('SIZEP', 'SIZE'):
-            if not size_pool.get(n): return f"Size {n} is empty"
-            size_pool.delete(n); save_show(); return f"Deleted Size preset {n}"
+            if not size_pool.get(n): return f"size {n} is empty"
+            size_pool.delete(n); save_show(); return f"deleted size preset {n}"
         if sub in ('SPREADP', 'SPREAD'):
-            if not spread_pool.get(n): return f"Spread {n} is empty"
-            spread_pool.delete(n); save_show(); return f"Deleted Spread preset {n}"
+            if not spread_pool.get(n): return f"spread {n} is empty"
+            spread_pool.delete(n); save_show(); return f"deleted spread preset {n}"
         _del_attr_map = {
             'POSITION': position_pool, 'GOBO': gobo_pool, 'ZOOM': zoom_pool,
             'FOCUS': focus_pool, 'BEAM': beam_pool, 'CONTROL': control_pool,
         }
         if sub in _del_attr_map:
             pool = _del_attr_map[sub]
-            if not pool.get(n): return f"{sub.title()} Preset {n} is empty"
+            if not pool.get(n): return f"{sub.title()} preset {n} is empty"
             pool.delete(n); save_show()
-            return f"Deleted {sub.title()} Preset {n}"
+            return f"deleted {sub.title()} preset {n}"
 
     # ── Shared record/update-cue helper ──────────────────────
     def _record_cue_into(cs, cue_num, suffix_tokens, raw_str, merge=False):
@@ -14560,7 +14560,7 @@ def run_command(cmd_str):
                 name = " ".join(name_parts)
             else:
                 existing = cs.get_cue(cue_num)
-                name = existing.name if existing else f"Cue {cue_num:.0f}"
+                name = existing.name if existing else f"cue {cue_num:.0f}"
 
         # Timing extraction helper — tries multiple keyword aliases in order
         def _get_timing(*kws):
@@ -14589,7 +14589,7 @@ def run_command(cmd_str):
         _v = _get_timing('DDELAY')
         if _v is not None: delay_times['dim']    = _v
 
-        # Preset look-up by name across all pools
+        # preset look-up by name across all pools
         def _find_by_name(tok):
             t = tok.upper()
             for p in color_pool.presets.values():
@@ -14614,15 +14614,15 @@ def run_command(cmd_str):
 
         if group_n is not None:
             g = group_pool.get(group_n)
-            if not g: return f"RECORD CUE: Group {group_n} not found"
+            if not g: return f"RECORD CUE: group {group_n} not found"
             prog.select(g.recall(patch))
         if color_n is not None:
             p = color_pool.get(color_n)
-            if not p: return f"RECORD CUE: Color {color_n} not found"
+            if not p: return f"RECORD CUE: color {color_n} not found"
             p.apply(prog)
         if dim_n is not None:
             p = dim_pool.get(dim_n)
-            if not p: return f"RECORD CUE: Dim {dim_n} not found"
+            if not p: return f"RECORD CUE: dim {dim_n} not found"
             p.apply(prog)
 
         # Name-based preset tokens (any token not a keyword/number that
@@ -14648,7 +14648,7 @@ def run_command(cmd_str):
         )
 
         if not _prog_has_dmx:
-            # Programmer has no DMX data — allow timing/name update on any existing cue.
+            # programmer has no DMX data — allow timing/name update on any existing cue.
             existing = cs.get_cue(cue_num)
             if existing:
                 _apply_timing_edit(existing, raw_str)
@@ -14683,7 +14683,7 @@ def run_command(cmd_str):
                     _on_cue_fire(cue_num)
                     _reloaded.append(_ex.exec_id)
             _reload_note = f"  (live-reloaded exec {_reloaded})" if _reloaded else ""
-            return f"Updated: {cue}  (merged into {cs.name}){_reload_note}"
+            return f"updated: {cue}  (merged into {cs.name}){_reload_note}"
 
         cue = cs.record_cue(cue_num, prog, name=name, fade_time=fade)
         cue.delay_time  = delay
@@ -14693,7 +14693,7 @@ def run_command(cmd_str):
         if cue_num == int(cue_num):
             cue_pool.store(int(cue_num), cue)
         save_show()
-        return f"Recorded: {cue}  into {cs.name}  (auto-saved)"
+        return f"recorded: {cue}  into {cs.name}  (auto-saved)"
 
     # ── RECORD CS [n] CUE <m> [presets...] ──────────────────
     # e.g.  RECORD CS CUE 4 RED
@@ -14713,11 +14713,11 @@ def run_command(cmd_str):
         try:
             cue_num = float(tokens[cue_idx + 1])
         except (IndexError, ValueError):
-            return "Usage: RECORD CS [n] CUE <num> [preset-names / GROUP n COLOR n DIM n FADE t]"
+            return "usage: RECORD CS [n] CUE <num> [preset-names / GROUP n COLOR n DIM n FADE t]"
 
         cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
         if not cs:
-            return f"CueStack {cs_n} not found" if cs_n else "No active cuestack"
+            return f"cuestack {cs_n} not found" if cs_n else "No active cuestack"
 
         return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw)
 
@@ -14749,17 +14749,17 @@ def run_command(cmd_str):
             try:
                 cue_num = float(tokens[cue_idx + 1])
             except (IndexError, ValueError):
-                return "Usage: UPDATE CS [n] CUE <num> [presets / FADE t]"
+                return "usage: UPDATE CS [n] CUE <num> [presets / FADE t]"
             cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
             if not cs:
-                return f"CueStack {cs_n} not found" if cs_n else "No active cuestack"
+                return f"cuestack {cs_n} not found" if cs_n else "No active cuestack"
             return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw, merge=True)
         if 'CUE' in tokens:
             cue_idx = tokens.index('CUE')
             try:
                 cue_num = float(tokens[cue_idx + 1])
             except (IndexError, ValueError):
-                return "Usage: UPDATE CUE <num> [presets / FADE t]"
+                return "usage: UPDATE CUE <num> [presets / FADE t]"
             cs = _active_stack()
             if not cs:
                 return "UPDATE CUE: no active cuestack"
@@ -14790,7 +14790,7 @@ def run_command(cmd_str):
             _on_cue_fire(ex.cuestack.current)
         direction = "GO" if t0 == 'GO' else "BACK"
         cur = ex.cuestack.current if ex.cuestack else None
-        return msg or f"{direction} CS {cs_n} → Cue {cur}"
+        return msg or f"{direction} CS {cs_n} → cue {cur}"
 
     # ── GO CS [n] CUE <m> ────────────────────────────────────
     # e.g.  GO CS 2 CUE 4
@@ -14809,7 +14809,7 @@ def run_command(cmd_str):
         try:
             cue_num = float(tokens[cue_idx + 1])
         except (IndexError, ValueError):
-            return "Usage: GO CS [n] CUE <num>"
+            return "usage: GO CS [n] CUE <num>"
 
         # Find executor for this cuestack (match by stack_id, fallback to slot)
         if cs_n is not None:
@@ -14839,7 +14839,7 @@ def run_command(cmd_str):
         lines = []
         for f in form_pool.forms.values():
             lines.append(f"  {f}")
-        return "\n".join(lines) if lines else "Form pool empty"
+        return "\n".join(lines) if lines else "form pool empty"
 
     if t0 == 'RECORD' and len(tokens) >= 3 and tokens[1] == 'FORM':
         try:
@@ -14847,7 +14847,7 @@ def run_command(cmd_str):
         except ValueError:
             return f"RECORD FORM: bad number '{tokens[2]}'"
         if form_n < FormPool.FIRST_CUSTOM_SLOT:
-            return f"Slots 1–{FormPool.FIRST_CUSTOM_SLOT - 1} are built-in read-only. Use slot {FormPool.FIRST_CUSTOM_SLOT}+."
+            return f"slots 1–{FormPool.FIRST_CUSTOM_SLOT - 1} are built-in read-only. Use slot {FormPool.FIRST_CUSTOM_SLOT}+."
 
         # Collect name tokens until first phase,value pattern
         name_parts  = []
@@ -14858,7 +14858,7 @@ def run_command(cmd_str):
                 break
             name_parts.append(tok.capitalize())
 
-        name = " ".join(name_parts) if name_parts else f"Form {form_n}"
+        name = " ".join(name_parts) if name_parts else f"form {form_n}"
 
         # Parse breakpoints: "0.0,0.0" "0.5,1.0" "1.0,0.0"
         breakpoints = []
@@ -14867,15 +14867,15 @@ def run_command(cmd_str):
                 p, v = tok.split(',')
                 breakpoints.append([float(p), float(v)])
             except ValueError:
-                return f"Bad breakpoint '{tok}' — format: phase,value  e.g. 0.5,1.0"
+                return f"bad breakpoint '{tok}' — format: phase,value  e.g. 0.5,1.0"
 
         if not breakpoints:
-            return "Usage: RECORD FORM <n> [name] <phase,value> <phase,value> ..."
+            return "usage: RECORD FORM <n> [name] <phase,value> <phase,value> ..."
 
         form = FormPreset(form_n, name, 'breakpoints', breakpoints=breakpoints)
         form_pool.store(form_n, form)
         ShowFile.save_forms(form_pool)
-        return f"Recorded: {form}  (auto-saved)"
+        return f"recorded: {form}  (auto-saved)"
 
     # ── FX helpers (used by FX commands and CLEAR) ───────────
 
@@ -15038,7 +15038,7 @@ def run_command(cmd_str):
                 _dpg_local.set_value("fx_size", val)
             except Exception:
                 pass
-        return f"Size → {val:.0f}"
+        return f"size → {val:.0f}"
 
     if t0 == 'SPREAD' and len(tokens) >= 2:
         try:
@@ -15060,7 +15060,7 @@ def run_command(cmd_str):
                 _dpg_local.set_value("fx_spread", val)
             except Exception:
                 pass
-        return f"Spread → {val:.1f}"
+        return f"spread → {val:.1f}"
 
     # STROBE [bpm] — shorthand for FX PULSE DIM BPM <bpm> FIXTURE
     # STROBE CLEAR — remove dim FX from programmer
@@ -15079,7 +15079,7 @@ def run_command(cmd_str):
 
     # RAINBOW [bpm] [spread] — RGB sine wave chase across all selected fixtures.
     # Creates three synchronized FX layers (R/G/B) with 120° phase offsets.
-    # Usage: RAINBOW 60      → 60 BPM rainbow at full spread
+    # usage: RAINBOW 60      → 60 BPM rainbow at full spread
     #        RAINBOW 30 50   → 30 BPM at 50% spread
     #        RAINBOW CLEAR   → FX CLEAR (removes all colour FX layers)
     if t0 == 'RAINBOW':
@@ -15092,7 +15092,7 @@ def run_command(cmd_str):
         run_command(f"FX SINE RED    BPM {_rb_bpm} SPREAD {_rb_spread} PHASE 0.0   SIZE 100")
         run_command(f"FX ADD SINE GREEN BPM {_rb_bpm} SPREAD {_rb_spread} PHASE 0.333 SIZE 100")
         run_command(f"FX ADD SINE BLUE  BPM {_rb_bpm} SPREAD {_rb_spread} PHASE 0.667 SIZE 100")
-        return f"Rainbow → {_rb_bpm:.0f} BPM  spread {_rb_spread:.0f}%  (3 layers R/G/B)"
+        return f"rainbow → {_rb_bpm:.0f} BPM  spread {_rb_spread:.0f}%  (3 layers R/G/B)"
 
     if t0 == 'FX' and len(tokens) >= 2:
         sub = tokens[1]
@@ -15105,7 +15105,7 @@ def run_command(cmd_str):
                 return f"FX FORM: bad slot '{tokens[2]}'"
             form = form_pool.get(fid_n)
             if not form:
-                return f"Form {fid_n} is empty"
+                return f"form {fid_n} is empty"
 
             # Store pending form_id in programmer so next FX command picks it up
             _fx_params['pending_form_id'] = fid_n
@@ -15123,8 +15123,8 @@ def run_command(cmd_str):
                     ld['form_id'] = fid_n
 
             if changed:
-                return f"Form → {form.name}  ({changed} layer(s) updated live)"
-            return f"Form → {form.name}  (pending — next FX command will use this form)"
+                return f"form → {form.name}  ({changed} layer(s) updated live)"
+            return f"form → {form.name}  (pending — next FX command will use this form)"
 
         if sub == 'CLEAR':
             # FX CLEAR            → clear all FX (programmer + all running executors)
@@ -15172,11 +15172,11 @@ def run_command(cmd_str):
 
         if sub == 'LIST':
             lines = []
-            # Programmer FX
+            # programmer FX
             prog_fx = {fid: v['fx'] for fid, v in prog.data.items()
                        if '.' not in fid and 'fx' in v}
             if prog_fx:
-                lines.append("Programmer FX:")
+                lines.append("programmer FX:")
                 for fid, defs in prog_fx.items():
                     for ld in defs:
                         dist = []
@@ -15188,7 +15188,7 @@ def run_command(cmd_str):
                         lines.append(f"  fixture {fid}: {ld['waveform']} {ld['channel']} "
                                      f"BPM={ld.get('bpm',60)} size={ld.get('size',200)}{dist_s}")
             else:
-                lines.append("Programmer FX: (none)")
+                lines.append("programmer FX: (none)")
             # Active executor FX
             exec_fx_lines = []
             for eid, ex in sorted(executor_pool.executors.items()):
@@ -15215,14 +15215,14 @@ def run_command(cmd_str):
         #   [GROUP n] [DIMREF n] [BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
         #
         # Tree references:
-        #   COLOR n  — drives R/G/B from ColorPreset n (waveform drives intensity of that color)
+        #   COLOR n  — drives R/G/B from Colorpreset n (waveform drives intensity of that color)
         #   GROUP n  — target only fixtures in GroupPool slot n instead of programmer selection
-        #   DIMREF n — live size ceiling: DimmerPreset n's level scales FX amplitude (0–1)
+        #   DIMREF n — live size ceiling: Dimmerpreset n's level scales FX amplitude (0–1)
         add_mode = (sub == 'ADD')
         base_idx = 2 if add_mode else 1
 
         if base_idx >= len(tokens):
-            return ("Usage: FX [ADD] <waveform|FORM n|COLOR n> [channel] "
+            return ("usage: FX [ADD] <waveform|FORM n|COLOR n> [channel] "
                     "[BPM n] [SIZE n] [SPREAD n] [GROUP n] [DIMREF n] "
                     "[BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE]")
 
@@ -15238,18 +15238,18 @@ def run_command(cmd_str):
                 waveform = form.builtin_name or form.name.lower() if form else 'sine'
                 ch_idx   = base_idx + 2
             except (IndexError, ValueError):
-                return "Usage: FX [ADD] FORM <n> <channel> [...]"
+                return "usage: FX [ADD] FORM <n> <channel> [...]"
         elif waveform == 'COLOR':
             # FX COLOR <preset_id> — drives R/G/B channels from the preset's color
             try:
                 color_id = int(tokens[base_idx + 1])
                 ch_idx   = base_idx + 2
             except (IndexError, ValueError):
-                return "Usage: FX [ADD] COLOR <preset_id> [BPM n] [SIZE n] [GROUP n] [DIMREF n]"
+                return "usage: FX [ADD] COLOR <preset_id> [BPM n] [SIZE n] [GROUP n] [DIMREF n]"
             waveform = 'sine'
             channel  = 'rgb'   # virtual; expanded into R/G/B at _prog_fx_start time
         elif waveform not in _WAVEFORMS:
-            return f"Unknown waveform '{waveform}' — use sine|ramp|pulse|square, FORM <n>, or COLOR <n>"
+            return f"unknown waveform '{waveform}' — use sine|ramp|pulse|square, FORM <n>, or COLOR <n>"
 
         if color_id is None:
             # Check if channel position is 'COLOR' (e.g. FX RAMP COLOR 3)
@@ -15258,11 +15258,11 @@ def run_command(cmd_str):
                     color_id = int(tokens[ch_idx + 1])
                     ch_idx  += 2
                 except (IndexError, ValueError):
-                    return "Usage: FX [ADD] <waveform> COLOR <preset_id>"
+                    return "usage: FX [ADD] <waveform> COLOR <preset_id>"
                 waveform = waveform.lower()
                 channel  = 'rgb'
             elif ch_idx >= len(tokens) or tokens[ch_idx] not in _CHANNELS:
-                return (f"Usage: FX [ADD] <waveform> red|green|blue|dim|pan|tilt|gobo|zoom|focus|… "
+                return (f"usage: FX [ADD] <waveform> red|green|blue|dim|pan|tilt|gobo|zoom|focus|… "
                         f"[BPM n] [SIZE n] [SPREAD n]")
             else:
                 channel = tokens[ch_idx]
@@ -15286,7 +15286,7 @@ def run_command(cmd_str):
         rate_id   = _fx_pool_id('RATE')
         size_id   = _fx_pool_id('SIZEP')
         spread_id = _fx_pool_id('SPREADP')
-        dim_id    = _fx_pool_id('DIMREF')   # DimmerPreset slot as live size ceiling
+        dim_id    = _fx_pool_id('DIMREF')   # Dimmerpreset slot as live size ceiling
         group_id  = _fx_pool_id('GROUP')    # GroupPool slot as target override
 
         # Distribution: BLOCK n groups adjacent targets into steps of n.
@@ -15347,10 +15347,10 @@ def run_command(cmd_str):
         if group_id is not None:
             grp = group_pool.get(group_id)
             if not grp:
-                return f"Group {group_id} not found"
+                return f"group {group_id} not found"
             sel_fids = [m.fixture_id for m in grp.recall(patch)]
             if not sel_fids:
-                return f"Group {group_id} is empty"
+                return f"group {group_id} is empty"
         elif prog.selection:
             seen_m, sel_fids = set(), []
             for f in prog.selection:
@@ -15433,7 +15433,7 @@ def run_command(cmd_str):
             )
         fx_pool.store(fx_n, preset)
         ShowFile.save_fx_pool(fx_pool)
-        return f"Recorded: {preset}  (auto-saved)"
+        return f"recorded: {preset}  (auto-saved)"
 
     # FIRE FX <n> [GROUP n]  — write preset defs into programmer + preview
     # GROUP n overrides the preset's stored group_id or programmer selection.
@@ -15454,7 +15454,7 @@ def run_command(cmd_str):
         if fire_group_id is not None:
             grp = group_pool.get(fire_group_id)
             if not grp:
-                return f"FIRE FX: Group {fire_group_id} not found"
+                return f"FIRE FX: group {fire_group_id} not found"
             sel_fids = [m.fixture_id for m in grp.recall(patch)]
         elif prog.selection:
             seen_m, sel_fids = set(), []
@@ -15491,7 +15491,7 @@ def run_command(cmd_str):
         _prog_fx_rebuild()
 
         ref_s = f" [group:{fire_group_id}]" if fire_group_id else ""
-        return f"Fired: {preset}{ref_s}  → {len(sel_fids)} fixture(s)"
+        return f"fired: {preset}{ref_s}  → {len(sel_fids)} fixture(s)"
 
     # ── CLONE <src_id> TO <dst_id> ───────────────────────────
     # Copies all pool data from one fixture to another:
@@ -15508,13 +15508,13 @@ def run_command(cmd_str):
             elif rest:
                 dst_ids = [int(rest[0])]
         except (ValueError, IndexError):
-            return "Usage: CLONE <src> TO <dst>  |  CLONE <src> TO <dst> THRU <end>"
+            return "usage: CLONE <src> TO <dst>  |  CLONE <src> TO <dst> THRU <end>"
 
         if src_id not in patch.fixtures:
-            return f"Clone source fixture {src_id} not in patch"
+            return f"clone source fixture {src_id} not in patch"
         missing = [d for d in dst_ids if d not in patch.fixtures]
         if missing:
-            return f"Destination(s) {missing} not in patch — patch them first"
+            return f"destination(s) {missing} not in patch — patch them first"
 
         src_str  = str(src_id)
         src_master = patch.fixtures[src_id]
@@ -15523,7 +15523,7 @@ def run_command(cmd_str):
         for dst_id in dst_ids:
             dst_str = str(dst_id)
 
-            # Color/Dim presets store a single global value, not per-fixture data;
+            # Color/dim presets store a single global value, not per-fixture data;
             # nothing to copy here — groups and cues carry the fixture-specific data.
 
             # Groups — add dst to every group that contains src
@@ -15545,7 +15545,7 @@ def run_command(cmd_str):
 
         save_show()
         dst_label = dst_ids[0] if len(dst_ids) == 1 else f"{dst_ids[0]}–{dst_ids[-1]}"
-        return f"Cloned fixture {src_id} → {dst_label}  ({len(dst_ids)} dest, show saved)"
+        return f"cloned fixture {src_id} → {dst_label}  ({len(dst_ids)} dest, show saved)"
 
     # ── SNAPSHOT ─────────────────────────────────────────────
     # SNAPSHOT <cue_num> [name] — record current live output (cue + programmer merged)
@@ -15559,7 +15559,7 @@ def run_command(cmd_str):
         cs = _active_stack()
         if not cs:
             return "SNAPSHOT: no active cuestack"
-        cue_name = _name_after(raw, 2) or f"Snapshot {cue_num}"
+        cue_name = _name_after(raw, 2) or f"snapshot {cue_num}"
 
         cue_merged = output_state._merged_cue_layer()
         prog_layer = output_state.programmer_layer
@@ -15592,7 +15592,7 @@ def run_command(cmd_str):
         cs.cues[float(cue_num)] = cue
         save_show()
         fixture_count = len({k.split('.')[0] for k in snapshot_data})
-        return f"Snapshot → Cue {cue_num}: {cue_name}  ({fixture_count} fixtures, show saved)"
+        return f"snapshot → cue {cue_num}: {cue_name}  ({fixture_count} fixtures, show saved)"
 
     # ── Blind mode ───────────────────────────────────────────
     if t0 == 'BLIND':
@@ -15617,11 +15617,11 @@ def run_command(cmd_str):
             try:
                 slot = int(tokens[2])
             except (IndexError, ValueError):
-                return "Usage: MACRO RECORD <n> [name]"
+                return "usage: MACRO RECORD <n> [name]"
             if _macro_recording["slot"] is not None:
-                return f"Already recording macro {_macro_recording['slot']} — MACRO STOP first"
+                return f"already recording macro {_macro_recording['slot']} — MACRO STOP first"
             raw_parts = raw.split(None, 3)
-            name = raw_parts[3] if len(raw_parts) > 3 else f"Macro {slot}"
+            name = raw_parts[3] if len(raw_parts) > 3 else f"macro {slot}"
             _macro_recording["slot"] = slot
             _macro_recording["cmds"] = []
             _macro_recording["name"] = name
@@ -15630,7 +15630,7 @@ def run_command(cmd_str):
             slot = _macro_recording["slot"]
             if slot is None:
                 return "MACRO STOP: not currently recording"
-            name = _macro_recording.get("name", f"Macro {slot}")
+            name = _macro_recording.get("name", f"macro {slot}")
             macro_pool[slot] = {"name": name, "commands": list(_macro_recording["cmds"])}
             n_cmds = len(macro_pool[slot]["commands"])
             _macro_recording["slot"] = None
@@ -15646,27 +15646,27 @@ def run_command(cmd_str):
             return f"MACRO {slot} recording discarded"
         if t1 == 'LIST':
             if not macro_pool:
-                return "No macros recorded."
+                return "no macros recorded."
             lines = [f"  {s:>3}: [{len(m['commands'])} cmds] {m['name']}"
                      for s, m in sorted(macro_pool.items())]
             rec = _macro_recording["slot"]
             suffix = f"\n  (recording macro {rec}...)" if rec is not None else ""
-            return "Macros:\n" + "\n".join(lines) + suffix
+            return "macros:\n" + "\n".join(lines) + suffix
         if t1 == 'DELETE':
             try:
                 slot = int(tokens[2])
             except (IndexError, ValueError):
-                return "Usage: MACRO DELETE <n>"
+                return "usage: MACRO DELETE <n>"
             if slot not in macro_pool:
                 return f"MACRO DELETE: slot {slot} empty"
             del macro_pool[slot]
             ShowFile.save_macros(macro_pool)
-            return f"Macro {slot} deleted"
+            return f"macro {slot} deleted"
         if t1 == 'RENAME':
             try:
                 slot = int(tokens[2])
             except (IndexError, ValueError):
-                return "Usage: MACRO RENAME <n> <new name>"
+                return "usage: MACRO RENAME <n> <new name>"
             if slot not in macro_pool:
                 return f"MACRO RENAME: slot {slot} empty"
             raw_parts = raw.split(None, 3)
@@ -15674,7 +15674,7 @@ def run_command(cmd_str):
                 return "MACRO RENAME: provide a new name"
             macro_pool[slot]["name"] = raw_parts[3].strip()
             ShowFile.save_macros(macro_pool)
-            return f"Macro {slot} renamed to '{macro_pool[slot]['name']}'"
+            return f"macro {slot} renamed to '{macro_pool[slot]['name']}'"
         # MACRO <n> — playback
         try:
             slot = int(t1)
@@ -15703,7 +15703,7 @@ def run_command(cmd_str):
             output_state.freeze_mode = False
             output_state.frozen_dmx.clear()
             return "FREEZE OFF — live output restored"
-        # Snapshot universes present in patch
+        # snapshot universes present in patch
         univs = {out['universe']
                  for m in output_state.patch.all_fixtures()
                  for sub in m.sub_fixtures.values()
@@ -15843,12 +15843,12 @@ def run_command(cmd_str):
         except ValueError:
             return f"MASTER: bad value '{tokens[1]}' — use 0-100"
         output_state.master_level = max(0.0, min(1.0, pct / 100.0))
-        return f"Master → {pct:.0f}%"
+        return f"master → {pct:.0f}%"
 
     # ── GRANDMASTER / GM — show or set the master output level ───────────────
     if t0 in ('GRANDMASTER', 'GM'):
         if len(tokens) == 1:
-            return f"Grandmaster: {output_state.master_level:.0%}"
+            return f"grandmaster: {output_state.master_level:.0%}"
         arg = tokens[1]
         if arg == 'FULL':
             output_state.master_level = 1.0
@@ -15860,7 +15860,7 @@ def run_command(cmd_str):
                 output_state.master_level = max(0.0, min(1.0, pct / 100.0))
             except ValueError:
                 return f"GRANDMASTER: unrecognised value '{arg}' — use 0-100 or FULL/OUT"
-        return f"Grandmaster → {output_state.master_level:.0%}"
+        return f"grandmaster → {output_state.master_level:.0%}"
 
     if t0 == 'BLACKOUT':
         off = len(tokens) > 1 and tokens[1] == 'OFF'
@@ -15886,14 +15886,14 @@ def run_command(cmd_str):
         assigned_faders = sum(1 for ex in executor_pool.executors.values() if ex.cuestack)
         prog_fids = len(set(k.split('.')[0] for k in prog.data if prog.data.get(k)))
         lines = [
-            "Show overview:",
+            "show overview:",
             f"  Fixtures     : {len(patch.fixtures)} patched",
-            f"  Programmer   : {prog_fids} fixture(s) touched",
+            f"  programmer   : {prog_fids} fixture(s) touched",
             f"  CueStacks    : {len(cuestack_pool.stacks)} stacks  /  {total_cues} cues total",
             f"  Faders       : {active_faders} active  /  {assigned_faders} assigned",
             f"  FX Presets   : {len(fx_pool.presets)}",
-            f"  Color Presets: {len(color_pool.presets)}",
-            f"  Dim Presets  : {len(dim_pool.presets)}",
+            f"  color Presets: {len(color_pool.presets)}",
+            f"  dim Presets  : {len(dim_pool.presets)}",
             f"  Groups       : {len(group_pool.groups)}",
             f"  Prog Snaps   : {len(_prog_snapshots)}",
         ]
@@ -15914,7 +15914,7 @@ def run_command(cmd_str):
             name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
             return save_show_as(name)
         save_show()
-        return "Show saved."
+        return "show saved."
 
     # LOAD CUE <n> [CS <stack_n>]  — copy cue data into programmer for editing
     if t0 == 'LOAD' and len(tokens) >= 3 and tokens[1] == 'CUE':
@@ -15940,11 +15940,11 @@ def run_command(cmd_str):
                 prog.data[fid] = {}
             prog.data[fid].update(copy.deepcopy(vals))
         prog._print_programmer()
-        return f"Loaded cue {cue_num:.0f} '{cue.name}' into programmer"
+        return f"loaded cue {cue_num:.0f} '{cue.name}' into programmer"
 
     if t0 == 'LOAD' and len(tokens) >= 2 and tokens[1] == 'SHOW':
         if len(tokens) < 3:
-            return "Usage: LOAD SHOW <name>  (use LIST SHOWS to see available saves)"
+            return "usage: LOAD SHOW <name>  (use LIST SHOWS to see available saves)"
         name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
         return load_show_from(name)
 
@@ -15957,7 +15957,7 @@ def run_command(cmd_str):
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "Usage: PATCH ADD <id> <profile> UNIVERSE <u> AT <addr> [NAME <name>]"
+                return "usage: PATCH ADD <id> <profile> UNIVERSE <u> AT <addr> [NAME <name>]"
             profile_name = tokens[3] if len(tokens) > 3 else None
             if not profile_name:
                 return "PATCH ADD: profile name required"
@@ -15982,36 +15982,36 @@ def run_command(cmd_str):
             if m is None:
                 return f"PATCH ADD: profile '{profile_name}' not found"
             save_show()
-            return f"Patched fixture {fid} '{name}' as {profile_name} U{univ}@{addr}"
+            return f"patched fixture {fid} '{name}' as {profile_name} U{univ}@{addr}"
         if sub == 'REMOVE':
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "Usage: PATCH REMOVE <id>"
+                return "usage: PATCH REMOVE <id>"
             if fid not in patch.fixtures:
                 return f"PATCH REMOVE: fixture {fid} not patched"
             del patch.fixtures[fid]
             save_show()
-            return f"Removed fixture {fid} from patch"
+            return f"removed fixture {fid} from patch"
         if sub == 'RENAME':
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "Usage: PATCH RENAME <id> <new name>"
+                return "usage: PATCH RENAME <id> <new name>"
             master = patch.get(fid)
             if not master:
                 return f"PATCH RENAME: fixture {fid} not patched"
             raw_parts = raw.split(None, 3)
             if len(raw_parts) < 4:
-                return "Usage: PATCH RENAME <id> <new name>"
+                return "usage: PATCH RENAME <id> <new name>"
             master.name = raw_parts[3]
             save_show()
-            return f"Fixture {fid} renamed to '{master.name}'"
+            return f"fixture {fid} renamed to '{master.name}'"
         if sub == 'MOVE':
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "Usage: PATCH MOVE <id> UNIVERSE <u> AT <addr>"
+                return "usage: PATCH MOVE <id> UNIVERSE <u> AT <addr>"
             master = patch.get(fid)
             if not master:
                 return f"PATCH MOVE: fixture {fid} not patched"
@@ -16033,7 +16033,7 @@ def run_command(cmd_str):
                     sub_fix.outputs.append({"universe": univ, "address": new_addr})
             save_show()
             end_addr = addr + len(master.sub_fixtures) * chs - 1
-            return f"Moved fixture {fid} to U{univ}@{addr}-{end_addr}"
+            return f"moved fixture {fid} to U{univ}@{addr}-{end_addr}"
 
     if t0 == 'LIST' and len(tokens) >= 2 and tokens[1] == 'SHOWS':
         return list_shows()
@@ -16056,9 +16056,9 @@ def run_command(cmd_str):
             try:
                 new_univs = [int(v) for v in tokens[2:] if v.isdigit()]
             except ValueError:
-                return "Usage: NETWORK UNIVERSE 1 2 3 ..."
+                return "usage: NETWORK UNIVERSE 1 2 3 ..."
             if not new_univs:
-                return "Usage: NETWORK UNIVERSE 1 2 3 ..."
+                return "usage: NETWORK UNIVERSE 1 2 3 ..."
             ShowFile.save_network(network.bind_address, new_univs)
             return (f"sACN universes → {new_univs}  (restart console to apply)")
         if t1 == 'STATUS' or not t1:
@@ -16069,7 +16069,7 @@ def run_command(cmd_str):
                 f"  Saved in config: bind={cfg_bind or '(auto)'}  univs={cfg_univs}\n"
                 f"  Restart console to apply any saved changes."
             )
-        return "Usage: NETWORK BIND <ip>  |  NETWORK UNIVERSE <n> [n...]  |  NETWORK STATUS"
+        return "usage: NETWORK BIND <ip>  |  NETWORK UNIVERSE <n> [n...]  |  NETWORK STATUS"
 
     if t0 == 'OSC':
         t1 = tokens[1] if len(tokens) > 1 else ''
@@ -16093,7 +16093,7 @@ def run_command(cmd_str):
                 try: return int(v)
                 except ValueError:
                     try: return float(v)
-                    except ValueError: return v
+                    except Valueerror: return v
             osc.send(addr, *[_cast(x) for x in args_raw])
             return f"OSC sent {addr}"
         if t1 == 'MONITOR':
@@ -16116,10 +16116,10 @@ def run_command(cmd_str):
         t1 = tokens[1] if len(tokens) > 1 else ''
         if t1 == 'DEVICES':
             if not _AUDIO_AVAILABLE:
-                return f"Audio unavailable: {_AUDIO_IMPORT_ERROR}"
+                return f"audio unavailable: {_AUDIO_IMPORT_ERROR}"
             devs = [f"  [{i}] {d['name']}" for i, d in enumerate(sd.query_devices())
                     if d['max_input_channels'] > 0]
-            return "Audio input devices:\n" + ("\n".join(devs) if devs else "  (none found)")
+            return "audio input devices:\n" + ("\n".join(devs) if devs else "  (none found)")
         if t1 == 'START':
             device = None
             if len(tokens) > 2:
@@ -16131,10 +16131,10 @@ def run_command(cmd_str):
                 audio_engine.start(device=device)
             except RuntimeError as e:
                 return f"AUDIO START failed: {e}"
-            return "Audio capture started."
+            return "audio capture started."
         if t1 == 'STOP':
             audio_engine.stop()
-            return "Audio capture stopped."
+            return "audio capture stopped."
         if t1 == 'ON':
             audio_mapper.enable()
             return "AUDIO ON — bass=red, mid=green, high=blue, level=dim"
@@ -16144,7 +16144,7 @@ def run_command(cmd_str):
         if t1 == 'STATUS':
             state   = "capturing" if audio_engine._running else "stopped"
             mapping = "ON" if audio_mapper.enabled else "OFF"
-            return (f"Audio: {state}, mapping {mapping}  "
+            return (f"audio: {state}, mapping {mapping}  "
                     f"lvl={audio_engine.level:.2f} lo={audio_engine.low:.2f} "
                     f"mid={audio_engine.mid:.2f} hi={audio_engine.high:.2f}")
         if t1 == 'GAIN' and len(tokens) > 2:
@@ -16153,7 +16153,7 @@ def run_command(cmd_str):
             except ValueError:
                 return f"AUDIO GAIN: bad value '{tokens[2]}'"
             audio_engine.gain = g
-            return f"Audio gain → {g}"
+            return f"audio gain → {g}"
         return "AUDIO usage: DEVICES | START [device] | STOP | ON | OFF | STATUS | GAIN <n>"
 
     # MIDI CC <ch> <cc> <target name>        — add CC mapping
@@ -16213,11 +16213,11 @@ def run_command(cmd_str):
                 lines.append(f"  {name}  [{kind}]")
             return "\n".join(lines)
         if t1 in ('CC', 'NOTE'):
-            return (f"Usage: MIDI {t1} <ch 1-16> <number 0-127> <target name>\n"
+            return (f"usage: MIDI {t1} <ch 1-16> <number 0-127> <target name>\n"
                     "  e.g. MIDI CC 1 7 Grandmaster Dim\n"
                     "  Use MIDI TARGETS to list available target names")
         if t1 == 'REMOVE':
-            return "Usage: MIDI REMOVE CC|NOTE <ch> <number>"
+            return "usage: MIDI REMOVE CC|NOTE <ch> <number>"
         if t1 == 'CLOCK':
             pass  # handled below
         else:
@@ -16248,8 +16248,8 @@ def run_command(cmd_str):
     if t0 == 'DMX':
         if len(tokens) >= 2 and tokens[1] == 'LIST':
             if not output_state.direct_dmx:
-                return "Direct DMX: no overrides active"
-            lines = ["Direct DMX overrides:"]
+                return "direct DMX: no overrides active"
+            lines = ["direct DMX overrides:"]
             for univ in sorted(output_state.direct_dmx):
                 for addr, val in sorted(output_state.direct_dmx[univ].items()):
                     lines.append(f"  U{univ}:{addr:3d} = {val}")
@@ -16258,7 +16258,7 @@ def run_command(cmd_str):
             addr = int(tokens[1])
             val  = int(tokens[2])
         except (IndexError, ValueError):
-            return "Usage: DMX <addr> <val> [UNIVERSE <n>]  |  DMX LIST  |  CLEAR DMX"
+            return "usage: DMX <addr> <val> [UNIVERSE <n>]  |  DMX LIST  |  CLEAR DMX"
         if not (1 <= addr <= 512 and 0 <= val <= 255):
             return "DMX: addr 1-512, val 0-255"
         univ = 1
@@ -16267,7 +16267,7 @@ def run_command(cmd_str):
             try: univ = int(tokens[ui + 1])
             except (IndexError, ValueError): pass
         output_state.direct_dmx.setdefault(univ, {})[addr] = val
-        return f"Direct DMX U{univ}:{addr} = {val}"
+        return f"direct DMX U{univ}:{addr} = {val}"
 
     # ── STATUS overview ──────────────────────────────────────
     if t0 in ('STATUS', 'STATE'):
@@ -16294,7 +16294,7 @@ def run_command(cmd_str):
         else:
             lines.append("  Selection: none")
         prog_active = any(v for v in prog.data.values() if v)
-        lines.append("  Programmer: " + ("DIRTY" if prog_active else "clear"))
+        lines.append("  programmer: " + ("DIRTY" if prog_active else "clear"))
         # Active faders
         active_exs = [ex for ex in executor_pool.executors.values()
                       if ex.is_active and ex.cuestack] if executor_pool else []
@@ -16319,8 +16319,8 @@ def run_command(cmd_str):
     if t0 in ('CUES', 'STACK') or (t0 == 'LIST' and len(tokens) == 1):
         cs = _active_stack()
         if not cs:
-            return "No active cuestack"
-        lines = [f"Cuestack {cs.stack_id} — {cs.name}  [fader {active_executor[0]}]"]
+            return "no active cuestack"
+        lines = [f"cuestack {cs.stack_id} — {cs.name}  [fader {active_executor[0]}]"]
         for n in cs._sorted_cue_numbers():
             c      = cs.cues[n]
             cur    = " ◀" if n == cs.current else ""
@@ -16330,7 +16330,7 @@ def run_command(cmd_str):
             lines.append(f"  [{n:.0f}] {c.name}  Fade:{c.fade_time}s{delay}{follow}{note}{cur}")
         return "\n".join(lines)
 
-    # ── Group recall / record ─────────────────────────────────
+    # ── group recall / record ─────────────────────────────────
     # GROUP <n>                — recall (select fixtures)
     # RECORD GROUP <n> ["name"] — save current selection as group
     if t0 == 'GROUP' and len(tokens) > 1:
@@ -16342,7 +16342,7 @@ def run_command(cmd_str):
         if len(tokens) >= 4 and tokens[2].upper() == 'ADD':
             g = group_pool.get(gid)
             if not g:
-                return f"Group {gid} not found"
+                return f"group {gid} not found"
             try:
                 add_fid = int(tokens[3])
             except ValueError:
@@ -16353,13 +16353,13 @@ def run_command(cmd_str):
                 return f"GROUP ADD: fixture {add_fid} already in group {gid}"
             g.members.append(("master", add_fid))
             save_show()
-            return f"Group {gid}: added fixture {add_fid} ({len(g.members)} member(s))"
+            return f"group {gid}: added fixture {add_fid} ({len(g.members)} member(s))"
 
         # GROUP <n> REMOVE <fid> — remove a master fixture from the group
         if len(tokens) >= 4 and tokens[2].upper() == 'REMOVE':
             g = group_pool.get(gid)
             if not g:
-                return f"Group {gid} not found"
+                return f"group {gid} not found"
             try:
                 rm_fid = int(tokens[3])
             except ValueError:
@@ -16370,31 +16370,31 @@ def run_command(cmd_str):
             if len(g.members) == before:
                 return f"GROUP REMOVE: fixture {rm_fid} not in group {gid}"
             save_show()
-            return f"Group {gid}: removed fixture {rm_fid} ({len(g.members)} member(s) remaining)"
+            return f"group {gid}: removed fixture {rm_fid} ({len(g.members)} member(s) remaining)"
 
         # GROUP <n> INFO/STATUS — show group members
         if len(tokens) >= 3 and tokens[2] in ('INFO', 'STATUS', 'SHOW'):
             g = group_pool.get(gid)
             if not g:
-                return f"Group {gid} not found"
+                return f"group {gid} not found"
             # Resolve member fixture IDs to names; members are ("master", fid) tuples
             member_strs = []
             for entry in g.members:
                 fid = entry[1] if isinstance(entry, tuple) else int(entry)
                 m = patch.get(fid)
                 member_strs.append(f"{fid}:{m.name}" if m else str(fid))
-            return (f"Group {gid}: {g.name}\n"
+            return (f"group {gid}: {g.name}\n"
                     f"  Members ({len(g.members)}): {', '.join(member_strs) or '(empty)'}")
         group_pool.recall(gid, prog)
         g = group_pool.get(gid)
-        return f"Group {gid} recalled" if g else f"Group {gid} not found"
+        return f"group {gid} recalled" if g else f"group {gid} not found"
 
     if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] == 'GROUP':
         try:
             gid = int(tokens[2])
         except ValueError:
             return f"RECORD GROUP: bad slot number '{tokens[2]}'"
-        name = _name_after(raw, 3) or f"Group {gid}"
+        name = _name_after(raw, 3) or f"group {gid}"
         if not prog.selection:
             return (f"RECORD GROUP: nothing selected — "
                     f"first type  1 THRU 6  (or any fixture range)  "
@@ -16402,7 +16402,7 @@ def run_command(cmd_str):
         g = group_pool.record(gid, prog, name=name)
         if g:
             save_show()
-            return f"Recorded: {g}  (show saved)"
+            return f"recorded: {g}  (show saved)"
         return "RECORD GROUP: nothing selected"
 
     # ── Colour preset recall / record ─────────────────────────
@@ -16415,9 +16415,9 @@ def run_command(cmd_str):
             return f"COLOR: bad slot number '{tokens[1]}'"
         p = color_pool.get(pid)
         if not p:
-            return f"Color Preset {pid} is empty  (use: RECORD COLOR {pid} Red)"
+            return f"color preset {pid} is empty  (use: record COLOR {pid} Red)"
         p.apply(prog)
-        return f"Applied: {p}"
+        return f"applied: {p}"
 
     if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] in ('COLOR', 'COLOUR'):
         try:
@@ -16437,7 +16437,7 @@ def run_command(cmd_str):
             p.red, p.green, p.blue = float(er), float(eg), float(eb)
             color_pool.presets[pid] = p
             save_show()
-            return f"Recorded: {p}  (show saved)"
+            return f"recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"color {pid}"
         _has_rgb = any(any(ch in vals for ch in ('red', 'green', 'blue'))
                        for fid, vals in prog.data.items()
@@ -16446,9 +16446,9 @@ def run_command(cmd_str):
             return "RECORD COLOR: no RGB data in programmer  (set a colour first)"
         p = color_pool.record(pid, prog, name=name)
         save_show()
-        return f"Recorded: {p}  (show saved)"
+        return f"recorded: {p}  (show saved)"
 
-    # ── Dim preset recall / record ────────────────────────────
+    # ── dim preset recall / record ────────────────────────────
     # DIM PRESET <n>            — apply dim preset n
     # DIM <val>                 — set dimmer to val% (raw)
     # RECORD DIM <n> [name]     — save dimmer from programmer
@@ -16460,9 +16460,9 @@ def run_command(cmd_str):
                 return f"DIM PRESET: bad slot number '{tokens[2]}'"
             p = dim_pool.get(pid)
             if not p:
-                return f"Dim Preset {pid} is empty  (use: RECORD DIM {pid} Full)"
+                return f"dim preset {pid} is empty  (use: record DIM {pid} Full)"
             p.apply(prog)
-            return f"Applied: {p}"
+            return f"applied: {p}"
         # bare DIM <val> → raw dimmer value (AT DIM <val>)
         try:
             val = float(tokens[1].rstrip('%'))
@@ -16491,7 +16491,7 @@ def run_command(cmd_str):
             p.level = level
             dim_pool.presets[pid] = p
             save_show()
-            return f"Recorded: {p}  (show saved)"
+            return f"recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"dimmer {pid}"
         # Check if programmer has dim data before recording
         _has_dim = any('dim' in vals
@@ -16501,7 +16501,7 @@ def run_command(cmd_str):
             return "RECORD DIM: no dimmer data in programmer  (set a dim level first)"
         p = dim_pool.record(pid, prog, name=name)
         save_show()
-        return f"Recorded: {p}  (show saved)"
+        return f"recorded: {p}  (show saved)"
 
     # ── Attribute pool record / recall ───────────────────────────
     # Covers: POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL
@@ -16526,7 +16526,7 @@ def run_command(cmd_str):
         p = pool.record(pid, prog, name=name)
         if p and p.data:
             save_show()
-            return f"Recorded: {p}  (show saved)"
+            return f"recorded: {p}  (show saved)"
         return (f"RECORD {pool_key}: no {pool_key.lower()} data in programmer "
                 f"(channels: {', '.join(pool.relevant_channels)})")
 
@@ -16539,11 +16539,11 @@ def run_command(cmd_str):
             return f"{pool_key}: bad slot number '{tokens[1]}'"
         p = pool.get(pid)
         if not p:
-            return f"{pool_key} Preset {pid} is empty  (use: RECORD {pool_key} {pid} Name)"
+            return f"{pool_key} preset {pid} is empty  (use: record {pool_key} {pid} Name)"
         p.apply(prog)
-        return f"Applied: {p}"
+        return f"applied: {p}"
 
-    # ── Rate / Size / Spread pool record ─────────────────────────
+    # ── rate / size / spread pool record ─────────────────────────
     # RATE <n>  — recall rate preset (sets BPM from pool slot n)
     if t0 == 'RATE' and len(tokens) == 2:
         try:
@@ -16552,7 +16552,7 @@ def run_command(cmd_str):
             return f"RATE: bad slot number '{tokens[1]}'"
         p = rate_pool.get(pid)
         if not p:
-            return f"Rate preset {pid} is empty — use RECORD RATE {pid} Name <bpm>"
+            return f"rate preset {pid} is empty — use RECORD RATE {pid} Name <bpm>"
         return run_command(f"BPM {p.bpm}")
 
     # SIZEP <n>  — recall size preset
@@ -16563,7 +16563,7 @@ def run_command(cmd_str):
             return f"SIZEP: bad slot number '{tokens[1]}'"
         p = size_pool.get(pid)
         if not p:
-            return f"Size preset {pid} is empty — use RECORD SIZEP {pid} Name <size>"
+            return f"size preset {pid} is empty — use RECORD SIZEP {pid} Name <size>"
         return run_command(f"SIZE {p.size}")
 
     # SPREADP <n>  — recall spread preset
@@ -16574,7 +16574,7 @@ def run_command(cmd_str):
             return f"SPREADP: bad slot number '{tokens[1]}'"
         p = spread_pool.get(pid)
         if not p:
-            return f"Spread preset {pid} is empty — use RECORD SPREADP {pid} Name <spread>"
+            return f"spread preset {pid} is empty — use RECORD SPREADP {pid} Name <spread>"
         return run_command(f"SPREAD {p.spread}")
 
     # RECORD RATE <n> [name] <bpm>      — e.g. RECORD RATE 5 Strobe 240
@@ -16591,7 +16591,7 @@ def run_command(cmd_str):
         p = RatePreset(pid, name, bpm)
         rate_pool.store(pid, p)
         ShowFile.save_rate_pool(rate_pool)
-        return f"Recorded: {p}  (saved)"
+        return f"recorded: {p}  (saved)"
 
     # RECORD SIZEP <n> [name] <size>    — e.g. RECORD SIZEP 4 Blinding 255
     if t0 == 'RECORD' and len(tokens) >= 4 and tokens[1] == 'SIZEP':
@@ -16607,7 +16607,7 @@ def run_command(cmd_str):
         p = SizePreset(pid, name, size)
         size_pool.store(pid, p)
         ShowFile.save_size_pool(size_pool)
-        return f"Recorded: {p}  (saved)"
+        return f"recorded: {p}  (saved)"
 
     # RECORD SPREADP <n> [name] <spread>  — e.g. RECORD SPREADP 4 Wave 0.5
     if t0 == 'RECORD' and len(tokens) >= 4 and tokens[1] == 'SPREADP':
@@ -16623,7 +16623,7 @@ def run_command(cmd_str):
         p = SpreadPreset(pid, name, spread)
         spread_pool.store(pid, p)
         ShowFile.save_spread_pool(spread_pool)
-        return f"Recorded: {p}  (saved)"
+        return f"recorded: {p}  (saved)"
 
     # SPEED <n> <bpm>         — set speed master n to bpm live
     # SPEED <n> NAME <name>   — rename speed master slot n
@@ -16640,7 +16640,7 @@ def run_command(cmd_str):
             else:
                 m.name = name
             ShowFile.save_speed_masters(speed_master_pool)
-            return f"Speed master {sid} renamed → {name}"
+            return f"speed master {sid} renamed → {name}"
         try:
             bpm = float(tokens[2])
         except ValueError:
@@ -16650,33 +16650,33 @@ def run_command(cmd_str):
         speed_master_pool.set_bpm(sid, bpm)
         ShowFile.save_speed_masters(speed_master_pool)
         m = speed_master_pool.get(sid)
-        return f"Speed master {sid} ({m.name}) → {bpm:.1f} BPM"
+        return f"speed master {sid} ({m.name}) → {bpm:.1f} BPM"
 
     # LIST RATE / SIZEP / SPREADP / FORM
     if t0 == 'LIST' and len(tokens) >= 2:
         sub = tokens[1]
         if sub == 'RATE':
-            lines = ["Rate Presets:"] + [f"  {p}" for p in sorted(rate_pool.presets.values(), key=lambda x: x.preset_id)]
+            lines = ["rate Presets:"] + [f"  {p}" for p in sorted(rate_pool.presets.values(), key=lambda x: x.preset_id)]
             return "\n".join(lines)
         if sub in ('SIZEP', 'SIZE'):
-            lines = ["Size Presets:"] + [f"  {p}" for p in sorted(size_pool.presets.values(), key=lambda x: x.preset_id)]
+            lines = ["size Presets:"] + [f"  {p}" for p in sorted(size_pool.presets.values(), key=lambda x: x.preset_id)]
             return "\n".join(lines)
         if sub in ('SPREADP', 'SPREAD'):
-            lines = ["Spread Presets:"] + [f"  {p}" for p in sorted(spread_pool.presets.values(), key=lambda x: x.preset_id)]
+            lines = ["spread Presets:"] + [f"  {p}" for p in sorted(spread_pool.presets.values(), key=lambda x: x.preset_id)]
             return "\n".join(lines)
         if sub in ('SPEED', 'SPD', 'SPEEDS'):
-            lines = ["Speed Masters:"]
+            lines = ["speed Masters:"]
             for sid in speed_master_pool.all_slots():
                 m = speed_master_pool.get(sid)
                 lines.append(f"  [{sid:2d}] {m.name:<12}  {m.bpm:.1f} BPM")
             return "\n".join(lines)
         if sub == 'FORM':
-            lines = ["Form Presets:"] + [f"  {f}" for f in sorted(form_pool.forms.values(), key=lambda x: x.form_id)]
+            lines = ["form Presets:"] + [f"  {f}" for f in sorted(form_pool.forms.values(), key=lambda x: x.form_id)]
             return "\n".join(lines)
         if sub in ('COLOR', 'COLOUR', 'COLORS', 'COLOURS'):
             if not color_pool.presets:
-                return "Color pool is empty"
-            lines = ["Color Presets:"]
+                return "color pool is empty"
+            lines = ["color Presets:"]
             for pid in sorted(color_pool.presets):
                 p = color_pool.presets[pid]
                 r, g, b = int(p.red), int(p.green), int(p.blue)
@@ -16685,15 +16685,15 @@ def run_command(cmd_str):
             return "\n".join(lines)
         if sub in ('DIM', 'DIMS'):
             if not dim_pool.presets:
-                return "Dim pool is empty"
-            lines = ["Dim Presets:"]
+                return "dim pool is empty"
+            lines = ["dim Presets:"]
             for pid in sorted(dim_pool.presets):
                 p = dim_pool.presets[pid]
                 lines.append(f"  [{pid}] {p.name}  {p.level:.0%}")
             return "\n".join(lines)
         if sub in ('GROUP', 'GROUPS'):
             if not group_pool.groups:
-                return "Group pool is empty"
+                return "group pool is empty"
             lines = ["Groups:"]
             for gid in sorted(group_pool.groups):
                 g = group_pool.groups[gid]
@@ -16714,7 +16714,7 @@ def run_command(cmd_str):
             for sid in sorted(cuestack_pool.stacks):
                 cs = cuestack_pool.stacks[sid]
                 cue_count = len(cs.cues)
-                cur = f"  ◀ on Cue {cs.current:.0f}" if cs.current is not None else ""
+                cur = f"  ◀ on cue {cs.current:.0f}" if cs.current is not None else ""
                 lines.append(f"  [{sid}] {cs.name}  ({cue_count} cues){cur}")
             return "\n".join(lines) if len(lines) > 1 else "No cuestacks recorded"
         # LIST CUES [CS <n>] — cue list for active or specified cuestack
@@ -16758,7 +16758,7 @@ def run_command(cmd_str):
             return "\n".join(lines)
         if sub in ('FADER', 'FADERS', 'EXEC', 'EXECUTORS', 'EXECUTOR'):
             if not executor_pool.executors:
-                return "No faders configured"
+                return "no faders configured"
             lines = ["Faders:"]
             for eid in sorted(executor_pool.executors):
                 ex = executor_pool.executors[eid]
@@ -16785,14 +16785,14 @@ def run_command(cmd_str):
         if sub in ('OSC', 'TARGETS'):
             clients = osc._clients if osc else {}
             if not clients:
-                return "No OSC targets"
+                return "no OSC targets"
             lines = ["OSC Targets:"]
             for name, c in clients.items():
                 lines.append(f"  {name}  {c._address}:{c._port}")
             return "\n".join(lines)
         if sub == 'PATCH':
             if not patch or not patch.fixtures:
-                return "Patch is empty"
+                return "patch is empty"
             lines = ["Patch:"]
             for fid in sorted(patch.fixtures):
                 m = patch.fixtures[fid]
@@ -16806,7 +16806,7 @@ def run_command(cmd_str):
             return "\n".join(lines)
         if sub == 'PARK':
             if not output_state.parked_fids:
-                return "No fixtures parked"
+                return "no fixtures parked"
             lines = ["Parked fixtures:"]
             for fid in sorted(output_state.parked_fids):
                 m = patch.get(fid)
@@ -16827,9 +16827,9 @@ def run_command(cmd_str):
                 if cs_note or cue_notes:
                     lines.append(f"CS {sid} '{cs.name}':" + (f"  {cs_note}" if cs_note else ""))
                     for num, nt in cue_notes:
-                        lines.append(f"    Cue {num:.0f}: {nt}")
+                        lines.append(f"    cue {num:.0f}: {nt}")
             if not lines:
-                return "No notes set on any cuestack or cue"
+                return "no notes set on any cuestack or cue"
             return "\n".join(lines)
         return (f"LIST: unknown sub-command '{tokens[1]}' — "
                 "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
@@ -16841,7 +16841,7 @@ def run_command(cmd_str):
         try:
             fid_a, fid_b = int(tokens[2]), int(tokens[3])
         except ValueError:
-            return "Usage: FIXTURE SWAP <a> <b>"
+            return "usage: FIXTURE SWAP <a> <b>"
         if fid_a == fid_b:
             return "FIXTURE SWAP: source and destination are the same"
         if not patch.get(fid_a):
@@ -16868,26 +16868,26 @@ def run_command(cmd_str):
             return out
         prog.data.update(_remap(data_a, fid_a, fid_b))
         prog.data.update(_remap(data_b, fid_b, fid_a))
-        return f"Programmer: swapped fixture {fid_a} ↔ fixture {fid_b}"
+        return f"programmer: swapped fixture {fid_a} ↔ fixture {fid_b}"
 
     # ── FIXTURE GROUPS <n> — list every group that contains fixture n ──────────
     if t0 == 'FIXTURE' and len(tokens) >= 3 and tokens[1].upper() in ('GROUPS', 'GROUP'):
         try:
             fid = int(tokens[2])
         except ValueError:
-            return "Usage: FIXTURE GROUPS <id>"
+            return "usage: FIXTURE GROUPS <id>"
         master = patch.get(fid)
         if not master:
-            return f"Fixture {fid} not patched"
+            return f"fixture {fid} not patched"
         containing = []
         for gid in sorted(group_pool.groups):
             g = group_pool.groups[gid]
             for entry in g.members:
                 if isinstance(entry, tuple) and entry[1] == fid:
-                    containing.append(f"  Group {gid}: {g.name}")
+                    containing.append(f"  group {gid}: {g.name}")
                     break
         if not containing:
-            return f"Fixture {fid} '{master.name}' is not in any group"
+            return f"fixture {fid} '{master.name}' is not in any group"
         lines = [f"Fixture {fid} '{master.name}' appears in {len(containing)} group(s):"]
         lines.extend(containing)
         return "\n".join(lines)
@@ -16896,10 +16896,10 @@ def run_command(cmd_str):
         try:
             fid = int(tokens[2])
         except ValueError:
-            return "Usage: FIXTURE INFO <id>"
+            return "usage: FIXTURE INFO <id>"
         master = patch.get(fid)
         if not master:
-            return f"Fixture {fid} not patched"
+            return f"fixture {fid} not patched"
         prof = master.profile
         lines = [f"Fixture {fid}: {master.name}",
                  f"  Profile  : {prof.name}",
@@ -16914,7 +16914,7 @@ def run_command(cmd_str):
         # Park status
         if fid in output_state.parked_fids:
             lines.append("  Status   : PARKED")
-        # Programmer values
+        # programmer values
         prog_vals = []
         m_dim = prog.data.get(str(fid), {}).get('dim')
         if m_dim is not None:
@@ -16926,7 +16926,7 @@ def run_command(cmd_str):
                 pairs = "  ".join(f"{k}={v}" for k, v in sd.items())
                 prog_vals.append(f"[sub {sub.sub_index}] {pairs}")
         if prog_vals:
-            lines.append("  Programmer:")
+            lines.append("  programmer:")
             for v in prog_vals:
                 lines.append(f"    {v}")
         return "\n".join(lines)
@@ -16938,15 +16938,15 @@ def run_command(cmd_str):
         try:
             n = int(tokens[1])
         except ValueError:
-            return "Usage: PRIORITY <n> HIGH | LOW | NORMAL"
+            return "usage: PRIORITY <n> HIGH | LOW | NORMAL"
         lvl_str = tokens[2]
         lvl_map = {'HIGH': 1, 'HI': 1, 'LOW': -1, 'LO': -1, 'NORMAL': 0, 'NRM': 0}
         if lvl_str not in lvl_map:
-            return f"Unknown priority '{lvl_str}' — use HIGH, LOW or NORMAL"
+            return f"unknown priority '{lvl_str}' — use HIGH, LOW or NORMAL"
         ex = executor_pool.get(n)
         ex.priority = lvl_map[lvl_str]
         lbl = Executor.PRIORITY_LABELS[ex.priority]
-        return f"Fader {n} priority → {lbl}"
+        return f"fader {n} priority → {lbl}"
 
     if t0 == 'RELEASE':
         if len(tokens) == 1 or (len(tokens) == 2 and tokens[1] == 'ALL'):
@@ -16955,16 +16955,16 @@ def run_command(cmd_str):
                 if ex.is_active:
                     ex.stop()
                     stopped.append(ex.exec_id)
-            return f"Released {len(stopped)} fader(s): {stopped}" if stopped else "No active faders"
+            return f"released {len(stopped)} fader(s): {stopped}" if stopped else "No active faders"
         try:
             n = int(tokens[1])
         except (ValueError, IndexError):
-            return "Usage: RELEASE <n>  or  RELEASE ALL"
+            return "usage: RELEASE <n>  or  RELEASE ALL"
         ex = executor_pool.get(n)
         if ex.is_active:
             ex.stop()
-            return f"Released fader {n}"
-        return f"Fader {n} was not running"
+            return f"released fader {n}"
+        return f"fader {n} was not running"
 
     # ── CUE timing editor (no programmer required) ─────────────
     # CUE <n> FADE/INFADE/OUTFADE <t> [DELAY <t>] [CFADE <t>] [DFADE <t>]
@@ -16986,11 +16986,11 @@ def run_command(cmd_str):
             return "CUE NOTE: no active cuestack"
         cue = cs.cues.get(cue_num)
         if not cue:
-            return f"Cue {cue_num} not found in active cuestack"
+            return f"cue {cue_num} not found in active cuestack"
         note_text = raw.split(None, 3)[3].strip() if len(tokens) > 3 else ""
         cue.note = note_text
         save_show()
-        return f"Cue {cue_num}: note set — \"{note_text}\""
+        return f"cue {cue_num}: note set — \"{note_text}\""
 
     if t0 == 'CUE' and len(tokens) >= 3 and tokens[2] in ('SHOW', 'INFO', 'PRINT'):
         try:
@@ -17002,10 +17002,10 @@ def run_command(cmd_str):
             return "CUE: no active cuestack"
         cue = cs.cues.get(cue_num)
         if not cue:
-            return f"Cue {cue_num} not found in active cuestack"
+            return f"cue {cue_num} not found in active cuestack"
         note_str   = f"  [{cue.note}]" if getattr(cue, 'note', '') else ""
         follow_str = f"  Follow:{cue.follow_time:.1f}s" if getattr(cue, 'follow_time', 0.0) > 0 else ""
-        lines = [f"Cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s{follow_str}{note_str}"]
+        lines = [f"cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s{follow_str}{note_str}"]
         # Gather master-level keys (dim, fx) and sub-fixture RGB
         masters = {}; subs = {}
         for fid, vals in cue.data.items():
@@ -17047,10 +17047,10 @@ def run_command(cmd_str):
             return "CUE: no active cuestack"
         cue = cs.cues.get(float(cue_num))
         if not cue:
-            return f"Cue {cue_num} not found in active cuestack"
+            return f"cue {cue_num} not found in active cuestack"
         _apply_timing_edit(cue, raw)
         save_show()
-        return f"Updated: {cue}"
+        return f"updated: {cue}"
 
     if _has_timing and t0 in ('CS', 'CUESTACK') and 'CUE' in tokens:
         cue_idx = tokens.index('CUE')
@@ -17058,16 +17058,16 @@ def run_command(cmd_str):
             cs_n    = int(tokens[1])
             cue_num = float(tokens[cue_idx + 1])
         except (ValueError, IndexError):
-            return "Usage: CS <n> CUE <m> FADE <t> [DELAY <t>] [CFADE <t>] [DFADE <t>]"
+            return "usage: CS <n> CUE <m> FADE <t> [DELAY <t>] [CFADE <t>] [DFADE <t>]"
         cs = cuestack_pool.get(cs_n)
         if not cs:
-            return f"Cuestack {cs_n} not found"
+            return f"cuestack {cs_n} not found"
         cue = cs.cues.get(float(cue_num))
         if not cue:
-            return f"Cue {cue_num} not found in cuestack {cs_n}"
+            return f"cue {cue_num} not found in cuestack {cs_n}"
         _apply_timing_edit(cue, raw)
         save_show()
-        return f"Updated: {cue}"
+        return f"updated: {cue}"
 
     # CUE <n> SHIFT <offset> — move a cue to a new number within the active cuestack
     if t0 == 'CUE' and len(tokens) >= 4 and tokens[2].upper() == 'SHIFT':
@@ -17075,7 +17075,7 @@ def run_command(cmd_str):
             cue_num = float(tokens[1])
             offset  = float(tokens[3])
         except ValueError:
-            return "Usage: CUE <n> SHIFT <offset>"
+            return "usage: CUE <n> SHIFT <offset>"
         cs = _active_stack()
         if not cs:
             return "CUE SHIFT: no active cuestack"
@@ -17091,7 +17091,7 @@ def run_command(cmd_str):
         if cs.current == cue_num:
             cs.current = new_num
         save_show()
-        return f"Cue {cue_num:.0f} → {new_num:.0f} in '{cs.name}'"
+        return f"cue {cue_num:.0f} → {new_num:.0f} in '{cs.name}'"
 
     # RENAME CUESTACK <n> <new name>
     # RENAME CUE <n> <new name>          (active cuestack)
@@ -17112,13 +17112,13 @@ def run_command(cmd_str):
                 return f"RENAME CUESTACK: bad number '{tokens[2]}'"
             cs = cuestack_pool.get(n)
             if not cs:
-                return f"Cuestack {n} not found"
+                return f"cuestack {n} not found"
             new_name = _name_after(raw, 3)
             if not new_name:
                 return "RENAME CUESTACK: provide a new name"
             cs.name = new_name
             save_show()
-            return f"Cuestack {n} → \"{new_name}\""
+            return f"cuestack {n} → \"{new_name}\""
 
         # RENAME CS <n> CUE <m> <name>  or  RENAME CUE <n> <name>
         if sub == 'CUE' or (sub == 'CS' and 'CUE' in tokens):
@@ -17128,10 +17128,10 @@ def run_command(cmd_str):
                     cs_n    = int(tokens[2])
                     cue_num = float(tokens[cue_idx + 1])
                 except (ValueError, IndexError):
-                    return "Usage: RENAME CS <n> CUE <m> <name>"
+                    return "usage: RENAME CS <n> CUE <m> <name>"
                 cs = cuestack_pool.get(cs_n)
                 if not cs:
-                    return f"Cuestack {cs_n} not found"
+                    return f"cuestack {cs_n} not found"
                 new_name = _name_after(raw, cue_idx + 2)
             else:
                 try:
@@ -17146,10 +17146,10 @@ def run_command(cmd_str):
                 return "RENAME CUE: provide a new name"
             cue = cs.cues.get(float(cue_num))
             if not cue:
-                return f"Cue {cue_num} not found"
+                return f"cue {cue_num} not found"
             cue.name = new_name
             save_show()
-            return f"Cue {cue_num} → \"{new_name}\""
+            return f"cue {cue_num} → \"{new_name}\""
 
         # RENAME COLOR / COLOUR <n> <name>
         if sub in ('COLOR', 'COLOUR'):
@@ -17159,13 +17159,13 @@ def run_command(cmd_str):
                 return f"RENAME COLOR: bad number '{tokens[2]}'"
             p = color_pool.get(n)
             if not p:
-                return f"Color preset {n} not found"
+                return f"color preset {n} not found"
             new_name = _name_after(raw, 3)
             if not new_name:
                 return "RENAME COLOR: provide a new name"
             p.name = new_name
             save_show()
-            return f"Color {n} → \"{new_name}\""
+            return f"color {n} → \"{new_name}\""
 
         # RENAME DIM <n> <name>
         if sub == 'DIM':
@@ -17175,13 +17175,13 @@ def run_command(cmd_str):
                 return f"RENAME DIM: bad number '{tokens[2]}'"
             p = dim_pool.get(n)
             if not p:
-                return f"Dim preset {n} not found"
+                return f"dim preset {n} not found"
             new_name = _name_after(raw, 3)
             if not new_name:
                 return "RENAME DIM: provide a new name"
             p.name = new_name
             save_show()
-            return f"Dim {n} → \"{new_name}\""
+            return f"dim {n} → \"{new_name}\""
 
         # RENAME GROUP <n> <name>
         if sub == 'GROUP':
@@ -17191,13 +17191,13 @@ def run_command(cmd_str):
                 return f"RENAME GROUP: bad number '{tokens[2]}'"
             g = group_pool.get(n)
             if not g:
-                return f"Group {n} not found"
+                return f"group {n} not found"
             new_name = _name_after(raw, 3)
             if not new_name:
                 return "RENAME GROUP: provide a new name"
             g.name = new_name
             save_show()
-            return f"Group {n} → \"{new_name}\""
+            return f"group {n} → \"{new_name}\""
 
         # RENAME FX <n> <name>
         if sub == 'FX':
@@ -17251,13 +17251,13 @@ def run_command(cmd_str):
             except ValueError:
                 return f"RENAME MACRO: bad number '{tokens[2]}'"
             if n not in macro_pool:
-                return f"Macro slot {n} is empty"
+                return f"macro slot {n} is empty"
             new_name = _name_after(raw, 3)
             if not new_name:
                 return "RENAME MACRO: provide a new name"
             macro_pool[n]["name"] = new_name
             ShowFile.save_macros(macro_pool)
-            return f"Macro {n} → \"{new_name}\""
+            return f"macro {n} → \"{new_name}\""
 
         # RENAME FIXTURE <n> <name>
         if sub == 'FIXTURE':
@@ -17274,23 +17274,23 @@ def run_command(cmd_str):
             old_name = master.name
             master.name = new_name
             ShowFile.save_patch(patch)
-            return f"Fixture {n}: \"{old_name}\" → \"{new_name}\""
+            return f"fixture {n}: \"{old_name}\" → \"{new_name}\""
 
         return (f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, "
                 "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO, FIXTURE")
 
     # ── COPY FIXTURE <src> TO <dst1> [dst2 ...] ──────────────────────────────
-    # Clone programmer values from one fixture to one or more destinations.
+    # clone programmer values from one fixture to one or more destinations.
     if t0 == 'COPY' and len(tokens) >= 5 and tokens[1] == 'FIXTURE' and 'TO' in tokens:
         to_idx = tokens.index('TO')
         try:
             src_id = int(tokens[2])
         except ValueError:
-            return "Usage: COPY FIXTURE <src> TO <dst1> [dst2 ...]"
+            return "usage: COPY FIXTURE <src> TO <dst1> [dst2 ...]"
         dst_ids = []
         for tok in tokens[to_idx + 1:]:
             try: dst_ids.append(int(tok))
-            except ValueError: break
+            except Valueerror: break
         if not dst_ids:
             return "COPY FIXTURE: provide at least one destination fixture"
         src_master = patch.get(src_id)
@@ -17313,7 +17313,7 @@ def run_command(cmd_str):
                         prog.data.setdefault(str(dst_sub.fixture_id), {}).update(
                             copy.deepcopy(src_sub_data))
             copied.append(dst_id)
-        return f"Copied fixture {src_id} → {copied}"
+        return f"copied fixture {src_id} → {copied}"
 
     # ── COPY CUE / COPY CS ────────────────────────────────────────────────────
     # COPY CUE <src> TO <dst>               — within active cuestack
@@ -17357,10 +17357,10 @@ def run_command(cmd_str):
                     nc.fx_outfade = src_cue.fx_outfade
                     nc.data = copy.deepcopy(src_cue.data)
                     dst_cs.cues[cue_n] = nc
-                if not dst_cs.name or dst_cs.name == f"Cuestack {dst_cs_n}":
+                if not dst_cs.name or dst_cs.name == f"cuestack {dst_cs_n}":
                     dst_cs.name = src_cs.name
                 save_show()
-                return (f"Copied CS {src_cs_n} '{src_cs.name}' → CS {dst_cs_n} "
+                return (f"copied CS {src_cs_n} '{src_cs.name}' → CS {dst_cs_n} "
                         f"'{dst_cs.name}'  ({len(src_cs.cues)} cues)")
 
             # ── Single-cue copy ─────────────────────────────────────────────
@@ -17418,8 +17418,8 @@ def run_command(cmd_str):
             dst_cue.data = copy.deepcopy(src_cue.data)
             dst_cs.cues[float(dst_cue_n)] = dst_cue
             save_show()
-            return (f"Copied Cue {src_cue_n} '{src_cue.name}' → "
-                    f"Cue {dst_cue_n} '{dst_cue.name}'  in '{dst_cs.name}'")
+            return (f"copied cue {src_cue_n} '{src_cue.name}' → "
+                    f"cue {dst_cue_n} '{dst_cue.name}'  in '{dst_cs.name}'")
 
         except (ValueError, IndexError) as _e:
             return f"COPY CUE: bad syntax — {_e}"
@@ -17484,8 +17484,8 @@ def run_command(cmd_str):
             if dst_cue_n == int(dst_cue_n):
                 cue_pool.store(int(dst_cue_n), moved)
             save_show()
-            return (f"Moved Cue {src_cue_n} '{moved.name}' → "
-                    f"Cue {dst_cue_n}  in '{dst_cs.name}'")
+            return (f"moved cue {src_cue_n} '{moved.name}' → "
+                    f"cue {dst_cue_n}  in '{dst_cs.name}'")
         except (ValueError, IndexError) as _e:
             return f"MOVE CUE: bad syntax — {_e}"
 
@@ -17507,31 +17507,31 @@ def run_command(cmd_str):
 
             if sub in ('COLOR', 'COLOUR'):
                 src = color_pool.get(src_n)
-                if not src: return f"Color {src_n} is empty"
+                if not src: return f"color {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.preset_id = dst_n
                 dst.name      = new_name or f"{src.name} (copy)"
                 color_pool.presets[dst_n] = dst
                 save_show()
-                return f"Copied Color {src_n} '{src.name}' → Color {dst_n} '{dst.name}'"
+                return f"copied color {src_n} '{src.name}' → color {dst_n} '{dst.name}'"
             if sub == 'DIM':
                 src = dim_pool.get(src_n)
-                if not src: return f"Dim {src_n} is empty"
+                if not src: return f"dim {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.preset_id = dst_n
                 dst.name      = new_name or f"{src.name} (copy)"
                 dim_pool.presets[dst_n] = dst
                 save_show()
-                return f"Copied Dim {src_n} '{src.name}' → Dim {dst_n} '{dst.name}'"
+                return f"copied dim {src_n} '{src.name}' → dim {dst_n} '{dst.name}'"
             if sub == 'GROUP':
                 src = group_pool.get(src_n)
-                if not src: return f"Group {src_n} is empty"
+                if not src: return f"group {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.group_id = dst_n
                 dst.name     = new_name or f"{src.name} (copy)"
                 group_pool.groups[dst_n] = dst
                 save_show()
-                return f"Copied Group {src_n} '{src.name}' → Group {dst_n} '{dst.name}'"
+                return f"copied group {src_n} '{src.name}' → group {dst_n} '{dst.name}'"
             if sub == 'FX':
                 src = fx_pool.get(src_n)
                 if not src: return f"FX {src_n} is empty"
@@ -17540,46 +17540,46 @@ def run_command(cmd_str):
                 dst.name      = new_name or f"{src.name} (copy)"
                 fx_pool.presets[dst_n] = dst
                 save_show()
-                return f"Copied FX {src_n} '{src.name}' → FX {dst_n} '{dst.name}'"
+                return f"copied FX {src_n} '{src.name}' → FX {dst_n} '{dst.name}'"
             if sub == 'FORM':
                 if dst_n < FormPool.FIRST_CUSTOM_SLOT:
                     return (f"COPY FORM: destination {dst_n} is built-in — "
                             f"only slot ≥ {FormPool.FIRST_CUSTOM_SLOT} can be a copy target")
                 src = form_pool.get(src_n)
-                if not src: return f"Form {src_n} is empty"
+                if not src: return f"form {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.form_id = dst_n
                 dst.name    = new_name or f"{src.name} (copy)"
                 form_pool.forms[dst_n] = dst
                 save_show()
-                return f"Copied Form {src_n} '{src.name}' → Form {dst_n} '{dst.name}'"
+                return f"copied form {src_n} '{src.name}' → form {dst_n} '{dst.name}'"
             if sub == 'RATE':
                 src = rate_pool.get(src_n)
-                if not src: return f"Rate {src_n} is empty"
+                if not src: return f"rate {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.preset_id = dst_n
                 dst.name      = new_name or f"{src.name} (copy)"
                 rate_pool.presets[dst_n] = dst
                 save_show()
-                return f"Copied Rate {src_n} '{src.name}' → Rate {dst_n} '{dst.name}'"
+                return f"copied rate {src_n} '{src.name}' → rate {dst_n} '{dst.name}'"
             if sub in ('SIZEP', 'SIZE'):
                 src = size_pool.get(src_n)
-                if not src: return f"Size {src_n} is empty"
+                if not src: return f"size {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.preset_id = dst_n
                 dst.name      = new_name or f"{src.name} (copy)"
                 size_pool.presets[dst_n] = dst
                 save_show()
-                return f"Copied Size {src_n} '{src.name}' → Size {dst_n} '{dst.name}'"
+                return f"copied size {src_n} '{src.name}' → size {dst_n} '{dst.name}'"
             if sub in ('SPREADP', 'SPREAD'):
                 src = spread_pool.get(src_n)
-                if not src: return f"Spread {src_n} is empty"
+                if not src: return f"spread {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.preset_id = dst_n
                 dst.name      = new_name or f"{src.name} (copy)"
                 spread_pool.presets[dst_n] = dst
                 save_show()
-                return f"Copied Spread {src_n} '{src.name}' → Spread {dst_n} '{dst.name}'"
+                return f"copied spread {src_n} '{src.name}' → spread {dst_n} '{dst.name}'"
             if sub in ('POSITION', 'GOBO', 'ZOOM', 'FOCUS', 'BEAM', 'CONTROL'):
                 _copy_attr_map = {
                     'POSITION': position_pool, 'GOBO': gobo_pool,
@@ -17588,13 +17588,13 @@ def run_command(cmd_str):
                 }
                 pool = _copy_attr_map[sub]
                 src = pool.get(src_n)
-                if not src: return f"{sub.title()} Preset {src_n} is empty"
+                if not src: return f"{sub.title()} preset {src_n} is empty"
                 dst = copy.deepcopy(src)
                 dst.preset_id = dst_n
                 dst.name      = new_name or f"{src.name} (copy)"
                 pool.presets[dst_n] = dst
                 save_show()
-                return (f"Copied {sub.title()} {src_n} '{src.name}' "
+                return (f"copied {sub.title()} {src_n} '{src.name}' "
                         f"→ {sub.title()} {dst_n} '{dst.name}'")
 
     if t0 == 'KILL' and len(tokens) >= 2 and tokens[1] == 'FX':
@@ -17621,10 +17621,10 @@ def run_command(cmd_str):
             except (IndexError, ValueError): pass
         if univ is not None:
             removed = len(output_state.direct_dmx.pop(univ, {}))
-            return f"Cleared {removed} direct DMX override(s) on universe {univ}"
+            return f"cleared {removed} direct DMX override(s) on universe {univ}"
         count = sum(len(v) for v in output_state.direct_dmx.values())
         output_state.direct_dmx.clear()
-        return f"Cleared {count} direct DMX override(s)"
+        return f"cleared {count} direct DMX override(s)"
 
     if t0 == 'CLEAR' and len(tokens) == 2 and tokens[1] == 'FX':
         _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
@@ -17691,52 +17691,52 @@ def run_command(cmd_str):
             if slot in color_pool.presets:
                 del color_pool.presets[slot]
                 save_show()
-                return f"Color Preset {slot} cleared (show saved)"
-            return f"Color Preset {slot} is already empty"
+                return f"color preset {slot} cleared (show saved)"
+            return f"color preset {slot} is already empty"
         if sub == 'DIM':
             if slot in dim_pool.presets:
                 del dim_pool.presets[slot]
                 save_show()
-                return f"Dim Preset {slot} cleared (show saved)"
-            return f"Dim Preset {slot} is already empty"
+                return f"dim preset {slot} cleared (show saved)"
+            return f"dim preset {slot} is already empty"
         if sub in ('GROUP', 'GRP'):
             if slot in group_pool.groups:
                 del group_pool.groups[slot]
                 save_show()
-                return f"Group {slot} cleared (show saved)"
-            return f"Group {slot} is already empty"
+                return f"group {slot} cleared (show saved)"
+            return f"group {slot} is already empty"
         if sub == 'FX':
             if slot in fx_pool.presets:
                 del fx_pool.presets[slot]
                 save_show()
-                return f"FX Preset {slot} cleared (show saved)"
-            return f"FX Preset {slot} is already empty"
+                return f"FX preset {slot} cleared (show saved)"
+            return f"FX preset {slot} is already empty"
         if sub == 'FORM':
             if slot < FormPool.FIRST_CUSTOM_SLOT:
-                return f"Form {slot} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be cleared"
+                return f"form {slot} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be cleared"
             if slot in form_pool.forms:
                 del form_pool.forms[slot]
                 save_show()
-                return f"Form {slot} cleared (show saved)"
-            return f"Form {slot} is already empty"
+                return f"form {slot} cleared (show saved)"
+            return f"form {slot} is already empty"
         if sub == 'RATE':
             if slot in rate_pool.presets:
                 del rate_pool.presets[slot]
                 save_show()
-                return f"Rate Preset {slot} cleared (show saved)"
-            return f"Rate Preset {slot} is already empty"
+                return f"rate preset {slot} cleared (show saved)"
+            return f"rate preset {slot} is already empty"
         if sub in ('SIZEP', 'SIZE'):
             if slot in size_pool.presets:
                 del size_pool.presets[slot]
                 save_show()
-                return f"Size Preset {slot} cleared (show saved)"
-            return f"Size Preset {slot} is already empty"
+                return f"size preset {slot} cleared (show saved)"
+            return f"size preset {slot} is already empty"
         if sub in ('SPREADP', 'SPREAD'):
             if slot in spread_pool.presets:
                 del spread_pool.presets[slot]
                 save_show()
-                return f"Spread Preset {slot} cleared (show saved)"
-            return f"Spread Preset {slot} is already empty"
+                return f"spread preset {slot} cleared (show saved)"
+            return f"spread preset {slot} is already empty"
         _clear_attr_map = {
             'POSITION': position_pool,
             'GOBO':     gobo_pool,
@@ -17750,18 +17750,18 @@ def run_command(cmd_str):
             if slot in pool.presets:
                 del pool.presets[slot]
                 save_show()
-                return f"{sub.title()} Preset {slot} cleared (show saved)"
-            return f"{sub.title()} Preset {slot} is already empty"
+                return f"{sub.title()} preset {slot} cleared (show saved)"
+            return f"{sub.title()} preset {slot} is already empty"
 
     if t0 == 'CLEAR' and len(tokens) == 1:
         result = prog.do_clear()
-        if result.startswith("Programmer cleared"):
+        if result.startswith("programmer cleared"):
             _prog_fx_stop()
         elif result == "output_clear":
             _prog_fx_stop()
             _blackout_saved_level[0] = output_state.master_level
             output_state.master_level = 0.0
-            return "Output cleared — master → 0%  (BLACKOUT OFF to restore)"
+            return "output cleared — master → 0%  (BLACKOUT OFF to restore)"
         return result
 
     if t0 == 'UNDO':
@@ -17769,7 +17769,7 @@ def run_command(cmd_str):
 
     # ── PROGRAMMER SHOW — human-readable programmer contents ──────────────────
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('SHOW', 'PRINT', 'DUMP'):
-        lines = ["Programmer:"]
+        lines = ["programmer:"]
         for fid in sorted(patch.fixtures, key=int):
             master = patch.fixtures[fid]
             m_data = prog.data.get(str(fid), {})
@@ -17811,37 +17811,37 @@ def run_command(cmd_str):
                     if val is not None:
                         prog.data.setdefault(sfid, {})[ch] = int(val)
                         captured += 1
-        return f"Captured {captured} param(s) from live output into programmer"
+        return f"captured {captured} param(s) from live output into programmer"
 
     # ── PROGRAMMER SAVE / LOAD / SNAPSHOTS ───────────────────────────────────
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] == 'SAVE':
         try:
             slot = int(tokens[2])
         except (IndexError, ValueError):
-            return "Usage: PROGRAMMER SAVE <n> [name]"
-        snap_name = _name_after(raw, 3) or f"Snapshot {slot}"
+            return "usage: PROGRAMMER SAVE <n> [name]"
+        snap_name = _name_after(raw, 3) or f"snapshot {slot}"
         _prog_snapshots[slot] = {"name": snap_name, "data": copy.deepcopy(prog.data)}
         ch_count = sum(len(v) for v in prog.data.values() if v)
-        return f"Programmer snapshot {slot} '{snap_name}' saved ({ch_count} param(s))"
+        return f"programmer snapshot {slot} '{snap_name}' saved ({ch_count} param(s))"
 
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] == 'LOAD':
         try:
             slot = int(tokens[2])
         except (IndexError, ValueError):
-            return "Usage: PROGRAMMER LOAD <n>"
+            return "usage: PROGRAMMER LOAD <n>"
         snap = _prog_snapshots.get(slot)
         if not snap:
-            return f"Programmer snapshot {slot} not found"
+            return f"programmer snapshot {slot} not found"
         prog._push_undo()
         prog.data.clear()
         prog.data.update(copy.deepcopy(snap["data"]))
         ch_count = sum(len(v) for v in prog.data.values() if v)
-        return f"Programmer loaded from snapshot {slot} '{snap['name']}' ({ch_count} param(s))"
+        return f"programmer loaded from snapshot {slot} '{snap['name']}' ({ch_count} param(s))"
 
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('SNAPSHOTS', 'SNAPS'):
         if not _prog_snapshots:
-            return "No programmer snapshots saved"
-        lines = ["Programmer snapshots:"]
+            return "no programmer snapshots saved"
+        lines = ["programmer snapshots:"]
         for sl in sorted(_prog_snapshots):
             s = _prog_snapshots[sl]
             ch = sum(len(v) for v in s["data"].values() if v)
@@ -17872,7 +17872,7 @@ def run_command(cmd_str):
                     continue
                 vals[ch] = max(0, min(255, int(round(vals[ch] * factor))))
                 scaled += 1
-        return f"Programmer scaled to {pct:.0f}% — {scaled} value(s) updated"
+        return f"programmer scaled to {pct:.0f}% — {scaled} value(s) updated"
 
     # ── PROGRAMMER STATS ──────────────────────────────────────────────────────
     if t0 == 'PROGRAMMER' and len(tokens) >= 2 and tokens[1] in ('STATS', 'STATUS', 'INFO'):
@@ -17881,7 +17881,7 @@ def run_command(cmd_str):
         ch_total  = sum(len(v) for v in prog.data.values() if v)
         sel_count = len(prog.selection)
         lines = [
-            "Programmer:",
+            "programmer:",
             f"  Masters touched : {m_count}",
             f"  Sub-fixtures    : {sub_count}",
             f"  Total params    : {ch_total}",
@@ -17898,7 +17898,7 @@ def run_command(cmd_str):
         prog.execute(raw)
         return ""   # programmer already prints its own output
     except Exception as e:
-        return f"Error: {e}"
+        return f"error: {e}"
 
 
 # ── GUI ───────────────────────────────────────────────────
@@ -17962,7 +17962,7 @@ if STUDIO_HEADLESS:
         _check("FX command applied to programmer", "FX" in r1)
 
         r2 = run_command("RECORD CS 1 CUE 5")
-        _check("cue recorded", "Recorded" in r2 or "Cue" in r2)
+        _check("cue recorded", "recorded" in r2 or "cue" in r2)
 
         run_command("GO CS 1 CUE 5")
         time.sleep(0.25)   # let FadeEngine/FXEngine tick at least once
@@ -18006,7 +18006,7 @@ if STUDIO_HEADLESS:
                            if _cf_f2_sub else None)
             _check("COPY FIXTURE copies sub channel to destination",
                    _cf_red_src is not None and _cf_red_dst == _cf_red_src)
-            _check("COPY FIXTURE returns confirmation message", "Copied fixture" in r_cf)
+            _check("COPY FIXTURE returns confirmation message", "copied fixture" in r_cf)
         r_cf_bad = run_command("COPY FIXTURE 999 TO 2")
         _check("COPY FIXTURE rejects unknown source", "not patched" in r_cf_bad or "999" in r_cf_bad)
 
@@ -18095,32 +18095,32 @@ if STUDIO_HEADLESS:
         run_command("FADER 1 MODE FLASH")
         _check("trigger_mode set", executor_pool.get(1).trigger_mode == 'flash')
 
-        run_command("FADER 1 FLASH ON")
+        run_command("FADER 1 flash on")
         time.sleep(0.05)
-        _check("executor active after FLASH ON", executor_pool.get(1).is_active)
+        _check("executor active after flash on", executor_pool.get(1).is_active)
 
-        run_command("FADER 1 FLASH OFF")
-        _check("executor inactive after FLASH OFF", not executor_pool.get(1).is_active)
+        run_command("FADER 1 flash off")
+        _check("executor inactive after flash off", not executor_pool.get(1).is_active)
 
         # RECORD COLOR/DIM from programmer — verify no AttributeError
         run_command("ALL AT R 200 G 100 B 50")
         r_col = run_command("RECORD COLOR 1 TestRed")
-        _check("RECORD COLOR from programmer", "Recorded" in r_col or "no RGB" in r_col)
+        _check("RECORD COLOR from programmer", "recorded" in r_col or "no RGB" in r_col)
 
         run_command("ALL AT DIM 80")
         r_dim = run_command("RECORD DIM 1 TestDim")
-        _check("RECORD DIM from programmer", "Recorded" in r_dim or "no dimmer" in r_dim)
+        _check("RECORD DIM from programmer", "recorded" in r_dim or "no dimmer" in r_dim)
 
         # Explicit-value record
         r_col2 = run_command("RECORD COLOR 2 BlueTest 0 0 255")
-        _check("RECORD COLOR explicit RGB", "Recorded" in r_col2)
+        _check("RECORD COLOR explicit RGB", "recorded" in r_col2)
 
         r_dim2 = run_command("RECORD DIM 2 Half 50%")
-        _check("RECORD DIM explicit level", "Recorded" in r_dim2)
+        _check("RECORD DIM explicit level", "recorded" in r_dim2)
 
         # LIST COLOR/DIM — verify no AttributeError on pool iteration
         r_lc = run_command("LIST COLOR")
-        _check("LIST COLOR no exception", "Color" in r_lc)
+        _check("LIST COLOR no exception", "color" in r_lc.lower())
 
         r_ld = run_command("LIST DIM")
         _check("LIST DIM no exception", "Dim" in r_ld)
@@ -18145,10 +18145,10 @@ if STUDIO_HEADLESS:
         # COPY pool preset routing — was broken by overly broad COPY CUE handler
         run_command("RECORD COLOR 5 CopySource 255 128 0")
         r_cp_col = run_command("COPY COLOR 5 TO 6 CopiedColor")
-        _check("COPY COLOR routes to pool handler", "Copied Color" in r_cp_col)
+        _check("COPY COLOR routes to pool handler", "copied color" in r_cp_col)
         run_command("RECORD DIM 5 CopySrc 75%")
         r_cp_dim = run_command("COPY DIM 5 TO 6 CopiedDim")
-        _check("COPY DIM routes to pool handler", "Copied Dim" in r_cp_dim)
+        _check("COPY DIM routes to pool handler", "copied dim" in r_cp_dim)
 
         # CLEAR RATE / SIZEP / SPREADP / FORM — parity gap found by audit: every
         # other pool type (COLOR/DIM/GROUP/FX/attr pools) already had CLEAR.
@@ -18169,9 +18169,9 @@ if STUDIO_HEADLESS:
         _check("CLEAR FORM protects built-in slot 1", "built-in" in r_clr_form_builtin.lower())
 
         # COPY FORM — the one pool type missing from COPY entirely (audit finding)
-        run_command('RECORD FORM 8 CopySrcForm 0,0 0.5,1 1,0')
+        run_command('RECORD FORM 8 CopySrcform 0,0 0.5,1 1,0')
         r_cp_form = run_command("COPY FORM 8 TO 9 CopiedForm")
-        _check("COPY FORM routes to pool handler", "Copied Form" in r_cp_form)
+        _check("COPY FORM routes to pool handler", "copied form" in r_cp_form)
         _check("COPY FORM created the destination", form_pool.get(9) is not None)
         r_cp_form_builtin = run_command("COPY FORM 8 TO 2 Overwrite")
         _check("COPY FORM protects built-in destination slots",
@@ -18311,7 +18311,7 @@ if STUDIO_HEADLESS:
         # RECORD GROUP + recall — untested prior to this session
         run_command("1 THRU 3")
         r_grp = run_command("RECORD GROUP 9 SmokeGroup")
-        _check("RECORD GROUP from selection", "Recorded" in r_grp)
+        _check("RECORD GROUP from selection", "recorded" in r_grp)
         r_grp_recall = run_command("GROUP 9")
         _check("GROUP recall", "recalled" in r_grp_recall.lower())
         r_gi = run_command("GROUP 9 INFO")
@@ -18334,7 +18334,7 @@ if STUDIO_HEADLESS:
 
         # RECORD FORM (custom breakpoint curve) — untested prior to this session
         r_form = run_command("RECORD FORM 6 SmokeWave 0.0,0.0 0.5,1.0 1.0,0.0")
-        _check("RECORD FORM custom breakpoints", "Recorded" in r_form)
+        _check("RECORD FORM custom breakpoints", "recorded" in r_form)
         r_form_list = run_command("FORM LIST")
         _check("FORM LIST shows recorded form", "smokewave" in r_form_list.lower())
 
@@ -18342,7 +18342,7 @@ if STUDIO_HEADLESS:
         run_command("1 THRU 3")
         run_command("FX SINE BLUE BPM 40")
         r_fx_rec = run_command("RECORD FX 9 SmokeFX")
-        _check("RECORD FX from programmer", "Recorded" in r_fx_rec)
+        _check("RECORD FX from programmer", "recorded" in r_fx_rec)
         run_command("FX CLEAR")
         r_fx_fire = run_command("FIRE FX 9")
         _check("FIRE FX reapplies preset", "FX" in r_fx_fire)
@@ -18371,7 +18371,7 @@ if STUDIO_HEADLESS:
                 for _ld in _vals.get('fx', []):
                     _ld['speed_id'] = 7
         r_fx_rec2 = run_command("RECORD FX 20 SmokeSpeedRec")
-        _check("RECORD FX from programmer", "Recorded" in r_fx_rec2)
+        _check("RECORD FX from programmer", "recorded" in r_fx_rec2)
         _check("RECORD FX preserves speed_id",
                fx_pool.get(20).layers[0].get("speed_id") == 7)
         run_command("FX CLEAR")
@@ -18417,7 +18417,7 @@ if STUDIO_HEADLESS:
                abs(_osc_ex.level - 0.65) < 1e-6)
         _osc_ex.level = _prev_osc_ex_level
 
-        # Cuestack 3 is wired to executor 3 by default at startup (every
+        # cuestack 3 is wired to executor 3 by default at startup (every
         # loaded cuestack assigns 1:1 into the matching executor slot), so
         # a real GO on exec 3 should activate it.
         _key3_msg = _OscMsgBuilder(address="/gma3/key/1/3/go")
@@ -18434,17 +18434,17 @@ if STUDIO_HEADLESS:
         _flash_press_msg = _OscMsgBuilder(address="/gma3/key/1/3/flash")
         _flash_press_msg.add_arg(1)
         osc._dispatch.call_handlers_for_packet(_flash_press_msg.build().dgram, ("127.0.0.1", 0))
-        _check("OSC /gma3/key/1/3/flash press fires FADER 3 FLASH ON",
+        _check("OSC /gma3/key/1/3/flash press fires FADER 3 flash on",
                _osc_ex.is_active)
         _flash_release_msg = _OscMsgBuilder(address="/gma3/key/1/3/flash")
         _flash_release_msg.add_arg(0)
         osc._dispatch.call_handlers_for_packet(_flash_release_msg.build().dgram, ("127.0.0.1", 0))
-        _check("OSC /gma3/key/1/3/flash release fires FADER 3 FLASH OFF",
+        _check("OSC /gma3/key/1/3/flash release fires FADER 3 flash off",
                not _osc_ex.is_active)
 
         # AudioEngine (Block 9) has an AUDIO command surface and a GUI panel
         # (audio_window) now, but its import used to be unconditional -- a
-        # missing sounddevice package or native PortAudio lib crashed the
+        # missing sounddevice package or native Portaudio lib crashed the
         # entire console before a single fixture patched. Force the
         # unavailable branch here so the guard is verified on every run,
         # regardless of whether this box happens to have a working audio
@@ -18499,7 +18499,7 @@ if STUDIO_HEADLESS:
             _AUDIO_AVAILABLE = _prev_audio_avail
 
         # CLEAR stage 3 — should blackout output, not silently return "output_clear"
-        prog.do_clear(); prog.do_clear()   # advance to stage 2 (Programmer cleared)
+        prog.do_clear(); prog.do_clear()   # advance to stage 2 (programmer cleared)
         _saved_master = output_state.master_level
         output_state.master_level = 0.8    # set master to non-zero so blackout is detectable
         prog._clear_stage = 2              # force stage 3 on next CLEAR
@@ -18556,13 +18556,13 @@ if STUDIO_HEADLESS:
         _check("DELETE CUE removes from cue_pool",
                _pool_has_96_before and cue_pool.get(96) is None)
 
-        # Speed master: set/get BPM
+        # speed master: set/get BPM
         _r_spd = run_command("SPEED 4 200")
         _check("SPEED command sets BPM", speed_master_pool.get_bpm(4) == 200.0)
         _r_spd_name = run_command("SPEED 4 NAME StrobeClk")
         _check("SPEED NAME renames slot", speed_master_pool.get(4).name == "Strobeclk")
         _r_list_spd = run_command("LIST SPEED")
-        _check("LIST SPEED shows all slots", "Speed Masters" in (_r_list_spd or ""))
+        _check("LIST SPEED shows all slots", "speed Masters" in (_r_list_spd or ""))
         # FX layer with speed master reference uses master BPM
         run_command("FX SINE RED BPM 60")
         _check("FX inline BPM default before speed ref", True)
@@ -18620,7 +18620,7 @@ if STUDIO_HEADLESS:
         _strobe_still = any(l.channel == 'dim' for l in (active_fx or []))
         _check("STROBE CLEAR removes dim FX", not _strobe_still)
 
-        # Rainbow shorthand: RAINBOW creates 3 colour FX layers
+        # rainbow shorthand: RAINBOW creates 3 colour FX layers
         run_command("FX CLEAR")
         _r_rainbow = run_command("RAINBOW 60 100")
         _rainbow_chans = [l.channel for l in (active_fx or [])]
@@ -18660,7 +18660,7 @@ if STUDIO_HEADLESS:
         else:
             _check("FX size=50 (layer needed)", False)
 
-        # Dim FX: multiplicative (FX PULSE DIM should not exceed base dim)
+        # dim FX: multiplicative (FX PULSE DIM should not exceed base dim)
         run_command("FX CLEAR")
         run_command("FX SQUARE DIM SIZE 100 SPREAD 0 BPM 30")
         _dm_layer = next((l for l in (active_fx or []) if l.channel == 'dim'), None)
@@ -18704,17 +18704,17 @@ if STUDIO_HEADLESS:
 
         _ts_cs = CueStack(999, "TrackTest")
 
-        # Cue 1: dim=0.8 stored explicitly
+        # cue 1: dim=0.8 stored explicitly
         _tc1 = Cue(1.0, "Track1")
         _tc1.data = {'_test_fid': {'dim': 0.8}}
         _ts_cs.cues[1.0] = _tc1
 
-        # Cue 2: no dim (should track 0.8 from cue 1)
+        # cue 2: no dim (should track 0.8 from cue 1)
         _tc2 = Cue(2.0, "Track2")
         _tc2.data = {}
         _ts_cs.cues[2.0] = _tc2
 
-        # Cue 3: empty (should still track 0.8)
+        # cue 3: empty (should still track 0.8)
         _tc3 = Cue(3.0, "Track3")
         _tc3.data = {}
         _ts_cs.cues[3.0] = _tc3
@@ -18738,23 +18738,23 @@ if STUDIO_HEADLESS:
                     result[fid][ch] = v_from + (v_to - v_from) * 1.0
             return result
 
-        # Cue 1 fires from empty executor
+        # cue 1 fires from empty executor
         _layer = {}
         _layer = _sim_fade(_layer, {'_test_fid': {'dim': 0.8}})
         _check("cue tracking: cue 1 sets dim=0.8",
                abs(_layer.get('_test_fid', {}).get('dim', -1) - 0.8) < 0.001)
 
-        # Cue 2 fires (no dim in data_to) — should track dim=0.8
+        # cue 2 fires (no dim in data_to) — should track dim=0.8
         _layer = _sim_fade(_layer, {})
         _check("cue tracking: cue 2 tracks dim from cue 1",
                abs(_layer.get('_test_fid', {}).get('dim', -1) - 0.8) < 0.001)
 
-        # Cue 3 fires (also empty) — should still track dim=0.8
+        # cue 3 fires (also empty) — should still track dim=0.8
         _layer = _sim_fade(_layer, {})
         _check("cue tracking: cue 3 still tracks dim (no stale zero)",
                abs(_layer.get('_test_fid', {}).get('dim', -1) - 0.8) < 0.001)
 
-        # fx_outfade field: Cue class should have it, default None
+        # fx_outfade field: cue class should have it, default None
         _fxo_cue = Cue(1.0, "fxout")
         _check("Cue.fx_outfade defaults to None", _fxo_cue.fx_outfade is None)
 
@@ -18896,7 +18896,7 @@ if STUDIO_HEADLESS:
                _cs98 is not None and len(_cs98.cues) == 1)
         _check("CS EXTRACT preserves cue name",
                _cs98 is not None and list(_cs98.cues.values())[0].name.lower() == "extcue2")
-        _check("CS EXTRACT returns 'Extracted' confirmation", "Extracted" in r_ext)
+        _check("CS EXTRACT returns 'Extracted' confirmation", "extracted" in r_ext)
         _check("CS EXTRACT source cuestack unchanged (still 2 cues)", len(_cs97.cues) == 2)
         _check("CS EXTRACT carries source note to new cuestack",
                _cs98 is not None and _cs98.note == "Dark Moody Show")
@@ -18918,7 +18918,7 @@ if STUDIO_HEADLESS:
                _cs100 is not None and len(_cs100.cues) == len(_cs99dup.cues))
         _check("CS DUPLICATE is a deep copy (modifying source doesn't affect copy)",
                _cs100 is not None and _cs100.cues is not _cs99dup.cues)
-        _check("CS DUPLICATE returns 'Duplicated' confirmation", "Duplicated" in r_dup)
+        _check("CS DUPLICATE returns 'Duplicated' confirmation", "duplicated" in r_dup)
         _check("CS DUPLICATE source is unchanged", len(_cs99dup.cues) == 2)
         _check("CS DUPLICATE carries source note to new cuestack",
                _cs100 is not None and _cs100.note == "Act 2 Opener")
@@ -18968,7 +18968,7 @@ if STUDIO_HEADLESS:
         _n_after = len(_cs92.cues)
         _check("CUESTACK MERGE adds src cues to dst",
                _n_after == _n_before + len(_cs91.cues))
-        _check("CUESTACK MERGE returns confirmation", "Merged" in r_merge)
+        _check("CUESTACK MERGE returns confirmation", "merged" in r_merge)
         # Src cue numbers in dst should be offset past dst's original last cue
         _merged_num = max(_cs92._sorted_cue_numbers())
         _check("CUESTACK MERGE renumbers merged cues after dst's last cue",
@@ -19036,7 +19036,7 @@ if STUDIO_HEADLESS:
                "programmer_layer used by real DMX output",
                output_state.programmer_layer.get(_sub1, {}).get('red') == 77)
 
-        # Fader page button assignment round-trip
+        # fader page button assignment round-trip
         _fpg_ex = executor_pool.get(1)
         _fpg_ex.btn_a, _fpg_ex.btn_b, _fpg_ex.btn_c = 'GO', 'BACK', 'STOP'
         r_btn = run_command("FADER 1 BTN A FLASH")
@@ -19174,7 +19174,7 @@ if STUDIO_HEADLESS:
             _check("cue playback drives tilt in DMX", _ml_dmx[_ml_base + _tilt_off] == 64)
             _check("cue playback drives gobo in DMX", _ml_dmx[_ml_base + _gobo_off] == 10)
 
-            # Programmer-level attr write visible in DMX immediately
+            # programmer-level attr write visible in DMX immediately
             prog.clear_programmer()
             run_command("50")
             run_command("AT PAN 127 TILT 127")
@@ -19559,8 +19559,8 @@ if STUDIO_HEADLESS:
         _mk_cue(2, 0.66)
         _mk_cue(3, 1.0)
         _check("BOUNCE: cuestack has 3 cues", len(_bcs.cues) == 3)
-        run_command(f"CS {_bcs_id} BOUNCE ON")
-        _check("CS BOUNCE ON sets .bounce = True", _bcs.bounce is True)
+        run_command(f"CS {_bcs_id} bounce on")
+        _check("CS bounce on sets .bounce = True", _bcs.bounce is True)
         # Use a minimal stub executor — bounce logic only needs .layer dict
         _bex = executor_pool.get(_bcs_id)
         _bex.assign(_bcs)
@@ -19580,8 +19580,8 @@ if STUDIO_HEADLESS:
         _bcs.go(patch, fade_engine, _bex)   # hits start → reverses → fires cue 2
         _check("BOUNCE GO 6: reverses at first cue → cue 2", _bcs.current == 2.0)
         _check("BOUNCE GO 6: direction flipped to +1", _bcs._bounce_dir == 1)
-        run_command(f"CS {_bcs_id} BOUNCE OFF")
-        _check("CS BOUNCE OFF sets .bounce = False", _bcs.bounce is False)
+        run_command(f"CS {_bcs_id} bounce off")
+        _check("CS bounce off sets .bounce = False", _bcs.bounce is False)
         cuestack_pool.stacks.pop(_bcs_id, None)
 
         # ── CS CLEAR ──────────────────────────────────────────────────────────
@@ -20097,7 +20097,7 @@ audio_engine.stop()
 #
 # FXEngine runs additively on top of the merged cue layer.
 # FX layers are split into two namespaces:
-#   - Programmer preview:  IDs 9000+   tracked in _prog_fx_ids  (module-level list)
+#   - programmer preview:  IDs 9000+   tracked in _prog_fx_ids  (module-level list)
 #   - Per-executor cue FX: IDs exec_id*10000+n  owned by Executor._fx_ids
 #
 # ── FX ARCHITECTURE (just redesigned this session) ────────────────────────────
@@ -20172,25 +20172,25 @@ audio_engine.stop()
 #   GO CS [n] CUE <m>
 #
 # ── POOLS ──────────────────────────────────────────────────────────────────────
-#   color_pool    — ColorPreset  (numbered, saved to colors.json)
-#   dim_pool      — DimPreset    (numbered, saved to dims.json)
-#   group_pool    — Group        (numbered, saved to groups.json)
-#   cuestack_pool — CueStack     (numbered, saved to cuestacks.json)
-#   fx_pool       — FXPreset     (numbered, 1-12 visible in GUI, saved to fx_pool.json)
-#   form_pool     — FormPreset   (1-4 built-in builtins: sine/ramp/pulse/square;
+#   color_pool    — Colorpreset  (numbered, saved to colors.json)
+#   dim_pool      — Dimpreset    (numbered, saved to dims.json)
+#   group_pool    — group        (numbered, saved to groups.json)
+#   cuestack_pool — cuestack     (numbered, saved to cuestacks.json)
+#   fx_pool       — FXpreset     (numbered, 1-12 visible in GUI, saved to fx_pool.json)
+#   form_pool     — Formpreset   (1-4 built-in builtins: sine/ramp/pulse/square;
 #                                 5+ custom breakpoint curves; saved to forms.json)
 #   executor_pool — Executor     (cuestack/level/priority/mode saved to executors.json)
 #
 # ── WHAT WORKS ────────────────────────────────────────────────────────────────
 # - Full output pipeline (sACN, FX additive, programmer+cue merge)
-# - CueStack playback with fades, executor isolation, LTP priority
+# - cuestack playback with fades, executor isolation, LTP priority
 # - FX as programmer-native (redesigned this session — just landed)
 # - CLEAR 3-tap protocol: selection → programmer → full output
 # - FX pool record/fire, Forms pool with custom breakpoints
-# - Show file per-category save/load with .bak auto-backup
+# - show file per-category save/load with .bak auto-backup
 # - GUI panels: cuestacks, groups, colors, dims, FX pool, forms pool
 # - MIDI fader control, OSC bridge, AI command layer (ANTHROPIC_API_KEY gated)
-# - Audio reactive panel: device pick, capture start/stop, mapping toggle,
+# - audio reactive panel: device pick, capture start/stop, mapping toggle,
 #   gain, live level/low/mid/high meters (GUI front-end for Block 9)
 #
 # ── KNOWN ISSUES / TODO ───────────────────────────────────────────────────────
