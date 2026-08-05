@@ -649,9 +649,10 @@ class programmer:
         print("programmer cleared.")
 
     def do_clear(self):
-        """Two-stage CLEAR.
+        """Three-stage CLEAR.
         Tap 1 — clear fixture selection.
-        Tap 2 — clear programmer values.
+        Tap 2 — clear programmer data (stored AT values).
+        Tap 3 — clear programmer output (live fades + FX layers still running).
         Stage resets automatically if more than 2 s passes between taps.
         """
         import time
@@ -678,10 +679,11 @@ class programmer:
             self.data.clear()
             self.disabled = {}
             self._clear_stage = 2
-            return "programmer cleared"
+            return "programmer cleared  (clear again to clear programmer output)"
         else:
             self._clear_stage = 0
-            return "programmer and selection clear"
+            self.live_fades.clear()
+            return "programmer output cleared"
 
     def _get_fixture_by_fid(self, fid_str):
         """Helper — looks up a fixture or sub-fixture by its string ID."""
@@ -17756,8 +17758,8 @@ def run_command(cmd_str):
         result = prog.do_clear()
         if result.startswith("programmer cleared"):
             _prog_fx_stop()
-        elif result == "programmer and selection clear":
-            pass
+        elif result == "programmer output cleared":
+            _prog_fx_stop()
         return result
 
     if t0 == 'UNDO':
@@ -18498,10 +18500,14 @@ if STUDIO_HEADLESS:
         prog.do_clear(); prog.do_clear()   # advance to stage 2 (programmer cleared)
         _saved_master = output_state.master_level
         output_state.master_level = 0.8
-        prog._clear_stage = 2              # stage 3 wraps back to 0
+        prog.live_fades.append({"fid": "1", "ch": "dim", "src": 0.5, "dst": 1.0,
+                                 "start": 0.0, "dur": 10.0})  # fake live fade
+        prog._clear_stage = 2
         _r_clear3 = run_command("CLEAR")
         _check("CLEAR stage 3 does not touch master level", output_state.master_level == 0.8)
-        output_state.master_level = _saved_master  # restore
+        _check("CLEAR stage 3 kills live fades", len(prog.live_fades) == 0)
+        _check("CLEAR stage 3 returns programmer output cleared", "output cleared" in _r_clear3)
+        output_state.master_level = _saved_master
 
         # RECORD CUE with FOLLOW time — was silently dropped before the fix
         run_command("ALL AT R 255 G 0 B 0")
