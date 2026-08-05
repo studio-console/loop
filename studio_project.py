@@ -2548,7 +2548,7 @@ class FXPreset:
 
     def __init__(self, preset_id, name=""):
         self.preset_id = int(preset_id)
-        self.name      = name or f"FX {preset_id}"
+        self.name      = name or f"fx {preset_id}"
         self.layers    = []   # list of dicts: {waveform, channel, rate_bpm, size, spread}
 
     def add_layer(self, waveform, channel, rate_bpm=60.0, size=100.0, spread=0.0,
@@ -7122,7 +7122,7 @@ class GUIEngine:
         if self._fx_pool and self._fx_pool.get(n):
             result = self._cmd(f"FIRE FX {n}") if self._cmd else None
             preset = self._fx_pool.get(n)
-            self._log(f"> FX {n} — {preset.name}")
+            self._log(f"> fx {n} — {preset.name}")
             if result:
                 self._log(f"  {result}")
             # If the FX editor is open, sync it to this slot
@@ -7132,7 +7132,7 @@ class GUIEngine:
             except Exception:
                 pass
         else:
-            self._log(f"> FX {n} is empty — open FX ED to build a preset")
+            self._log(f"> fx {n} is empty — open fx ed to build a preset")
         self._focus_cmd()
 
     def _on_clear_fx(self, *_):
@@ -7170,7 +7170,7 @@ class GUIEngine:
             if n < FormPool.FIRST_CUSTOM_SLOT:
                 self._log(f"  slots 1-4 are built-ins (sine/ramp/pulse/square)")
             else:
-                self._log(f"  To record: record form {n} Name 0.0,0.0 0.5,1.0 1.0,0.0")
+                self._log(f"  to record: record form {n} name 0.0,0.0 0.5,1.0 1.0,0.0")
         self._focus_cmd()
 
     def _on_rate_click(self, _sender, _app_data, user_data):
@@ -7414,13 +7414,13 @@ class GUIEngine:
                 pass
             try:
                 if p and p.layers:
-                    layer_strs = [f"{ld['waveform']} {ld['channel']} {ld.get('bpm', 60):.0f}BPM"
+                    layer_strs = [f"{ld['waveform']} {ld['channel']} {ld.get('bpm', 60):.0f} bpm"
                                   for ld in p.layers[:3]]
-                    fx_tip = f"FX {n}: {p.name}\n" + "\n".join(layer_strs)
+                    fx_tip = f"fx {n}: {p.name}\n" + "\n".join(layer_strs)
                     if len(p.layers) > 3:
                         fx_tip += f"\n+ {len(p.layers)-3} more layer(s)"
                 elif p:
-                    fx_tip = f"FX {n}: {p.name} (empty)"
+                    fx_tip = f"fx {n}: {p.name} (empty)"
                 else:
                     fx_tip = f"fx {n} — empty"
                 dpg.set_value(f"fx_tip_{n}", fx_tip)
@@ -7778,9 +7778,9 @@ class GUIEngine:
                 dpg.add_input_int(tag="midi_exec_gb_num", label="", width=46,
                                   default_value=1, min_value=1, max_value=99,
                                   step=0, step_fast=0)
-                dpg.add_radio_button(items=["GO", "BACK"],
+                dpg.add_radio_button(items=["go", "back"],
                                      tag="midi_exec_gb_type",
-                                     default_value="GO", horizontal=True)
+                                     default_value="go", horizontal=True)
                 dpg.add_button(label="learn note", width=100,
                                callback=self._start_exec_gb_learn)
                 dpg.add_text("", tag="midi_exec_gb_status", color=_C_ACCENT)
@@ -7882,10 +7882,10 @@ class GUIEngine:
                 self._log("  network: universe list must contain at least one number")
                 return
         except Exception as e:
-            self._log(f"  Network: bad input — {e}")
+            self._log(f"  network: bad input — {e}")
             return
         ShowFile.save_network(bind, univs)
-        self._log(f"  Network saved: bind={bind or '(auto)'}  universes={univs}  (restart to apply)")
+        self._log(f"  network saved: bind={bind or '(auto)'}  universes={univs}  (restart to apply)")
 
     def _refresh_patch_table(self):
         """Rebuild the rows in the patch table from the current patch state."""
@@ -9025,7 +9025,7 @@ class GUIEngine:
             self._log("> select a slot first")
             return
         self._fxed_sync_rows()
-        name   = dpg.get_value("fxed_name").strip() or f"FX {self._fx_ed_slot}"
+        name   = dpg.get_value("fxed_name").strip() or f"fx {self._fx_ed_slot}"
         preset = FXPreset(self._fx_ed_slot, name)
         for ld in self._fx_ed_layers:
             preset.add_layer(
@@ -10143,9 +10143,9 @@ class GUIEngine:
             ex_n = int(dpg.get_value("midi_exec_gb_num"))
         except Exception:
             return
-        verb = dpg.get_value("midi_exec_gb_type")  # 'GO' or 'BACK'
-        name = f"Exec {ex_n} {verb}"
-        cmd  = f"EXEC {ex_n} {verb}"
+        verb = dpg.get_value("midi_exec_gb_type")  # 'go' or 'back'
+        name = f"exec {ex_n} {verb}"
+        cmd  = f"EXEC {ex_n} {verb.upper()}"
         cb   = (lambda c=cmd: self._cmd(c)) if self._cmd else (lambda: None)
         GUIEngine.target_registry[name] = (cb, False, True)
         self._learn_target     = name
@@ -17020,7 +17020,7 @@ def run_command(cmd_str):
             fx_defs = vals.get('fx', [])
             if fx_defs:
                 for ld in fx_defs:
-                    parts.append(f"FX:{ld.get('waveform','?')} {ld.get('channel','?')} {ld.get('bpm',60):.0f}BPM")
+                    parts.append(f"FX:{ld.get('waveform','?')} {ld.get('channel','?')} {ld.get('bpm',60):.0f} bpm")
             if parts:
                 lines.append(f"  Fixture {fid}: {', '.join(parts)}")
         # Sub-fixture RGB — show unique colors only
