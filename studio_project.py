@@ -4533,9 +4533,9 @@ class MIDIEngine:
 
     def map_note(self, channel, note, on_callback, off_callback=None, name=""):
         """Map a note to action(s). on fires on press, off fires on release."""
-        mapping = NoteMapping(name or f"Note{note}", on_callback, off_callback)
+        mapping = NoteMapping(name or f"note{note}", on_callback, off_callback)
         self.note_maps[(channel, note)] = mapping
-        print(f"Mapped: CH{channel} Note{note} → {mapping.name}")
+        print(f"mapped: ch{channel} note{note} → {mapping.name}")
         return mapping
 
     def clear_maps(self):
@@ -4549,9 +4549,9 @@ class MIDIEngine:
             print("  (none)")
         for (ch, cc), m in self.cc_maps.items():
             status = "live" if m.taken_over else "waiting for takeover"
-            print(f"  CH{ch} CC{cc}   → {m.name} [{status}]")
+            print(f"  ch{ch} cc{cc}   → {m.name} [{status}]")
         for (ch, note), m in self.note_maps.items():
-            print(f"  CH{ch} Note{note} → {m.name}")
+            print(f"  ch{ch} note{note} → {m.name}")
         print("=========================\n")
 
     # ----------------------------------------------------------
@@ -6375,9 +6375,10 @@ class GUIEngine:
                     dpg.draw_rectangle(
                         pmin=(0, 0), pmax=(1, 1),
                         tag=f"stage_rect_{i}",
-                        fill=(8, 6, 18, 255),
-                        color=(38, 26, 78, 255),
+                        fill=(18, 13, 40, 255),
+                        color=(55, 38, 105, 255),
                         thickness=1,
+                        rounding=4,
                     )
                     dpg.draw_text(
                         pos=(0, 0), tag=f"stage_lbl_{i}",
@@ -6484,15 +6485,15 @@ class GUIEngine:
                 grey = max(0, min(255, int(dim * gm * 200)))
                 fill = (grey, grey, grey, 255)
             else:
-                fill = (8, 6, 18, 255)
+                fill = (18, 13, 40, 255)
             sel_masters = {f.fixture_id for f in self._prog.selection
                            if isinstance(f, MasterFixture)}
-            border_col = (162, 115, 255, 255) if master.fixture_id in sel_masters else (38, 26, 78, 255)
+            border_col = (162, 115, 255, 255) if master.fixture_id in sel_masters else (55, 38, 105, 255)
             dim_pct = int(dim * gm * 100)
             dim_col = _C_TEXT if dim_pct > 0 else _C_DIM
             try:
                 dpg.configure_item(f"stage_rect_{i}", pmin=(x0, gap), pmax=(x1, gap + mh),
-                                   fill=fill, color=border_col, thickness=2)
+                                   fill=fill, color=border_col, thickness=2, rounding=4)
                 dpg.configure_item(f"stage_lbl_{i}",  pos=(x0 + 4, gap + 6),  text=master.name[:10])
                 dpg.configure_item(f"stage_dim_{i}",  pos=(x0 + 4, gap + 28),
                                    text=f"{dim_pct}%", color=dim_col)
@@ -6561,7 +6562,7 @@ class GUIEngine:
                     sgrey = max(0, min(255, int(sdim * gm * 200)))
                     sfill = (sgrey, sgrey, sgrey, 255)
                 else:
-                    sfill = (8, 6, 18, 255)
+                    sfill = (16, 11, 36, 255)
                 try:
                     dpg.configure_item(f"stage_sub_{i}_{j}",
                                        pmin=(sx0, sy0), pmax=(sx0 + dot, sy0 + dot),
@@ -6602,7 +6603,7 @@ class GUIEngine:
                     for col in range(self._POOL_COLS):
                         n = row * self._POOL_COLS + col + 1
                         dpg.add_button(
-                            tag=f"grp_btn_{n}", label=f"G{n}",
+                            tag=f"grp_btn_{n}", label=f"g{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_group_click, user_data=n)
                         with dpg.tooltip(f"grp_btn_{n}"):
@@ -6639,7 +6640,7 @@ class GUIEngine:
                     for col in range(self._POOL_COLS):
                         n = row * self._POOL_COLS + col + 1
                         dpg.add_button(
-                            tag=f"col_btn_{n}", label=f"C{n}",
+                            tag=f"col_btn_{n}", label=f"c{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_color_click, user_data=n)
                         with dpg.tooltip(f"col_btn_{n}"):
@@ -6676,7 +6677,7 @@ class GUIEngine:
                     for col in range(self._POOL_COLS):
                         n = row * self._POOL_COLS + col + 1
                         dpg.add_button(
-                            tag=f"dim_btn_{n}", label=f"D{n}",
+                            tag=f"dim_btn_{n}", label=f"d{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_dim_click, user_data=n)
                         with dpg.tooltip(f"dim_btn_{n}"):
@@ -6775,7 +6776,7 @@ class GUIEngine:
                     for col in range(self._POOL_COLS):
                         n = row * self._POOL_COLS + col + 1
                         dpg.add_button(
-                            tag=f"cs_btn_{n}", label=f"CS{n}",
+                            tag=f"cs_btn_{n}", label=f"cs{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_cuestack_click, user_data=n)
                         with dpg.tooltip(f"cs_btn_{n}"):
@@ -6884,7 +6885,7 @@ class GUIEngine:
                     for col in range(self._POOL_COLS):
                         n = row * self._POOL_COLS + col + 1
                         dpg.add_button(
-                            tag=f"fx_btn_{n}", label=f"FX{n}",
+                            tag=f"fx_btn_{n}", label=f"fx{n}",
                             width=self._BTN_W, height=self._BTN_H,
                             callback=self._on_fx_click, user_data=n)
                         with dpg.tooltip(f"fx_btn_{n}"):
@@ -7096,7 +7097,7 @@ class GUIEngine:
                     for col in range(_FORMS_COLS):
                         n = row * _FORMS_COLS + col + 1
                         dpg.add_button(
-                            tag=f"form_btn_{n}", label=f"F{n}",
+                            tag=f"form_btn_{n}", label=f"f{n}",
                             width=_FORMS_BTN_W, height=self._BTN_H,
                             callback=self._on_form_click, user_data=n)
                         with dpg.tooltip(f"form_btn_{n}"):
@@ -7201,7 +7202,7 @@ class GUIEngine:
         for n in range(1, self._POOL_SLOTS + 1):
             # Groups
             g = self._groups.get(n) if self._groups else None
-            lbl = f"{n}:{g.name[:7]}" if g else f"G{n}"
+            lbl = f"{n}:{g.name[:7]}" if g else f"g{n}"
             try:
                 dpg.set_item_label(f"grp_btn_{n}", lbl)
                 _gt = self._pool_live_theme if g else self._pool_empty_theme
@@ -7221,7 +7222,7 @@ class GUIEngine:
                 pass
             # Colors
             c = self._colors.get(n) if self._colors else None
-            lbl = f"{n}:{c.name[:7]}" if c else f"C{n}"
+            lbl = f"{n}:{c.name[:7]}" if c else f"c{n}"
             try:
                 dpg.set_item_label(f"col_btn_{n}", lbl)
             except Exception:
@@ -7273,7 +7274,7 @@ class GUIEngine:
                     pass
             # Dims
             d = self._dims.get(n) if self._dims else None
-            lbl = f"{n}:{d.name[:7]}" if d else f"D{n}"
+            lbl = f"{n}:{d.name[:7]}" if d else f"d{n}"
             try:
                 dpg.set_item_label(f"dim_btn_{n}", lbl)
             except Exception:
@@ -7326,7 +7327,7 @@ class GUIEngine:
         active = self._active_executor[0] if self._active_executor else None
         for n in range(1, self._POOL_SLOTS + 1):
             cs = self._cuestack_pool.get(n) if self._cuestack_pool else None
-            lbl = f"{n}:{cs.name[:5]}" if cs else f"CS{n}"
+            lbl = f"{n}:{cs.name[:5]}" if cs else f"cs{n}"
             try:
                 dpg.set_item_label(f"cs_btn_{n}", lbl)
             except Exception:
@@ -7403,7 +7404,7 @@ class GUIEngine:
         # FX Pool (slots 1-48)
         for n in range(1, self._POOL_SLOTS + 1):
             p = self._fx_pool.get(n) if self._fx_pool else None
-            lbl = f"{n}:{p.name[:6]}" if p else f"FX{n}"
+            lbl = f"{n}:{p.name[:6]}" if p else f"fx{n}"
             try:
                 dpg.set_item_label(f"fx_btn_{n}", lbl)
                 _ft = self._pool_live_theme if p else self._pool_empty_theme
@@ -7450,7 +7451,7 @@ class GUIEngine:
         # Forms (slots 1-24, matches _POOL_SLOTS)
         for n in range(1, self._POOL_SLOTS + 1):
             f = self._form_pool.get(n) if self._form_pool else None
-            lbl = f"{n}:{f.name[:6]}" if f else f"F{n}"
+            lbl = f"{n}:{f.name[:6]}" if f else f"f{n}"
             try:
                 dpg.set_item_label(f"form_btn_{n}", lbl)
                 _ft = self._pool_live_theme if f else self._pool_empty_theme
@@ -7708,9 +7709,9 @@ class GUIEngine:
             dpg.add_separator()
             dpg.add_text("add mapping:", color=_C_DIM)
             with dpg.group(horizontal=True):
-                dpg.add_radio_button(items=["CC", "Note"],
+                dpg.add_radio_button(items=["cc", "note"],
                                      tag="learn_type_radio",
-                                     default_value="CC",
+                                     default_value="cc",
                                      horizontal=True,
                                      callback=self._on_learn_type_change)
                 dpg.add_button(label="learn", tag="learn_btn",
@@ -7731,9 +7732,9 @@ class GUIEngine:
                 dpg.add_input_int(tag="direct_ch",   label="", width=42,
                                   default_value=1, min_value=1, max_value=16,
                                   step=0, step_fast=0)
-                dpg.add_radio_button(items=["CC", "Note"],
+                dpg.add_radio_button(items=["cc", "note"],
                                      tag="direct_type_radio",
-                                     default_value="CC", horizontal=True)
+                                     default_value="cc", horizontal=True)
                 dpg.add_input_int(tag="direct_num",  label="", width=46,
                                   default_value=7, min_value=0, max_value=127,
                                   step=0, step_fast=0)
@@ -8801,7 +8802,7 @@ class GUIEngine:
     def _refresh_fx_pool_buttons(self):
         for n in range(1, self._POOL_SLOTS + 1):
             p = self._fx_pool.get(n) if self._fx_pool else None
-            lbl = f"{n}:{p.name[:6]}" if p else f"FX{n}"
+            lbl = f"{n}:{p.name[:6]}" if p else f"fx{n}"
             try:
                 dpg.set_item_label(f"fx_btn_{n}", lbl)
             except Exception:
@@ -10049,21 +10050,21 @@ class GUIEngine:
         cb     = entry[0]
         soft   = entry[1]
         off_cb = entry[3] if len(entry) > 3 else None
-        if kind == "CC":
+        if kind == "cc":
             self._midi.map_cc(ch, num, cb, name=target_name, soft_takeover=soft)
-            label = f"CC{num}"
+            label = f"cc{num}"
         else:
             self._midi.map_note(ch, num, cb, off_cb, name=target_name)
-            label = f"Note{num}"
+            label = f"note{num}"
         ShowFile.save_midi(self._midi)
         self._refresh_midi_table()
         try:
-            dpg.set_value("direct_status", f"CH{ch} {label} → {target_name}")
+            dpg.set_value("direct_status", f"ch{ch} {label} → {target_name}")
         except Exception:
             pass
 
     def _on_learn_type_change(self, sender, value):
-        self._learn_type = 'cc' if value == 'CC' else 'note'
+        self._learn_type = 'cc' if value == 'cc' else 'note'
 
     def _toggle_learn(self):
         if self._learn_armed:
@@ -10080,7 +10081,7 @@ class GUIEngine:
         self._learn_target = target_name
         self._learn_armed  = True
         type_str = dpg.get_value("learn_type_radio")
-        self._learn_type = 'cc' if type_str == 'CC' else 'note'
+        self._learn_type = 'cc' if type_str == 'cc' else 'note'
         self._learn_armed_type = self._learn_type
         wait_label = "CC knob/fader" if self._learn_type == 'cc' else "key or pad"
         dpg.set_value("learn_status", f"waiting for {wait_label}...")
@@ -10160,7 +10161,7 @@ class GUIEngine:
         entry = GUIEngine.target_registry.get(name)
         if entry:
             self._midi.map_note(ch, number, entry[0], name=name)
-        dpg.set_value("go_cue_status", f"CH{ch} Note{number} → {name}")
+        dpg.set_value("go_cue_status", f"ch{ch} note{number} → {name}")
         try:
             dpg.set_item_label("learn_btn", "learn")
         except Exception:
@@ -10282,7 +10283,7 @@ class GUIEngine:
         """Mark a mapping row for reassignment and update the reassign UI."""
         kind, ch, num, current_name = user_data
         self._reassign_pending = {'type': kind, 'ch': ch, 'num': num}
-        label = f"CH{ch} {'CC' if kind == 'cc' else 'Note'}{num}  ({current_name})"
+        label = f"ch{ch} {'cc' if kind == 'cc' else 'note'}{num}  ({current_name})"
         try:
             dpg.set_value("rsn_selected", label)
             dpg.configure_item("rsn_selected", color=_C_ACCENT)
@@ -10531,7 +10532,7 @@ class GUIEngine:
                         dpg.add_text(cue_label)
                 # Time override badge
                 if ex.time_override_on and ex.time_override_fade is not None:
-                    t_label  = f"T{ex.time_override_fade:.1f}s"
+                    t_label  = f"t{ex.time_override_fade:.1f}s"
                     dpg.add_button(label=t_label, width=52, height=20,
                                    callback=self._on_exec_time_toggle,
                                    user_data=ex.exec_id)
@@ -16179,31 +16180,31 @@ def run_command(cmd_str):
             if t1 == 'CC':
                 midi.map_cc(ch, num, cb, name=target_name, soft_takeover=soft_takeover)
                 ShowFile.save_midi(midi)
-                return f"Mapped CH{ch} CC{num} → {target_name}  (saved)"
+                return f"mapped ch{ch} cc{num} → {target_name}  (saved)"
             else:
                 midi.map_note(ch, num, cb, off_cb, name=target_name)
                 ShowFile.save_midi(midi)
-                return f"Mapped CH{ch} Note{num} → {target_name}  (saved)"
+                return f"mapped ch{ch} note{num} → {target_name}  (saved)"
         if t1 == 'REMOVE' and len(tokens) >= 5 and tokens[2] in ('CC', 'NOTE'):
             try:
                 ch  = int(tokens[3])
                 num = int(tokens[4])
             except ValueError:
-                return "MIDI REMOVE CC|NOTE <ch> <number>"
+                return "midi remove cc|note <ch> <number>"
             if tokens[2] == 'CC':
                 key = (ch, num)
                 if key in midi.cc_maps:
                     del midi.cc_maps[key]
                     ShowFile.save_midi(midi)
-                    return f"Removed CC mapping CH{ch} CC{num}  (saved)"
-                return f"No CC mapping for CH{ch} CC{num}"
+                    return f"removed cc mapping ch{ch} cc{num}  (saved)"
+                return f"no cc mapping for ch{ch} cc{num}"
             else:
                 key = (ch, num)
                 if key in midi.note_maps:
                     del midi.note_maps[key]
                     ShowFile.save_midi(midi)
-                    return f"Removed Note mapping CH{ch} Note{num}  (saved)"
-                return f"No Note mapping for CH{ch} Note{num}"
+                    return f"removed note mapping ch{ch} note{num}  (saved)"
+                return f"no note mapping for ch{ch} note{num}"
         if t1 == 'TARGETS':
             lines = ["Available MIDI targets:"]
             for name in sorted(GUIEngine.target_registry.keys()):
@@ -16727,7 +16728,7 @@ def run_command(cmd_str):
                     pass
             cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
             if not cs:
-                label = f"Cuestack {cs_n}" if cs_n else "active cuestack"
+                label = f"cuestack {cs_n}" if cs_n else "active cuestack"
                 return f"LIST CUES: {label} not found"
             if not cs.cues:
                 return f"CS {cs.stack_id} '{cs.name}': no cues"
@@ -16773,14 +16774,14 @@ def run_command(cmd_str):
             return "\n".join(lines)
         if sub == 'MIDI':
             if not midi or (not midi.cc_maps and not midi.note_maps):
-                return "No MIDI mappings"
+                return "no MIDI mappings"
             lines = ["MIDI Mappings:"]
             for (ch, cc), m in sorted(midi.cc_maps.items()):
                 status = "live" if m.taken_over else "takeover"
-                lines.append(f"  CH{ch} CC{cc:3d}  → {m.name} [{status}]")
+                lines.append(f"  ch{ch} cc{cc:3d}  → {m.name} [{status}]")
             for (ch, note), m in sorted(midi.note_maps.items()):
-                lines.append(f"  CH{ch} Note{note:3d} → {m.name}")
-            return "\n".join(lines) if len(lines) > 1 else "No MIDI mappings"
+                lines.append(f"  ch{ch} note{note:3d} → {m.name}")
+            return "\n".join(lines) if len(lines) > 1 else "no MIDI mappings"
         if sub in ('OSC', 'TARGETS'):
             clients = osc._clients if osc else {}
             if not clients:
@@ -18209,11 +18210,11 @@ if STUDIO_HEADLESS:
 
         # MIDI text commands — add, list, remove
         _r_midi_map = run_command("MIDI CC 15 100 GO")
-        _check("MIDI CC maps correctly", "Mapped" in _r_midi_map)
+        _check("MIDI CC maps correctly", "mapped" in _r_midi_map)
         _r_midi_list = run_command("LIST MIDI")
-        _check("LIST MIDI shows new mapping", "CH15" in _r_midi_list)
+        _check("LIST MIDI shows new mapping", "ch15" in _r_midi_list)
         _r_midi_rm = run_command("MIDI REMOVE CC 15 100")
-        _check("MIDI REMOVE CC removes mapping", "Removed" in _r_midi_rm)
+        _check("MIDI REMOVE CC removes mapping", "removed" in _r_midi_rm)
         _r_targets = run_command("MIDI TARGETS")
         _check("MIDI TARGETS lists targets", "GO" in _r_targets)
 
