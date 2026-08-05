@@ -7818,7 +7818,7 @@ class GUIEngine:
                 dpg.add_text("id", color=_C_DIM)
                 dpg.add_spacer(width=4)
                 dpg.add_input_text(tag="patch_add_name",  label="", width=110,
-                                   default_value="Fixture")
+                                   default_value="fixture")
                 dpg.add_text("name", color=_C_DIM)
                 dpg.add_spacer(width=4)
                 dpg.add_combo(tag="patch_add_profile", label="", width=130,
