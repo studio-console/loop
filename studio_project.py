@@ -2251,7 +2251,7 @@ class Executor:
     PRIORITY_LOW    = -1
     PRIORITY_NORMAL =  0
     PRIORITY_HIGH   =  1
-    PRIORITY_LABELS = {-1: 'LO', 0: 'NRM', 1: 'HI'}
+    PRIORITY_LABELS = {-1: 'lo', 0: 'nrm', 1: 'hi'}
 
     def __init__(self, exec_id):
         self.exec_id      = exec_id
@@ -5824,7 +5824,7 @@ class GUIEngine:
                               border=True, no_scrollbar=False, no_scroll_with_mouse=False):
             # ── Cue list ─────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("◆ cuestack", color=_C_ACCENT)
+                dpg.add_text("cuestack", color=_C_ACCENT)
                 dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
                               width=-120, height_mode=dpg.mvComboHeight_Small,
                               callback=self._on_cs_combo_select)
@@ -5847,13 +5847,13 @@ class GUIEngine:
             dpg.add_spacer(height=4)
             # ── Active playbacks ─────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("◆ active playbacks", color=_C_ACCENT)
+                dpg.add_text("active playbacks", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_executors)
             dpg.add_separator()
-            with dpg.child_window(tag="playbacks_list", width=-1, height=90,
-                                  border=False, no_scrollbar=True, no_scroll_with_mouse=True):
+            with dpg.child_window(tag="playbacks_list", width=-1, height=180,
+                                  border=False, no_scrollbar=False, no_scroll_with_mouse=False):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
 
             dpg.add_spacer(height=2)
@@ -5891,7 +5891,7 @@ class GUIEngine:
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("◆ fx", color=_C_ACCENT)
+                dpg.add_text("fx", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=24,
                                callback=self._on_tap_tempo)
@@ -6187,7 +6187,7 @@ class GUIEngine:
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── Header ─────────────────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("◆ command line", color=_C_ACCENT)
+                dpg.add_text("command line", color=_C_ACCENT)
                 dpg.add_spacer(width=10)
                 dpg.add_text("sel: —", tag="cmd_sel_count", color=_C_DIM)
 
@@ -6205,7 +6205,7 @@ class GUIEngine:
                 dpg.add_text("cmd >", color=_C_ACCENT)
                 dpg.add_input_text(
                     tag="cmd_input",
-                    hint="1 THRU 6  |  1 THRU 6 R 255  |  FX SINE RED  |  GO  |  SAVE",
+                    hint="1 thru 6  |  1 thru 6 r 255  |  fx sine red  |  go  |  save",
                     width=-220, on_enter=True,
                     callback=self._on_cmd_execute,
                 )
@@ -6281,7 +6281,7 @@ class GUIEngine:
                     [("dim",  _KW, self._numpad_append, " DIM "),
                      (" G ",  _NW, self._numpad_append, " G "),
                      (" B ",  _NW, self._numpad_append, " B ")],
-                    [("clr↵", _KW, self._numpad_clear_input, None),
+                    [("clr", _KW, self._numpad_clear_input, None),
                      ("grp",  _NW, self._numpad_append, "GROUP "),
                      ("col",  _NW, self._numpad_append, "COLOR ")],
                 ]
@@ -6296,43 +6296,6 @@ class GUIEngine:
                                     dpg.add_button(label=label, width=w, height=_NH,
                                                    callback=cb)
 
-            dpg.add_separator()
-            # ── Per-fixture intensity quick-set ─────────────────
-            with dpg.group(horizontal=True):
-                dpg.add_text("fixture dim", color=_C_DIM)
-                dpg.add_spacer(width=8)
-                dpg.add_button(label="all", width=34, height=16,
-                               callback=self._on_fixture_dim_select_all)
-            if self._patch:
-                # Fixed-height scroll area, same technique as cue_list_scroll
-                # above: hidden scrollbar (no_scrollbar=True) but mouse-wheel
-                # scrolling left on (no_scroll_with_mouse=False). Pixel
-                # measurement (dpg.get_y_scroll_max on the real rendered
-                # right_col) showed the un-wrapped row list overflowing the
-                # panel's 512px budget by 66px — with the outer right_col's
-                # own no_scroll_with_mouse=True, tubes 4-6's sliders were
-                # not just visually clipped but completely unreachable.
-                # 76px shows ~3-4 rows before scrolling, matching the space
-                # actually available under the numpad without growing
-                # right_col past its measured budget.
-                with dpg.child_window(tag="fixture_dim_scroll", width=-1, height=76,
-                                      border=False, no_scrollbar=True,
-                                      no_scroll_with_mouse=False):
-                    for master in self._patch.all_fixtures():
-                        fid  = master.fixture_id
-                        name = master.name[:6] if len(master.name) > 2 else str(fid)
-                        with dpg.group(horizontal=True):
-                            dpg.add_text(name, color=_C_DIM, indent=4)
-                            dpg.add_spacer(width=2)
-                            dpg.add_slider_float(
-                                tag=f"fq_dim_{fid}",
-                                default_value=1.0,
-                                min_value=0.0, max_value=1.0,
-                                width=-1, height=14,
-                                format="%.0f%%",
-                                callback=self._on_fixture_dim_slider,
-                                user_data=fid,
-                            )
     # ── Layout budget: 1920 × 1080, no scrollbars anywhere ──────
     _W          = 1920
     _H          = 1080
@@ -8740,7 +8703,7 @@ class GUIEngine:
                               items=["Selection", "All Fixtures"],
                               default_value="Selection")
                 dpg.add_spacer(width=6)
-                dpg.add_button(label="↻ GROUPS", width=90, height=22,
+                dpg.add_button(label="↻ groups", width=90, height=22,
                                callback=self._fxed_refresh_target)
 
             dpg.add_separator()
@@ -10083,7 +10046,7 @@ class GUIEngine:
         self._learn_armed_type = self._learn_type
         wait_label = "CC knob/fader" if self._learn_type == 'cc' else "key or pad"
         dpg.set_value("learn_status", f"waiting for {wait_label}...")
-        dpg.set_item_label("learn_btn", "CANCEL")
+        dpg.set_item_label("learn_btn", "cancel")
         self._midi.start_learn(self._learn_type, self._on_learn_captured)
 
     def _start_go_cue_learn(self):
@@ -10836,7 +10799,7 @@ class GUIEngine:
                     dot_col = _C_ACCENT
                 dpg.configure_item("sb_prog_dot", color=dot_col)
                 dpg.configure_item("sb_prog_lbl", color=_C_ACCENT)
-                dpg.set_value("sb_prog_lbl", "PROGRAMMER  DIRTY")
+                dpg.set_value("sb_prog_lbl", "programmer  dirty")
             else:
                 dpg.configure_item("sb_prog_dot", color=_C_DIM)
                 dpg.configure_item("sb_prog_lbl", color=_C_DIM)
@@ -10848,7 +10811,7 @@ class GUIEngine:
         try:
             blind = self._out.blind if self._out else False
             dpg.configure_item("sb_blind_lbl",
-                               label="■ BLIND" if blind else "blind")
+                               label="■ blind" if blind else "blind")
             theme = self._alert_btn_theme if blind else self._dim_btn_theme
             if theme:
                 dpg.bind_item_theme("sb_blind_lbl", theme)
@@ -10859,7 +10822,7 @@ class GUIEngine:
         try:
             bbo = (self._out.master_level == 0.0) if self._out else False
             dpg.configure_item("sb_bbo_lbl",
-                               label="■ BBO" if bbo else "bbo")
+                               label="■ blackout" if bbo else "blackout")
             theme = self._alert_btn_theme if bbo else self._dim_btn_theme
             if theme:
                 dpg.bind_item_theme("sb_bbo_lbl", theme)
@@ -10876,7 +10839,7 @@ class GUIEngine:
         # HIGHLIGHT indicator (button — clickable toggle; syncs selection each tick)
         try:
             hl = self._out.highlight_mode if self._out else False
-            dpg.configure_item("sb_hl_lbl", label="■ HL" if hl else "hl")
+            dpg.configure_item("sb_hl_lbl", label="■ highlight" if hl else "highlight")
             theme = self._go_theme if hl else self._dim_btn_theme
             if theme:
                 dpg.bind_item_theme("sb_hl_lbl", theme)
@@ -10920,7 +10883,7 @@ class GUIEngine:
         try:
             pt = _prog_time
             if pt.get('on'):
-                pt_label = f"PT {pt['fade']:.1f}s"
+                pt_label = f"pan·tilt {pt['fade']:.1f}s"
                 if pt.get('delay', 0.0):
                     pt_label += f" d{pt['delay']:.1f}"
                 dpg.configure_item("sb_pt_lbl", label=pt_label)
@@ -10938,7 +10901,7 @@ class GUIEngine:
             sel = self._prog.selection
             masters = sum(1 for f in sel if isinstance(f, MasterFixture))
             if masters:
-                dpg.set_value("cmd_sel_count", f"SEL: {masters} fixture(s)")
+                dpg.set_value("cmd_sel_count", f"sel: {masters} fixture(s)")
                 dpg.configure_item("cmd_sel_count", color=_C_ACCENT)
             else:
                 dpg.set_value("cmd_sel_count", "sel: —")
@@ -11115,7 +11078,7 @@ class GUIEngine:
             if cur is not None:
                 cue  = active_cs.cues.get(cur)
                 name = cue.name if cue else str(cur)
-                dpg.set_value("hdr_cue", f"▶  Cue {cur:.0f}: {name}")
+                dpg.set_value("hdr_cue", f"▶  cue {cur:.0f}: {name}")
             else:
                 dpg.set_value("hdr_cue", "▶  (none)")
             dpg.set_value("hdr_wrap",
@@ -11169,7 +11132,7 @@ class GUIEngine:
         if layers:
             l = layers[0]
             dpg.set_value("hdr_fx",
-                          f"FX: {l.waveform} {l.rate_bpm:.0f}BPM")
+                          f"fx: {l.waveform.lower()} {l.rate_bpm:.0f}bpm")
             dpg.configure_item("hdr_fx", color=_C_ACCENT)
             # Sync sliders to actual FX state
             dpg.set_value("fx_rate",   l.rate_bpm)
@@ -11216,7 +11179,7 @@ class GUIEngine:
         pl = self._out.programmer_layer
         any_dim = next(iter(pl.values()), {}).get('dim') if pl else None
         if any_dim is not None:
-            dpg.set_value("hdr_dim", f"DIM: {any_dim:.0%}")
+            dpg.set_value("hdr_dim", f"dim: {any_dim:.0%}")
 
         # Programmer monitor title colour (mirrors status bar)
         try:
@@ -11422,10 +11385,10 @@ class GUIEngine:
                     for layer in self._fx._layers.values():
                         if layer.fx_id < 10000:
                             layer.set_rate_smooth(clk_bpm, now)
-                    dpg.set_value("hdr_clock", f"CLK {clk_bpm:.0f}")
+                    dpg.set_value("hdr_clock", f"clk {clk_bpm:.0f}")
                     dpg.configure_item("hdr_clock", color=_C_ACCENT)
                 else:
-                    dpg.set_value("hdr_clock", "CLK …")
+                    dpg.set_value("hdr_clock", "clk …")
                     dpg.configure_item("hdr_clock", color=_C_DIM)
             except Exception:
                 pass
