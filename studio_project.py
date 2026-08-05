@@ -2512,7 +2512,7 @@ class ExecutorPool:
     def get_page(self, n):
         n = int(n)
         if n not in self.pages:
-            self.pages[n] = {'name': f'Page {n}', 'cuestacks': []}
+            self.pages[n] = {'name': f'page {n}', 'cuestacks': []}
         return self.pages[n]
 
     def set_page_name(self, n, name):
@@ -7025,9 +7025,9 @@ class GUIEngine:
                                    width=_POOL_BTN, height=22,
                                    callback=self._on_size_click, user_data=n)
                     with dpg.tooltip(f"size_btn_{n}"):
-                        dpg.add_text(f"Size {n}", tag=f"size_tip_{n}")
+                        dpg.add_text(f"size {n}", tag=f"size_tip_{n}")
                     with dpg.popup(f"size_btn_{n}", mousebutton=1):
-                        dpg.add_text(f"Size {n}", color=_C_DIM)
+                        dpg.add_text(f"size {n}", color=_C_DIM)
                         dpg.add_separator()
                         dpg.add_menu_item(label="recall size",
                             callback=self._ctx_exec, user_data=f"SIZEP {n}")
@@ -7050,9 +7050,9 @@ class GUIEngine:
                                    width=_POOL_BTN, height=22,
                                    callback=self._on_spread_click, user_data=n)
                     with dpg.tooltip(f"spread_btn_{n}"):
-                        dpg.add_text(f"Spread {n}", tag=f"spread_tip_{n}")
+                        dpg.add_text(f"spread {n}", tag=f"spread_tip_{n}")
                     with dpg.popup(f"spread_btn_{n}", mousebutton=1):
-                        dpg.add_text(f"Spread {n}", color=_C_DIM)
+                        dpg.add_text(f"spread {n}", color=_C_DIM)
                         dpg.add_separator()
                         dpg.add_menu_item(label="recall spread",
                             callback=self._ctx_exec, user_data=f"SPREADP {n}")
@@ -7853,7 +7853,7 @@ class GUIEngine:
                              color=_C_DIM)
 
             dpg.add_separator()
-            dpg.add_text("sACN Network", color=_C_ACCENT)
+            dpg.add_text("sacn network", color=_C_ACCENT)
             with dpg.group(horizontal=True):
                 dpg.add_text("bind ip:", color=_C_DIM)
                 _saved_bind, _saved_univs = ShowFile.load_network()
@@ -8528,7 +8528,7 @@ class GUIEngine:
                                   step=0, callback=self._on_page_sel_change)
                 dpg.add_spacer(width=6)
                 dpg.add_input_text(tag="pg_name_input", label="", width=180,
-                                   hint="page name", default_value="Page 1")
+                                   hint="page name", default_value="page 1")
                 dpg.add_button(label="rename", width=70,
                                callback=self._on_page_rename)
                 dpg.add_spacer(width=6)
@@ -8603,7 +8603,7 @@ class GUIEngine:
 
         # Refresh the page-name field to match loaded data
         try:
-            dpg.set_value("pg_name_input", page.get('name', f"Page {n}"))
+            dpg.set_value("pg_name_input", page.get('name', f"page {n}"))
         except Exception:
             pass
 
@@ -8624,7 +8624,7 @@ class GUIEngine:
             return
         if self._cmd:
             self._cmd(f"PAGE {n} NAME {name}")
-        self._log(f"> Page {n} renamed to '{name}'")
+        self._log(f"> page {n} renamed to '{name}'")
 
     def _on_page_new(self):
         # Find next unused page number
@@ -8638,17 +8638,17 @@ class GUIEngine:
         self._pages_current = n
         try:
             dpg.set_value("pg_sel_num", n)
-            dpg.set_value("pg_name_input", f"Page {n}")
+            dpg.set_value("pg_name_input", f"page {n}")
         except Exception:
             pass
         self._refresh_pages_table()
-        self._log(f"> Page {n} created")
+        self._log(f"> page {n} created")
 
     def _on_page_delete(self):
         n = self._pages_current
         if self._cmd:
             self._cmd(f"PAGE {n} DELETE")
-        self._log(f"> Page {n} deleted")
+        self._log(f"> page {n} deleted")
         self._refresh_pages_table()
 
     def _on_page_add_cs(self):
@@ -8860,7 +8860,7 @@ class GUIEngine:
             {'waveform': 'sine', 'channel': 'blue',  'bpm': 30.0, 'size': 200.0, 'spread': 1.0, 'phase_offset': 0.667},
         ]
         if not dpg.get_value("fxed_name"):
-            dpg.set_value("fxed_name", "Rainbow")
+            dpg.set_value("fxed_name", "rainbow")
         self._fxed_rebuild_rows()
 
     def _fxed_chase_rgb(self, *_):
@@ -8871,7 +8871,7 @@ class GUIEngine:
             {'waveform': 'pulse', 'channel': 'blue',  'bpm': 60.0, 'size': 200.0, 'spread': 1.0, 'phase_offset': 0.667},
         ]
         if not dpg.get_value("fxed_name"):
-            dpg.set_value("fxed_name", "Chase RGB")
+            dpg.set_value("fxed_name", "chase rgb")
         self._fxed_rebuild_rows()
 
     def _fxed_named_items(self, pool, id_attr='groups', name_attr='name', trunc=8):
@@ -11230,16 +11230,16 @@ class GUIEngine:
                     dpg.set_item_label(f"size_btn_{n}",
                                        f"S{n}:{sp.size:.0f}" if sp else f"S{n}")
                     dpg.set_value(f"size_tip_{n}",
-                                  f"Size {n}: {sp.name}  {sp.size:.0f}%" if sp
-                                  else f"Size {n} — empty  (RECORD SIZEP {n} Name size)")
+                                  f"size {n}: {sp.name}  {sp.size:.0f}%" if sp
+                                  else f"size {n} — empty  (RECORD SIZEP {n} Name size)")
                 except Exception:
                     pass
                 try:
                     dpg.set_item_label(f"spread_btn_{n}",
                                        f"Sp{n}:{xp.spread:.0f}" if xp else f"Sp{n}")
                     dpg.set_value(f"spread_tip_{n}",
-                                  f"Spread {n}: {xp.name}  {xp.spread:.2f}" if xp
-                                  else f"Spread {n} — empty  (RECORD SPREADP {n} Name spread)")
+                                  f"spread {n}: {xp.name}  {xp.spread:.2f}" if xp
+                                  else f"spread {n} — empty  (RECORD SPREADP {n} Name spread)")
                 except Exception:
                     pass
         except Exception:
@@ -11708,7 +11708,7 @@ class ShowFile:
         doc = {"version": ShowFile.VERSION, "pages": {}}
         for n, page in executor_pool.pages.items():
             doc["pages"][str(n)] = {
-                "name":       page.get("name", f"Page {n}"),
+                "name":       page.get("name", f"page {n}"),
                 "cuestacks":  list(page.get("cuestacks", [])),
             }
         _write_file(ShowFile.EXEC_PAGES, doc)
@@ -11724,7 +11724,7 @@ class ShowFile:
             # "slots" was the old key (executor IDs); "cuestacks" is the current key
             cuestacks = pdata.get("cuestacks", pdata.get("slots", []))
             executor_pool.pages[n] = {
-                "name":      pdata.get("name", f"Page {n}"),
+                "name":      pdata.get("name", f"page {n}"),
                 "cuestacks": list(cuestacks),
             }
         print(f"  Loaded exec pages — {len(executor_pool.pages)}")
