@@ -8738,8 +8738,8 @@ class GUIEngine:
             with dpg.group(horizontal=True):
                 dpg.add_text("target:", color=_C_DIM)
                 dpg.add_combo(tag="fxed_target", label="", width=240,
-                              items=["Selection", "All Fixtures"],
-                              default_value="Selection")
+                              items=["selection", "all fixtures"],
+                              default_value="selection")
                 dpg.add_spacer(width=6)
                 dpg.add_button(label="↻ groups", width=90, height=22,
                                callback=self._fxed_refresh_target)
@@ -9047,7 +9047,7 @@ class GUIEngine:
 
     def _fxed_refresh_target(self, *_):
         """Rebuild the target combo with current group list."""
-        items = ["Selection", "All Fixtures"]
+        items = ["selection", "all fixtures"]
         if self._groups:
             for gid in sorted(self._groups.groups):
                 g = self._groups.groups[gid]
@@ -9067,11 +9067,11 @@ class GUIEngine:
         try:
             target = dpg.get_value("fxed_target")
         except Exception:
-            target = "Selection"
+            target = "selection"
 
         saved_sel = list(self._prog.selection)
 
-        if target == "All Fixtures":
+        if target == "all fixtures":
             self._prog.clear_selection()
         elif target.startswith("Group "):
             try:
@@ -9902,7 +9902,7 @@ class GUIEngine:
             dpg.add_text("audio reactive", color=_C_ACCENT)
             dpg.add_separator()
             if not (self._audio_engine and _AUDIO_AVAILABLE):
-                dpg.add_text("Audio backend unavailable — sounddevice/PortAudio "
+                dpg.add_text("audio backend unavailable — sounddevice/PortAudio "
                              "not installed or no input device.", color=_C_DIM,
                              wrap=380)
             with dpg.group(horizontal=True):
