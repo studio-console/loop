@@ -6799,7 +6799,7 @@ class GUIEngine:
                             dpg.add_separator()
                             dpg.add_menu_item(label="delete cuestack",
                                 callback=self._ctx_exec,
-                                user_data=f"DELETE CUESTACK {n}")
+                                user_data=f"delete cueSTACK {n}")
 
     def _build_cue_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -6836,7 +6836,7 @@ class GUIEngine:
                             dpg.add_separator()
                             dpg.add_menu_item(label="delete cue",
                                 callback=self._ctx_exec,
-                                user_data=f"DELETE CUE {n}")
+                                user_data=f"delete cue {n}")
 
     def _on_cuestack_click(self, _sender, _app_data, user_data):
         n = user_data
@@ -7137,7 +7137,7 @@ class GUIEngine:
 
     def _on_clear_fx(self, *_):
         result = self._cmd("CLEAR FX") if self._cmd else None
-        self._log("> CLEAR FX")
+        self._log("> clear fx")
         if result:
             self._log(f"  {result}")
         self._focus_cmd()
@@ -7170,7 +7170,7 @@ class GUIEngine:
             if n < FormPool.FIRST_CUSTOM_SLOT:
                 self._log(f"  slots 1-4 are built-ins (sine/ramp/pulse/square)")
             else:
-                self._log(f"  To record: RECORD FORM {n} Name 0.0,0.0 0.5,1.0 1.0,0.0")
+                self._log(f"  To record: record form {n} Name 0.0,0.0 0.5,1.0 1.0,0.0")
         self._focus_cmd()
 
     def _on_rate_click(self, _sender, _app_data, user_data):
@@ -7469,7 +7469,7 @@ class GUIEngine:
                     _BUILTIN = {1: "sine", 2: "ramp", 3: "pulse", 4: "square"}
                     form_tip = f"form {n}: {_BUILTIN.get(n, '?')} (built-in)"
                 else:
-                    form_tip = f"form {n} — empty  (RECORD FORM {n} ...)"
+                    form_tip = f"form {n} — empty  (record form {n} ...)"
                 dpg.set_value(f"form_tip_{n}", form_tip)
             except Exception:
                 pass
@@ -7879,7 +7879,7 @@ class GUIEngine:
             univs_raw = dpg.get_value("net_univs_input").strip().split()
             univs = [int(v) for v in univs_raw if v.isdigit()]
             if not univs:
-                self._log("  Network: universe list must contain at least one number")
+                self._log("  network: universe list must contain at least one number")
                 return
         except Exception as e:
             self._log(f"  Network: bad input — {e}")
@@ -7955,9 +7955,9 @@ class GUIEngine:
     def _on_patch_save(self):
         if self._save_patch:
             self._save_patch()
-            self._log("> Patch saved to patch.json")
+            self._log("> patch saved to patch.json")
         else:
-            self._log("> No save_patch_fn wired")
+            self._log("> no save_patch_fn wired")
 
     def _build_keys_popup(self):
         """Floating keyboard / command reference — hidden by default, opened via ? button."""
@@ -8107,7 +8107,7 @@ class GUIEngine:
                 ("LIST OSC",              "list registered OSC output targets"),
                 ("LIST PATCH",            "list patched fixtures with universe/address"),
                 ("FX LIST",               "show active programmer/fader FX layers"),
-                ("PAGE LIST",             "show all pages and cuestacks on each"),
+                ("page list",             "show all pages and cuestacks on each"),
             ]),
             ("record", [
                 ("REC CUE 5",             "record current programmer to cue 5"),
@@ -8119,7 +8119,7 @@ class GUIEngine:
                 ("RECORD COLOR 5 Amber 255 140 0", "record explicit RGB (no programmer needed)"),
                 ("RECORD DIM 2 Half",     "record programmer dim as preset 2"),
                 ("RECORD DIM 3 75%",      "record explicit level (no programmer needed)"),
-                ("RECORD FORM 6 Wave 0,0 0.5,1 1,0",  "record custom waveform"),
+                ("record form 6 Wave 0,0 0.5,1 1,0",  "record custom waveform"),
                 ("RECORD RATE 3 Name 120","Record 120 BPM to rate pool slot 3"),
                 ("RECORD CUESTACK 2 Name","Create a new named cuestack on fader 2"),
                 ("LOAD CUE 5",            "copy cue 5's data into the programmer for editing and re-recording"),
@@ -8146,9 +8146,9 @@ class GUIEngine:
                 ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "cross-cuestack copy"),
                 ("MOVE CUE 3 TO 5",       "move (rename in place) cue 3 → cue 5, active cuestack"),
                 ("MOVE CS 2 CUE 3 TO CS 1 CUE 9", "cross-cuestack move — removes cue from source"),
-                ("DELETE CUE 3",          "delete cue 3 from active cuestack (saves show)"),
-                ("DELETE CUE 3 CS 2",     "delete cue 3 from cuestack 2"),
-                ("DELETE CUESTACK 5",     "delete cuestack 5 and stop its fader"),
+                ("delete cue 3",          "delete cue 3 from active cuestack (saves show)"),
+                ("delete cue 3 CS 2",     "delete cue 3 from cuestack 2"),
+                ("delete cueSTACK 5",     "delete cuestack 5 and stop its fader"),
                 ("DELETE FORM 7",         "delete custom form 7 (built-ins 1-4 protected)"),
                 ("DELETE RATE 2 / DELETE SIZEP 2 / DELETE SPREADP 2", "delete rate/size/spread pool slot"),
                 ("DELETE POSITION 1 / DELETE GOBO 1 / ...", "delete attr pool preset (all 6 types)"),
@@ -8226,7 +8226,7 @@ class GUIEngine:
                 ("FADER 1 GOTO LAST",       "jump fader 1 to the last cue in its cuestack and fire it"),
                 ("FADER 1 LEVEL 75",        "set fader 1 master level to 75% (GUI slider also works)"),
                 ("FADER 1 MODE FLASH",      "set trigger mode: live only while held"),
-                ("FADER 1 MODE TOGGLE",     "set trigger mode: GO/BACK advance (default)"),
+                ("FADER 1 mode toggle",     "set trigger mode: GO/BACK advance (default)"),
                 ("FADER 1 flash on",        "fire instantly (0s), works regardless of mode"),
                 ("FADER 1 flash off",       "release a flash — fully stops the fader"),
                 ("FADER 1 BTN A GO",        "set fader 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH/RATE+/RATE-)"),
@@ -8240,7 +8240,7 @@ class GUIEngine:
                 ("PAGE 1 ADD CS 3",       "add cuestack 3 to page 1"),
                 ("PAGE 1 REMOVE CS 3",    "remove cuestack 3 from page 1"),
                 ("PAGE 1 DELETE",         "delete page 1"),
-                ("PAGE LIST",             "list all pages and their cuestacks"),
+                ("page list",             "list all pages and their cuestacks"),
                 ("PAGES button",          "same page commands via a GUI table — no typing needed"),
             ]),
             ("attribute pools", [
@@ -9022,7 +9022,7 @@ class GUIEngine:
 
     def _fxed_save(self, *_):
         if self._fx_ed_slot is None:
-            self._log("> Select a slot first")
+            self._log("> select a slot first")
             return
         self._fxed_sync_rows()
         name   = dpg.get_value("fxed_name").strip() or f"FX {self._fx_ed_slot}"
@@ -9061,7 +9061,7 @@ class GUIEngine:
 
     def _fxed_fire(self, *_):
         if self._fx_ed_slot is None:
-            self._log("> Select a slot first")
+            self._log("> select a slot first")
             return
         self._fxed_save()
 
@@ -9137,7 +9137,7 @@ class GUIEngine:
             return
         if self._cmd:
             result = self._cmd("CLEAR")
-            self._log("> CLEAR")
+            self._log("> clear")
             if result:
                 self._log(f"  {result}")
         dpg.focus_item("cmd_input")
@@ -10703,9 +10703,9 @@ class GUIEngine:
         self._out.highlight_mode = not self._out.highlight_mode
         if self._out.highlight_mode:
             self._sync_highlight_selection()
-            self._log("> HIGHLIGHT ON")
+            self._log("> highlight on")
         else:
-            self._log("> HIGHLIGHT OFF")
+            self._log("> highlight off")
 
     def _sync_highlight_selection(self):
         """Push the current programmer selection into the output engine's highlight set."""
@@ -14098,9 +14098,9 @@ def run_command(cmd_str):
             delay_str = f"  delay {delay_t}s" if delay_t else ""
             return f"fader {ex_n} time override → {fade_t}s{delay_str}"
         elif verb == 'TIMELOCK':
-            # EXEC <n> TIMELOCK ON/OFF  — whether this executor's cuestack accepts overrides
+            # exec <n> timelock ON/OFF  — whether this executor's cuestack accepts overrides
             if len(tokens) < 4:
-                return "usage: EXEC <n> TIMELOCK ON | OFF"
+                return "usage: exec <n> timelock on | off"
             state = tokens[3]
             cs = ex.cuestack
             if not cs:
@@ -14113,11 +14113,11 @@ def run_command(cmd_str):
                 return f"fader {ex_n}: time override locked out for '{cs.name}'"
             return "TIMELOCK: use ON or OFF"
         elif verb == 'FLASH':
-            # EXEC <n> flash on | OFF  — instant on-while-held, for trigger_mode='flash'.
+            # exec <n> flash on | off  — instant on-while-held, for trigger_mode='flash'.
             # Independent of trigger_mode itself so GUI/MIDI press/release can call
             # this directly regardless of how the mode was set.
             if len(tokens) < 4 or tokens[3] not in ('ON', 'OFF'):
-                return "usage: EXEC <n> flash on | OFF"
+                return "usage: exec <n> flash on | off"
             if tokens[3] == 'ON':
                 executor_pool.bump_priority(ex_n)
                 msg = ex.flash_on(patch, fade_engine)
@@ -14128,11 +14128,11 @@ def run_command(cmd_str):
                 ex.flash_off()
                 return f"fader {ex_n} flash off"
         elif verb == 'MODE':
-            # EXEC <n> MODE TOGGLE | FLASH — how GUI/MIDI should trigger this executor.
+            # exec <n> mode toggle | flash — how GUI/MIDI should trigger this executor.
             # 'toggle' = GO/BACK advance normally. 'flash' = live only while held
-            # (use EXEC <n> flash on/OFF, or a MIDI note's on/off callbacks).
+            # (use exec <n> flash on/OFF, or a MIDI note's on/off callbacks).
             if len(tokens) < 4 or tokens[3] not in ('TOGGLE', 'FLASH'):
-                return "usage: EXEC <n> MODE TOGGLE | FLASH"
+                return "usage: exec <n> mode toggle | flash"
             ex.trigger_mode = tokens[3].lower()
             return f"fader {ex_n} trigger_mode → {ex.trigger_mode}"
         elif verb == 'BTN':
@@ -14286,7 +14286,7 @@ def run_command(cmd_str):
         else:
             return f"FADER {ex_n}: unknown verb '{verb}'"
 
-    # ── PAGE <n> NAME ... / ADD CS <m> / REMOVE CS <m> / DELETE / LIST ─
+    # ── page <n> name ... / ADD CS <m> / REMOVE CS <m> / DELETE / LIST ─
     if t0 == 'PAGE':
         if len(tokens) >= 2 and tokens[1] == 'LIST':
             if not executor_pool.pages:
@@ -14303,7 +14303,7 @@ def run_command(cmd_str):
             return "\n".join(lines)
 
         if len(tokens) < 2:
-            return "usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
+            return "usage: page <n> name <name> | page <n> add cs <m> | page <n> remove cs <m> | page <n> delete | page list"
         try:
             page_n = int(tokens[1])
         except ValueError:
@@ -14342,7 +14342,7 @@ def run_command(cmd_str):
                 executor_pool.remove_from_page(page_n, target_cs)
                 ShowFile.save_executor_pages(executor_pool)
                 return f"CS {target_cs} removed from page {page_n}"
-        return "usage: PAGE <n> NAME <name> | PAGE <n> ADD CS <m> | PAGE <n> REMOVE CS <m> | PAGE <n> DELETE | PAGE LIST"
+        return "usage: page <n> name <name> | page <n> add cs <m> | page <n> remove cs <m> | page <n> delete | page list"
 
     # ── PROG TIME — programmer time override ──────────────────
     if t0 == 'PROG' and len(tokens) >= 2 and tokens[1] == 'TIME':
@@ -14430,21 +14430,21 @@ def run_command(cmd_str):
             return f"GOTO: bad cue number '{tokens[1]}'"
 
     if t0 == 'RELOAD' and len(tokens) == 1:
-        return cue_reload() or "Reloaded"
+        return cue_reload() or "reloaded"
 
     if t0 == 'DELETE' and len(tokens) >= 2 and tokens[1] == 'CUE':
         if len(tokens) < 3:
-            return "usage: DELETE CUE <n>  [CS <stack_n>]"
+            return "usage: delete cue <n>  [cs <stack_n>]"
         try:
             cue_num = float(tokens[2])
         except ValueError:
-            return f"DELETE CUE: bad cue number '{tokens[2]}'"
+            return f"delete cue: bad cue number '{tokens[2]}'"
         if 'CS' in tokens:
             cs_idx = tokens.index('CS')
             try:
                 cs_n = int(tokens[cs_idx + 1])
             except (ValueError, IndexError):
-                return "usage: DELETE CUE <n> CS <stack_n>"
+                return "usage: delete cue <n> cs <stack_n>"
             cs = cuestack_pool.get(cs_n)
             if not cs:
                 return f"cuestack {cs_n} not found"
@@ -14695,7 +14695,7 @@ def run_command(cmd_str):
         save_show()
         return f"recorded: {cue}  into {cs.name}  (auto-saved)"
 
-    # ── RECORD CS [n] CUE <m> [presets...] ──────────────────
+    # ── record cs [n] cue <m> [presets...] ──────────────────
     # e.g.  RECORD CS CUE 4 RED
     #        RECORD CS 2 CUE 4 RED FULL
     if t0 == 'RECORD' and 'CS' in tokens and 'CUE' in tokens:
@@ -14713,15 +14713,15 @@ def run_command(cmd_str):
         try:
             cue_num = float(tokens[cue_idx + 1])
         except (IndexError, ValueError):
-            return "usage: RECORD CS [n] CUE <num> [preset-names / GROUP n COLOR n DIM n FADE t]"
+            return "usage: record cs [n] cue <num> [preset-names / group n color n dim n fade t]"
 
         cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
         if not cs:
-            return f"cuestack {cs_n} not found" if cs_n else "No active cuestack"
+            return f"cuestack {cs_n} not found" if cs_n else "no active cuestack"
 
         return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw)
 
-    # ── RECORD CUE <n> ["name"] [GROUP g] [COLOR c] [DIM d] [FADE t]
+    # ── RECORD CUE <n> ["name"] [GROUP g] [COLOR c] [DIM d] [fade t]
     if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] == 'CUE':
         try:
             cue_num = float(tokens[2])
@@ -14734,7 +14734,7 @@ def run_command(cmd_str):
 
     # ── UPDATE CUE / UPDATE CS CUE — merge programmer into existing cue ──
     # UPDATE CUE <n> [presets] [FADE <t>]
-    # UPDATE CS [n] CUE <m> [presets] [FADE <t>]
+    # update cs [n] cue <m> [presets] [FADE <t>]
     # Only merges what is in the programmer — untouched fixtures keep their data.
     if t0 in ('UPDATE', 'UPD'):
         if 'CS' in tokens and 'CUE' in tokens:
@@ -14749,17 +14749,17 @@ def run_command(cmd_str):
             try:
                 cue_num = float(tokens[cue_idx + 1])
             except (IndexError, ValueError):
-                return "usage: UPDATE CS [n] CUE <num> [presets / FADE t]"
+                return "usage: update cs [n] cue <num> [presets / fade t]"
             cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
             if not cs:
-                return f"cuestack {cs_n} not found" if cs_n else "No active cuestack"
+                return f"cuestack {cs_n} not found" if cs_n else "no active cuestack"
             return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw, merge=True)
         if 'CUE' in tokens:
             cue_idx = tokens.index('CUE')
             try:
                 cue_num = float(tokens[cue_idx + 1])
             except (IndexError, ValueError):
-                return "usage: UPDATE CUE <num> [presets / FADE t]"
+                return "usage: update cue <num> [presets / fade t]"
             cs = _active_stack()
             if not cs:
                 return "UPDATE CUE: no active cuestack"
@@ -14792,7 +14792,7 @@ def run_command(cmd_str):
         cur = ex.cuestack.current if ex.cuestack else None
         return msg or f"{direction} CS {cs_n} → cue {cur}"
 
-    # ── GO CS [n] CUE <m> ────────────────────────────────────
+    # ── go cs [n] cue <m> ────────────────────────────────────
     # e.g.  GO CS 2 CUE 4
     #        GO CS CUE 1       (active cuestack)
     if t0 == 'GO' and 'CS' in tokens and 'CUE' in tokens:
@@ -14809,7 +14809,7 @@ def run_command(cmd_str):
         try:
             cue_num = float(tokens[cue_idx + 1])
         except (IndexError, ValueError):
-            return "usage: GO CS [n] CUE <num>"
+            return "usage: go cs [n] cue <num>"
 
         # Find executor for this cuestack (match by stack_id, fallback to slot)
         if cs_n is not None:
@@ -14834,7 +14834,7 @@ def run_command(cmd_str):
 
     # ── FORM commands ─────────────────────────────────────────
     # FORM LIST
-    # RECORD FORM <n> <name> <phase,value> ...   (breakpoint curve)
+    # record form <n> <name> <phase,value> ...   (breakpoint curve)
     if t0 == 'FORM' and len(tokens) >= 2 and tokens[1] == 'LIST':
         lines = []
         for f in form_pool.forms.values():
@@ -14845,7 +14845,7 @@ def run_command(cmd_str):
         try:
             form_n = int(tokens[2])
         except ValueError:
-            return f"RECORD FORM: bad number '{tokens[2]}'"
+            return f"record form: bad number '{tokens[2]}'"
         if form_n < FormPool.FIRST_CUSTOM_SLOT:
             return f"slots 1–{FormPool.FIRST_CUSTOM_SLOT - 1} are built-in read-only. Use slot {FormPool.FIRST_CUSTOM_SLOT}+."
 
@@ -14870,7 +14870,7 @@ def run_command(cmd_str):
                 return f"bad breakpoint '{tok}' — format: phase,value  e.g. 0.5,1.0"
 
         if not breakpoints:
-            return "usage: RECORD FORM <n> [name] <phase,value> <phase,value> ..."
+            return "usage: record form <n> [name] <phase,value> <phase,value> ..."
 
         form = FormPreset(form_n, name, 'breakpoints', breakpoints=breakpoints)
         form_pool.store(form_n, form)
@@ -15211,19 +15211,19 @@ def run_command(cmd_str):
                 lines.append("Pool: (empty)")
             return "\n".join(lines)
 
-        # FX [ADD] <waveform|FORM n|COLOR n> [channel] [BPM n] [SIZE n] [SPREAD n]
-        #   [GROUP n] [DIMREF n] [BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
+        # fx [add] <waveform|form n|COLOR n> [channel] [bpm n] [size n] [SPREAD n]
+        #   [group n] [dimref n] [BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
         #
         # Tree references:
         #   COLOR n  — drives R/G/B from Colorpreset n (waveform drives intensity of that color)
         #   GROUP n  — target only fixtures in GroupPool slot n instead of programmer selection
-        #   DIMREF n — live size ceiling: Dimmerpreset n's level scales FX amplitude (0–1)
+        #   dimref n — live size ceiling: Dimmerpreset n's level scales FX amplitude (0–1)
         add_mode = (sub == 'ADD')
         base_idx = 2 if add_mode else 1
 
         if base_idx >= len(tokens):
-            return ("usage: FX [ADD] <waveform|FORM n|COLOR n> [channel] "
-                    "[BPM n] [SIZE n] [SPREAD n] [GROUP n] [DIMREF n] "
+            return ("usage: fx [add] <waveform|form n|COLOR n> [channel] "
+                    "[bpm n] [size n] [SPREAD n] [group n] [dimref n] "
                     "[BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE]")
 
         form_id  = None
@@ -15238,14 +15238,14 @@ def run_command(cmd_str):
                 waveform = form.builtin_name or form.name.lower() if form else 'sine'
                 ch_idx   = base_idx + 2
             except (IndexError, ValueError):
-                return "usage: FX [ADD] FORM <n> <channel> [...]"
+                return "usage: fx [add] form <n> <channel> [...]"
         elif waveform == 'COLOR':
             # FX COLOR <preset_id> — drives R/G/B channels from the preset's color
             try:
                 color_id = int(tokens[base_idx + 1])
                 ch_idx   = base_idx + 2
             except (IndexError, ValueError):
-                return "usage: FX [ADD] COLOR <preset_id> [BPM n] [SIZE n] [GROUP n] [DIMREF n]"
+                return "usage: fx [add] color <preset_id> [bpm n] [size n] [group n] [dimref n]"
             waveform = 'sine'
             channel  = 'rgb'   # virtual; expanded into R/G/B at _prog_fx_start time
         elif waveform not in _WAVEFORMS:
@@ -15258,12 +15258,12 @@ def run_command(cmd_str):
                     color_id = int(tokens[ch_idx + 1])
                     ch_idx  += 2
                 except (IndexError, ValueError):
-                    return "usage: FX [ADD] <waveform> COLOR <preset_id>"
+                    return "usage: fx [add] <waveform> color <preset_id>"
                 waveform = waveform.lower()
                 channel  = 'rgb'
             elif ch_idx >= len(tokens) or tokens[ch_idx] not in _CHANNELS:
-                return (f"usage: FX [ADD] <waveform> red|green|blue|dim|pan|tilt|gobo|zoom|focus|… "
-                        f"[BPM n] [SIZE n] [SPREAD n]")
+                return (f"usage: fx [add] <waveform> red|green|blue|dim|pan|tilt|gobo|zoom|focus|… "
+                        f"[bpm n] [size n] [SPREAD n]")
             else:
                 channel = tokens[ch_idx]
 
@@ -15435,7 +15435,7 @@ def run_command(cmd_str):
         ShowFile.save_fx_pool(fx_pool)
         return f"recorded: {preset}  (auto-saved)"
 
-    # FIRE FX <n> [GROUP n]  — write preset defs into programmer + preview
+    # FIRE FX <n> [group n]  — write preset defs into programmer + preview
     # GROUP n overrides the preset's stored group_id or programmer selection.
     if t0 == 'FIRE' and len(tokens) >= 3 and tokens[1] == 'FX':
         try:
@@ -15508,7 +15508,7 @@ def run_command(cmd_str):
             elif rest:
                 dst_ids = [int(rest[0])]
         except (ValueError, IndexError):
-            return "usage: CLONE <src> TO <dst>  |  CLONE <src> TO <dst> THRU <end>"
+            return "usage: clone <src> to <dst>  |  clone <src> to <dst> thru <end>"
 
         if src_id not in patch.fixtures:
             return f"clone source fixture {src_id} not in patch"
@@ -15617,7 +15617,7 @@ def run_command(cmd_str):
             try:
                 slot = int(tokens[2])
             except (IndexError, ValueError):
-                return "usage: MACRO RECORD <n> [name]"
+                return "usage: macro record <n> [name]"
             if _macro_recording["slot"] is not None:
                 return f"already recording macro {_macro_recording['slot']} — MACRO STOP first"
             raw_parts = raw.split(None, 3)
@@ -15656,7 +15656,7 @@ def run_command(cmd_str):
             try:
                 slot = int(tokens[2])
             except (IndexError, ValueError):
-                return "usage: MACRO DELETE <n>"
+                return "usage: macro delete <n>"
             if slot not in macro_pool:
                 return f"MACRO DELETE: slot {slot} empty"
             del macro_pool[slot]
@@ -15666,7 +15666,7 @@ def run_command(cmd_str):
             try:
                 slot = int(tokens[2])
             except (IndexError, ValueError):
-                return "usage: MACRO RENAME <n> <new name>"
+                return "usage: macro rename <n> <new name>"
             if slot not in macro_pool:
                 return f"MACRO RENAME: slot {slot} empty"
             raw_parts = raw.split(None, 3)
@@ -15916,7 +15916,7 @@ def run_command(cmd_str):
         save_show()
         return "show saved."
 
-    # LOAD CUE <n> [CS <stack_n>]  — copy cue data into programmer for editing
+    # LOAD CUE <n> [cs <stack_n>]  — copy cue data into programmer for editing
     if t0 == 'LOAD' and len(tokens) >= 3 and tokens[1] == 'CUE':
         try:
             cue_num = float(tokens[2])
@@ -15944,7 +15944,7 @@ def run_command(cmd_str):
 
     if t0 == 'LOAD' and len(tokens) >= 2 and tokens[1] == 'SHOW':
         if len(tokens) < 3:
-            return "usage: LOAD SHOW <name>  (use LIST SHOWS to see available saves)"
+            return "usage: load show <name>  (use list shows to see available saves)"
         name = raw.split(None, 2)[2] if len(raw.split(None, 2)) > 2 else ""
         return load_show_from(name)
 
@@ -15957,7 +15957,7 @@ def run_command(cmd_str):
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "usage: PATCH ADD <id> <profile> UNIVERSE <u> AT <addr> [NAME <name>]"
+                return "usage: patch add <id> <profile> universe <u> at <addr> [name <name>]"
             profile_name = tokens[3] if len(tokens) > 3 else None
             if not profile_name:
                 return "PATCH ADD: profile name required"
@@ -15987,7 +15987,7 @@ def run_command(cmd_str):
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "usage: PATCH REMOVE <id>"
+                return "usage: patch remove <id>"
             if fid not in patch.fixtures:
                 return f"PATCH REMOVE: fixture {fid} not patched"
             del patch.fixtures[fid]
@@ -15997,13 +15997,13 @@ def run_command(cmd_str):
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "usage: PATCH RENAME <id> <new name>"
+                return "usage: patch rename <id> <new name>"
             master = patch.get(fid)
             if not master:
                 return f"PATCH RENAME: fixture {fid} not patched"
             raw_parts = raw.split(None, 3)
             if len(raw_parts) < 4:
-                return "usage: PATCH RENAME <id> <new name>"
+                return "usage: patch rename <id> <new name>"
             master.name = raw_parts[3]
             save_show()
             return f"fixture {fid} renamed to '{master.name}'"
@@ -16011,7 +16011,7 @@ def run_command(cmd_str):
             try:
                 fid = int(tokens[2])
             except (IndexError, ValueError):
-                return "usage: PATCH MOVE <id> UNIVERSE <u> AT <addr>"
+                return "usage: patch move <id> universe <u> at <addr>"
             master = patch.get(fid)
             if not master:
                 return f"PATCH MOVE: fixture {fid} not patched"
@@ -16056,9 +16056,9 @@ def run_command(cmd_str):
             try:
                 new_univs = [int(v) for v in tokens[2:] if v.isdigit()]
             except ValueError:
-                return "usage: NETWORK UNIVERSE 1 2 3 ..."
+                return "usage: network universe 1 2 3 ..."
             if not new_univs:
-                return "usage: NETWORK UNIVERSE 1 2 3 ..."
+                return "usage: network universe 1 2 3 ..."
             ShowFile.save_network(network.bind_address, new_univs)
             return (f"sACN universes → {new_univs}  (restart console to apply)")
         if t1 == 'STATUS' or not t1:
@@ -16069,7 +16069,7 @@ def run_command(cmd_str):
                 f"  Saved in config: bind={cfg_bind or '(auto)'}  univs={cfg_univs}\n"
                 f"  Restart console to apply any saved changes."
             )
-        return "usage: NETWORK BIND <ip>  |  NETWORK UNIVERSE <n> [n...]  |  NETWORK STATUS"
+        return "usage: network bind <ip>  |  network universe <n> [n...]  |  network status"
 
     if t0 == 'OSC':
         t1 = tokens[1] if len(tokens) > 1 else ''
@@ -16108,7 +16108,7 @@ def run_command(cmd_str):
             return "OSC feedback disabled"
         return "OSC usage: TARGET name host port | REMOVE name | LIST | FEEDBACK host port | SEND /addr [args]"
 
-    # AUDIO DEVICES | START [device] | STOP | ON | OFF | STATUS | GAIN <n>
+    # AUDIO DEVICES | START [device] | STOP | on | off | STATUS | GAIN <n>
     # Block 9 audio-reactive layer: capture (START/STOP) is independent from
     # the mapping toggle (ON/OFF) so an operator can leave a mic plugged in
     # and running while flipping the reactive layer on/off for cue timing.
@@ -16154,7 +16154,7 @@ def run_command(cmd_str):
                 return f"AUDIO GAIN: bad value '{tokens[2]}'"
             audio_engine.gain = g
             return f"audio gain → {g}"
-        return "AUDIO usage: DEVICES | START [device] | STOP | ON | OFF | STATUS | GAIN <n>"
+        return "AUDIO usage: DEVICES | START [device] | STOP | on | off | STATUS | GAIN <n>"
 
     # MIDI CC <ch> <cc> <target name>        — add CC mapping
     # MIDI NOTE <ch> <note> <target name>    — add note mapping
@@ -16217,7 +16217,7 @@ def run_command(cmd_str):
                     "  e.g. MIDI CC 1 7 Grandmaster Dim\n"
                     "  Use MIDI TARGETS to list available target names")
         if t1 == 'REMOVE':
-            return "usage: MIDI REMOVE CC|NOTE <ch> <number>"
+            return "usage: midi remove cc|note <ch> <number>"
         if t1 == 'CLOCK':
             pass  # handled below
         else:
@@ -16240,7 +16240,7 @@ def run_command(cmd_str):
             midi.clock_bpm  = None
             midi.clock_callback = None
             return "MIDI clock sync OFF"
-        return "MIDI CLOCK ON | OFF"
+        return "MIDI CLOCK on | off"
 
     # ── DIRECT DMX ───────────────────────────────────────────
     # DMX <addr> <val> [UNIVERSE <n>]  — bypass fixture system, write raw
@@ -16258,7 +16258,7 @@ def run_command(cmd_str):
             addr = int(tokens[1])
             val  = int(tokens[2])
         except (IndexError, ValueError):
-            return "usage: DMX <addr> <val> [UNIVERSE <n>]  |  DMX LIST  |  CLEAR DMX"
+            return "usage: dmx <addr> <val> [universe <n>]  |  dmx list  |  clear dmx"
         if not (1 <= addr <= 512 and 0 <= val <= 255):
             return "DMX: addr 1-512, val 0-255"
         univ = 1
@@ -16415,7 +16415,7 @@ def run_command(cmd_str):
             return f"COLOR: bad slot number '{tokens[1]}'"
         p = color_pool.get(pid)
         if not p:
-            return f"color preset {pid} is empty  (use: record COLOR {pid} Red)"
+            return f"color preset {pid} is empty  (use: record color {pid} red)"
         p.apply(prog)
         return f"applied: {p}"
 
@@ -16460,7 +16460,7 @@ def run_command(cmd_str):
                 return f"DIM PRESET: bad slot number '{tokens[2]}'"
             p = dim_pool.get(pid)
             if not p:
-                return f"dim preset {pid} is empty  (use: record DIM {pid} Full)"
+                return f"dim preset {pid} is empty  (use: record dim {pid} full)"
             p.apply(prog)
             return f"applied: {p}"
         # bare DIM <val> → raw dimmer value (AT DIM <val>)
@@ -16716,7 +16716,7 @@ def run_command(cmd_str):
                 cue_count = len(cs.cues)
                 cur = f"  ◀ on cue {cs.current:.0f}" if cs.current is not None else ""
                 lines.append(f"  [{sid}] {cs.name}  ({cue_count} cues){cur}")
-            return "\n".join(lines) if len(lines) > 1 else "No cuestacks recorded"
+            return "\n".join(lines) if len(lines) > 1 else "no cuestacks recorded"
         # LIST CUES [CS <n>] — cue list for active or specified cuestack
         if sub in ('CUES', 'CUE'):
             cs_n = None
@@ -16841,7 +16841,7 @@ def run_command(cmd_str):
         try:
             fid_a, fid_b = int(tokens[2]), int(tokens[3])
         except ValueError:
-            return "usage: FIXTURE SWAP <a> <b>"
+            return "usage: fixture swap <a> <b>"
         if fid_a == fid_b:
             return "FIXTURE SWAP: source and destination are the same"
         if not patch.get(fid_a):
@@ -16875,7 +16875,7 @@ def run_command(cmd_str):
         try:
             fid = int(tokens[2])
         except ValueError:
-            return "usage: FIXTURE GROUPS <id>"
+            return "usage: fixture groups <id>"
         master = patch.get(fid)
         if not master:
             return f"fixture {fid} not patched"
@@ -16896,7 +16896,7 @@ def run_command(cmd_str):
         try:
             fid = int(tokens[2])
         except ValueError:
-            return "usage: FIXTURE INFO <id>"
+            return "usage: fixture info <id>"
         master = patch.get(fid)
         if not master:
             return f"fixture {fid} not patched"
@@ -16938,7 +16938,7 @@ def run_command(cmd_str):
         try:
             n = int(tokens[1])
         except ValueError:
-            return "usage: PRIORITY <n> HIGH | LOW | NORMAL"
+            return "usage: priority <n> high | low | normal"
         lvl_str = tokens[2]
         lvl_map = {'HIGH': 1, 'HI': 1, 'LOW': -1, 'LO': -1, 'NORMAL': 0, 'NRM': 0}
         if lvl_str not in lvl_map:
@@ -16955,11 +16955,11 @@ def run_command(cmd_str):
                 if ex.is_active:
                     ex.stop()
                     stopped.append(ex.exec_id)
-            return f"released {len(stopped)} fader(s): {stopped}" if stopped else "No active faders"
+            return f"released {len(stopped)} fader(s): {stopped}" if stopped else "no active faders"
         try:
             n = int(tokens[1])
         except (ValueError, IndexError):
-            return "usage: RELEASE <n>  or  RELEASE ALL"
+            return "usage: release <n>  or  release all"
         ex = executor_pool.get(n)
         if ex.is_active:
             ex.stop()
@@ -17058,7 +17058,7 @@ def run_command(cmd_str):
             cs_n    = int(tokens[1])
             cue_num = float(tokens[cue_idx + 1])
         except (ValueError, IndexError):
-            return "usage: CS <n> CUE <m> FADE <t> [DELAY <t>] [CFADE <t>] [DFADE <t>]"
+            return "usage: cs <n> cue <m> fade <t> [delay <t>] [cfade <t>] [dfade <t>]"
         cs = cuestack_pool.get(cs_n)
         if not cs:
             return f"cuestack {cs_n} not found"
@@ -17075,7 +17075,7 @@ def run_command(cmd_str):
             cue_num = float(tokens[1])
             offset  = float(tokens[3])
         except ValueError:
-            return "usage: CUE <n> SHIFT <offset>"
+            return "usage: cue <n> shift <offset>"
         cs = _active_stack()
         if not cs:
             return "CUE SHIFT: no active cuestack"
@@ -17128,7 +17128,7 @@ def run_command(cmd_str):
                     cs_n    = int(tokens[2])
                     cue_num = float(tokens[cue_idx + 1])
                 except (ValueError, IndexError):
-                    return "usage: RENAME CS <n> CUE <m> <name>"
+                    return "usage: rename cs <n> cue <m> <name>"
                 cs = cuestack_pool.get(cs_n)
                 if not cs:
                     return f"cuestack {cs_n} not found"
@@ -17286,7 +17286,7 @@ def run_command(cmd_str):
         try:
             src_id = int(tokens[2])
         except ValueError:
-            return "usage: COPY FIXTURE <src> TO <dst1> [dst2 ...]"
+            return "usage: copy fixture <src> to <dst1> [dst2 ...]"
         dst_ids = []
         for tok in tokens[to_idx + 1:]:
             try: dst_ids.append(int(tok))
@@ -17818,7 +17818,7 @@ def run_command(cmd_str):
         try:
             slot = int(tokens[2])
         except (IndexError, ValueError):
-            return "usage: PROGRAMMER SAVE <n> [name]"
+            return "usage: programmer save <n> [name]"
         snap_name = _name_after(raw, 3) or f"snapshot {slot}"
         _prog_snapshots[slot] = {"name": snap_name, "data": copy.deepcopy(prog.data)}
         ch_count = sum(len(v) for v in prog.data.values() if v)
@@ -17828,7 +17828,7 @@ def run_command(cmd_str):
         try:
             slot = int(tokens[2])
         except (IndexError, ValueError):
-            return "usage: PROGRAMMER LOAD <n>"
+            return "usage: programmer load <n>"
         snap = _prog_snapshots.get(slot)
         if not snap:
             return f"programmer snapshot {slot} not found"
@@ -18057,7 +18057,7 @@ if STUDIO_HEADLESS:
         prog.clear_programmer()
         run_command("1 THRU 3")           # select fixtures 1-3
         r_cap = run_command("PROGRAMMER CAPTURE")
-        _check("PROGRAMMER CAPTURE returns confirmation", "Captured" in r_cap or "captured" in r_cap)
+        _check("PROGRAMMER CAPTURE returns confirmation", "captured" in r_cap)
         prog.clear_programmer()
 
         # PROGRAMMER SAVE / LOAD
@@ -18089,7 +18089,7 @@ if STUDIO_HEADLESS:
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
         run_command("PAGE 1 ADD CS 1")
-        r3 = run_command("PAGE LIST")
+        r3 = run_command("page list")
         _check("page created and cuestack added", "Test Page" in r3 and "[1]" in r3)
 
         run_command("FADER 1 MODE FLASH")
@@ -18162,14 +18162,14 @@ if STUDIO_HEADLESS:
         run_command("RECORD SPREADP 9 ClearMe 40")
         r_clr_spread = run_command("CLEAR SPREADP 9")
         _check("CLEAR SPREADP deletes the preset", "cleared" in r_clr_spread.lower())
-        run_command('RECORD FORM 9 ClearMe 0,0 1,1')
+        run_command('record form 9 ClearMe 0,0 1,1')
         r_clr_form = run_command("CLEAR FORM 9")
         _check("CLEAR FORM deletes a custom form", "cleared" in r_clr_form.lower())
         r_clr_form_builtin = run_command("CLEAR FORM 1")
         _check("CLEAR FORM protects built-in slot 1", "built-in" in r_clr_form_builtin.lower())
 
         # COPY FORM — the one pool type missing from COPY entirely (audit finding)
-        run_command('RECORD FORM 8 CopySrcform 0,0 0.5,1 1,0')
+        run_command('record form 8 CopySrcform 0,0 0.5,1 1,0')
         r_cp_form = run_command("COPY FORM 8 TO 9 CopiedForm")
         _check("COPY FORM routes to pool handler", "copied form" in r_cp_form)
         _check("COPY FORM created the destination", form_pool.get(9) is not None)
@@ -18332,9 +18332,9 @@ if STUDIO_HEADLESS:
         r_grem_miss = run_command("GROUP 9 REMOVE 4")
         _check("GROUP REMOVE rejects missing fixture", "not in group" in r_grem_miss.lower())
 
-        # RECORD FORM (custom breakpoint curve) — untested prior to this session
-        r_form = run_command("RECORD FORM 6 SmokeWave 0.0,0.0 0.5,1.0 1.0,0.0")
-        _check("RECORD FORM custom breakpoints", "recorded" in r_form)
+        # record form (custom breakpoint curve) — untested prior to this session
+        r_form = run_command("record form 6 SmokeWave 0.0,0.0 0.5,1.0 1.0,0.0")
+        _check("record form custom breakpoints", "recorded" in r_form)
         r_form_list = run_command("FORM LIST")
         _check("FORM LIST shows recorded form", "smokewave" in r_form_list.lower())
 
@@ -18547,13 +18547,13 @@ if STUDIO_HEADLESS:
             _check("FADER GOTO LAST positions cuestack at last cue",
                    _gtfl_cs.current == _gtfl_last)
 
-        # DELETE CUE cleans up cue_pool
+        # delete cue cleans up cue_pool
         run_command("ALL AT R 128 G 0 B 0")
         run_command("RECORD CS 1 CUE 96")
-        _check("DELETE CUE: cue_pool stale ref cleaned", True)  # record stores in pool
+        _check("delete cue: cue_pool stale ref cleaned", True)  # record stores in pool
         _pool_has_96_before = cue_pool.get(96) is not None
-        run_command("DELETE CUE 96 CS 1")
-        _check("DELETE CUE removes from cue_pool",
+        run_command("delete cue 96 CS 1")
+        _check("delete cue removes from cue_pool",
                _pool_has_96_before and cue_pool.get(96) is None)
 
         # speed master: set/get BPM
@@ -20157,7 +20157,7 @@ audio_engine.stop()
 #   EXECUTOR <n>                 — set active executor for bare GO/BACK
 #
 # ── KEY COMMANDS ──────────────────────────────────────────────────────────────
-#   FX SINE RED [BPM n] [SIZE n] [SPREAD n]
+#   FX SINE RED [bpm n] [size n] [SPREAD n]
 #   FX ADD SINE BLUE [...]
 #   FX FORM <n> RED [...]          — use FormPool waveform shape
 #   FX CLEAR                       — clear all FX from programmer
@@ -20167,9 +20167,9 @@ audio_engine.stop()
 #   RECORD FX <n> [name]           — snapshot programmer FX → pool
 #   FIRE FX <n>                    — add preset to programmer (channel-additive; same-channel layers replaced)
 #   FORM LIST
-#   RECORD FORM <n> [name] 0.0,0.0 0.5,1.0 1.0,0.0   — custom breakpoint curve
-#   RECORD CS [n] CUE <m> [preset-tokens]
-#   GO CS [n] CUE <m>
+#   record form <n> [name] 0.0,0.0 0.5,1.0 1.0,0.0   — custom breakpoint curve
+#   record cs [n] cue <m> [preset-tokens]
+#   go cs [n] cue <m>
 #
 # ── POOLS ──────────────────────────────────────────────────────────────────────
 #   color_pool    — Colorpreset  (numbered, saved to colors.json)
