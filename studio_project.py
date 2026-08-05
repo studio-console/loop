@@ -649,10 +649,9 @@ class programmer:
         print("programmer cleared.")
 
     def do_clear(self):
-        """MA3-style three-tap CLEAR.
+        """Two-stage CLEAR.
         Tap 1 — clear fixture selection.
         Tap 2 — clear programmer values.
-        Tap 3 — clear output (blackout).
         Stage resets automatically if more than 2 s passes between taps.
         """
         import time
@@ -668,7 +667,7 @@ class programmer:
             for vals in self.data.values():
                 vals.pop('fx_kill', None)
             self._clear_stage = 1
-            return "selection cleared  (clear again to clear programmer)"
+            return "selection cleared  (clear again to wipe programmer)"
         elif self._clear_stage == 1:
             for fid in list(self.data.keys()):
                 fixture = self._get_fixture_by_fid(fid)
@@ -679,10 +678,10 @@ class programmer:
             self.data.clear()
             self.disabled = {}
             self._clear_stage = 2
-            return "programmer cleared  (clear again to clear output)"
+            return "programmer cleared"
         else:
             self._clear_stage = 0
-            return "output_clear"  # signal to caller to blackout
+            return "programmer and selection clear"
 
     def _get_fixture_by_fid(self, fid_str):
         """Helper — looks up a fixture or sub-fixture by its string ID."""
@@ -17757,11 +17756,8 @@ def run_command(cmd_str):
         result = prog.do_clear()
         if result.startswith("programmer cleared"):
             _prog_fx_stop()
-        elif result == "output_clear":
-            _prog_fx_stop()
-            _blackout_saved_level[0] = output_state.master_level
-            output_state.master_level = 0.0
-            return "output cleared — master → 0%  (BLACKOUT OFF to restore)"
+        elif result == "programmer and selection clear":
+            pass
         return result
 
     if t0 == 'UNDO':
@@ -18501,11 +18497,11 @@ if STUDIO_HEADLESS:
         # CLEAR stage 3 — should blackout output, not silently return "output_clear"
         prog.do_clear(); prog.do_clear()   # advance to stage 2 (programmer cleared)
         _saved_master = output_state.master_level
-        output_state.master_level = 0.8    # set master to non-zero so blackout is detectable
-        prog._clear_stage = 2              # force stage 3 on next CLEAR
+        output_state.master_level = 0.8
+        prog._clear_stage = 2              # stage 3 wraps back to 0
         _r_clear3 = run_command("CLEAR")
-        _check("CLEAR stage 3 blacks out master", output_state.master_level == 0.0)
-        output_state.master_level = _saved_master  # restore for any remaining tests
+        _check("CLEAR stage 3 does not touch master level", output_state.master_level == 0.8)
+        output_state.master_level = _saved_master  # restore
 
         # RECORD CUE with FOLLOW time — was silently dropped before the fix
         run_command("ALL AT R 255 G 0 B 0")
