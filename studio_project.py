@@ -5622,6 +5622,7 @@ class GUIEngine:
         self._build_patch_popup()
         self._build_keys_popup()
         self._build_fx_editor_popup()
+        self._build_cue_timing_popup()
         self._build_changelog_popup()
         self._build_pages_popup()
         self._build_attr_popup()
@@ -5821,7 +5822,7 @@ class GUIEngine:
         self._last_playbacks_hash = None
         _W = self._W_LEFT
         with dpg.child_window(tag="left_col", width=_W, height=self._H_MAIN,
-                              border=True, no_scrollbar=False, no_scroll_with_mouse=False):
+                              border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── Cue list ─────────────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("› cuestack", color=_C_ACCENT)
@@ -5831,17 +5832,19 @@ class GUIEngine:
                 dpg.add_text("", tag="hdr_wrap", color=_C_ACCENT)
             dpg.add_separator()
             # Fixed-height scroll area for the cue list
-            with dpg.child_window(tag="cue_list_scroll", width=-1, height=150,
+            with dpg.child_window(tag="cue_list_scroll", width=-1, height=130,
                                   border=False, no_scrollbar=True,
                                   no_scroll_with_mouse=False):
                 dpg.add_group(tag="cue_list_group")
             dpg.add_separator()
             with dpg.group(horizontal=True):
-                dpg.add_button(label=" ◀ back ", tag="back_btn", width=106, height=24,
+                dpg.add_button(label=" ◀ back ", tag="back_btn", width=88, height=24,
                                callback=lambda: self._back())
-                dpg.add_button(label=" ↺ reload ", width=120, height=24,
+                dpg.add_button(label=" ↺ reload ", width=100, height=24,
                                callback=lambda: self._reload() if self._reload else None)
-                dpg.add_button(label="  go ▶  ", tag="go_btn", width=106, height=24,
+                dpg.add_button(label="timing", width=70, height=24,
+                               callback=self._on_cue_timing_toggle)
+                dpg.add_button(label="  go ▶  ", tag="go_btn", width=88, height=24,
                                callback=lambda: self._go())
 
             dpg.add_spacer(height=4)
@@ -5852,41 +5855,9 @@ class GUIEngine:
                 dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_executors)
             dpg.add_separator()
-            with dpg.child_window(tag="playbacks_list", width=-1, height=180,
+            with dpg.child_window(tag="playbacks_list", width=-1, height=120,
                                   border=False, no_scrollbar=False, no_scroll_with_mouse=False):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
-
-            dpg.add_spacer(height=2)
-            # ── Cue timing editor ────────────────
-            dpg.add_separator()
-            with dpg.group(horizontal=True):
-                dpg.add_text("cue timing", color=_C_DIM)
-                dpg.add_spacer(width=4)
-                dpg.add_text("—", tag="cue_timing_label", color=_C_DIM)
-            _tw  = _W - 96
-            _htw = 108   # two drag_floats + labels per row, fits inside the
-                         # 349px content width left after left_col's scrollbar
-            with dpg.group(horizontal=True):
-                dpg.add_drag_float(tag="cue_fade_input", label="fade s",
-                                   default_value=0.0, min_value=0.0, max_value=30.0,
-                                   speed=0.05, format="%.2f", width=_htw,
-                                   callback=self._on_cue_fade_edit)
-                dpg.add_drag_float(tag="cue_delay_input", label="dly  s",
-                                   default_value=0.0, min_value=0.0, max_value=30.0,
-                                   speed=0.05, format="%.2f", width=_htw,
-                                   callback=self._on_cue_delay_edit)
-            with dpg.group(horizontal=True):
-                dpg.add_drag_float(tag="cue_follow_input", label="auto→s",
-                                   default_value=0.0, min_value=0.0, max_value=300.0,
-                                   speed=0.05, format="%.2f", width=_htw,
-                                   callback=self._on_cue_follow_edit)
-                dpg.add_drag_float(tag="cue_fxoutfade_input", label="fxout s",
-                                   default_value=0.0, min_value=0.0, max_value=30.0,
-                                   speed=0.05, format="%.2f", width=_htw,
-                                   callback=self._on_cue_fxoutfade_edit)
-            dpg.add_input_text(tag="cue_note_input", label="note",
-                               hint="production note...", width=_tw,
-                               callback=self._on_cue_note_edit)
 
             dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
@@ -6119,6 +6090,15 @@ class GUIEngine:
             else:
                 self._refresh_patch_table()
                 dpg.show_item("patch_window")
+        except Exception:
+            pass
+
+    def _on_cue_timing_toggle(self):
+        try:
+            if dpg.is_item_shown("cue_timing_window"):
+                dpg.hide_item("cue_timing_window")
+            else:
+                dpg.show_item("cue_timing_window")
         except Exception:
             pass
 
@@ -8428,6 +8408,40 @@ class GUIEngine:
                                 dpg.add_text(cmd,  color=_C_TEXT, wrap=280)
                                 dpg.add_text(desc, color=_C_DIM,  wrap=380)
                     dpg.add_spacer(height=6)
+
+    # ── Cue timing popup ─────────────────────────────────────────
+
+    def _build_cue_timing_popup(self):
+        """Floating cue timing editor — fade/delay/follow/fxout + note for active cue."""
+        _tw = 220
+        with dpg.window(tag="cue_timing_window", label="cue timing",
+                        width=320, height=190, show=False,
+                        pos=(10, 140), no_collapse=False, no_resize=False):
+            with dpg.group(horizontal=True):
+                dpg.add_text("cue:", color=_C_DIM)
+                dpg.add_text("—", tag="cue_timing_label", color=_C_ACCENT)
+            dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_drag_float(tag="cue_fade_input", label="fade s",
+                                   default_value=0.0, min_value=0.0, max_value=30.0,
+                                   speed=0.05, format="%.2f", width=100,
+                                   callback=self._on_cue_fade_edit)
+                dpg.add_drag_float(tag="cue_delay_input", label="dly  s",
+                                   default_value=0.0, min_value=0.0, max_value=30.0,
+                                   speed=0.05, format="%.2f", width=100,
+                                   callback=self._on_cue_delay_edit)
+            with dpg.group(horizontal=True):
+                dpg.add_drag_float(tag="cue_follow_input", label="auto→s",
+                                   default_value=0.0, min_value=0.0, max_value=300.0,
+                                   speed=0.05, format="%.2f", width=100,
+                                   callback=self._on_cue_follow_edit)
+                dpg.add_drag_float(tag="cue_fxoutfade_input", label="fxout s",
+                                   default_value=0.0, min_value=0.0, max_value=30.0,
+                                   speed=0.05, format="%.2f", width=100,
+                                   callback=self._on_cue_fxoutfade_edit)
+            dpg.add_input_text(tag="cue_note_input", label="note",
+                               hint="production note...", width=_tw,
+                               callback=self._on_cue_note_edit)
 
     # ── Changelog popup ──────────────────────────────────────────
     # Reads studio_data/changelog.json — the log gets an entry appended for
@@ -11103,7 +11117,7 @@ class GUIEngine:
         try:
             _, cue_t = self._cue_timing_target()
             if cue_t:
-                dpg.set_value("cue_timing_label", f"Cue {cue_t.cue_number} — {cue_t.name[:14]}")
+                dpg.set_value("cue_timing_label", f"cue {cue_t.cue_number} — {cue_t.name[:14]}")
                 if not dpg.is_item_active("cue_fade_input"):
                     dpg.set_value("cue_fade_input", cue_t.fade_time)
                 if not dpg.is_item_active("cue_delay_input"):
