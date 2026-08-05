@@ -6227,6 +6227,12 @@ class GUIEngine:
                                    callback=self._numpad_exec, user_data=ud)
 
             dpg.add_separator()
+            with dpg.group(horizontal=True):
+                dpg.add_text("› numpad", color=_C_ACCENT)
+                dpg.add_spacer(width=8)
+                dpg.add_text("digit", color=_C_DIM)
+                dpg.add_spacer(width=80)
+                dpg.add_text("keyword", color=_C_DIM)
 
             # ── Numpad + keyword keys ───────────────────────────
             # Digit pad (left) + keyword pad (right), each 4 rows × 3 cols.
@@ -9325,7 +9331,7 @@ class GUIEngine:
             self._audio_mapper.enable()
         try:
             on = self._audio_mapper.enabled
-            dpg.set_item_label("audio_map_btn", "mapping: ON" if on else "mapping: OFF")
+            dpg.set_item_label("audio_map_btn", "mapping: on" if on else "mapping: off")
         except Exception:
             pass
 
@@ -9745,7 +9751,7 @@ class GUIEngine:
             dpg.set_value("audio_bar_high",  self._audio_engine.high)
             if self._audio_mapper:
                 on = self._audio_mapper.enabled
-                dpg.set_item_label("audio_map_btn", "mapping: ON" if on else "mapping: OFF")
+                dpg.set_item_label("audio_map_btn", "mapping: on" if on else "mapping: off")
             state = "capturing" if self._audio_engine._running else "stopped"
             dpg.set_value("audio_capture_status", state)
         except Exception:
@@ -9903,7 +9909,7 @@ class GUIEngine:
                 dpg.add_text("", tag="audio_capture_status", color=_C_DIM)
             dpg.add_separator()
             with dpg.group(horizontal=True):
-                dpg.add_button(label="mapping: OFF", tag="audio_map_btn", width=130,
+                dpg.add_button(label="mapping: off", tag="audio_map_btn", width=130,
                                callback=self._on_audio_map_toggle)
                 dpg.add_text("bass=red mid=green high=blue level=dim", color=_C_DIM,
                              wrap=180)
