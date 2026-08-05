@@ -5271,14 +5271,14 @@ def _apply_theme():
             dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (40, 28,  90, 255))
             dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (68, 48, 145, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,     ( 0,  0,   0,   0))
-            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (26, 18,  56,  70))
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (26, 18,  56,  90))
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,     _C_SLIDER_G)
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, _C_ACCENT)
             dpg.add_theme_color(dpg.mvThemeCol_Header,         _C_CUE_ACT)
             dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered,  _C_BTN_H)
             dpg.add_theme_color(dpg.mvThemeCol_HeaderActive,   _C_BTN_A)
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive,  (35, 24,  80, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBg,        _C_PANEL)
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive,  (44, 30,  98, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBg,        (22, 16,  48, 255))
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg,    _C_BG)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab,  _C_BORDER)
             dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, _C_BTN_H)
@@ -5286,7 +5286,7 @@ def _apply_theme():
             dpg.add_theme_color(dpg.mvThemeCol_TableBorderLight, _C_BORDER)
             dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg,  (28, 20,  65, 255))
             dpg.add_theme_color(dpg.mvThemeCol_CheckMark,      _C_ACCENT)
-            dpg.add_theme_color(dpg.mvThemeCol_Separator,      (50, 34,  98, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Separator,      (62, 44, 116, 255))
             # Input cursor and selection highlight
             dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, (80, 50, 160, 140))
             dpg.add_theme_color(dpg.mvThemeCol_NavHighlight,   _C_ACCENT)
@@ -5373,22 +5373,24 @@ def _make_numpad_digit_theme():
 
 
 def _make_pool_live_theme():
-    """Slightly brighter pool button theme for occupied (live) slots."""
+    """Brighter pool button theme for occupied (live) slots — clearly lit."""
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvButton):
-            dpg.add_theme_color(dpg.mvThemeCol_Button,        (38, 28, 80, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (90, 64, 170, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (130, 90, 230, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (52, 38, 118, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (95, 68, 178, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (132, 94, 235, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (222, 212, 255, 255))
     return t
 
 
 def _make_pool_empty_theme():
-    """Very dark pool button theme for empty slots."""
+    """Near-invisible pool button theme for empty slots — recedes to background."""
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvButton):
-            dpg.add_theme_color(dpg.mvThemeCol_Button,        (14, 10, 32, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (40, 28, 80, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (60, 44, 120, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (10,  7, 22, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (30, 22, 62, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (50, 36, 102, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (58, 45,  90, 255))
     return t
 
 
@@ -5833,7 +5835,7 @@ class GUIEngine:
             dpg.add_separator()
             # Fixed-height scroll area for the cue list
             with dpg.child_window(tag="cue_list_scroll", width=-1, height=130,
-                                  border=False, no_scrollbar=True,
+                                  border=True, no_scrollbar=True,
                                   no_scroll_with_mouse=False):
                 dpg.add_group(tag="cue_list_group")
             dpg.add_separator()
@@ -10480,7 +10482,7 @@ class GUIEngine:
         _name_w = _label_budget * 2 // 5
         _cue_w  = _label_budget - _name_w
 
-        for ex in active:
+        for i, ex in enumerate(active):
             cs  = ex.cuestack
             cur = cs.current
             if cur is not None:
@@ -10488,10 +10490,12 @@ class GUIEngine:
                 cue_label = f"▶ {cur:.0f}: {cue.name}" if cue else f"▶ {cur:.0f}"
             else:
                 cue_label = "▶ —"
-            pri_label = Executor.PRIORITY_LABELS.get(ex.priority, 'NRM')
+            pri_label = Executor.PRIORITY_LABELS.get(ex.priority, 'nrm')
             _full_name = f"[{ex.exec_id}] {cs.name}"
             _fit_name  = self._fit_text(_full_name, _name_w)
             _fit_cue   = self._fit_text(cue_label, _cue_w)
+            if i > 0:
+                dpg.add_separator(parent="playbacks_list")
             with dpg.group(horizontal=True, parent="playbacks_list"):
                 _name_tag = f"pb_name_{ex.exec_id}"
                 _cue_tag  = f"pb_cue_{ex.exec_id}"
@@ -10506,23 +10510,23 @@ class GUIEngine:
                 # Time override badge
                 if ex.time_override_on and ex.time_override_fade is not None:
                     t_label  = f"T{ex.time_override_fade:.1f}s"
-                    dpg.add_button(label=t_label, width=52, height=18,
+                    dpg.add_button(label=t_label, width=52, height=20,
                                    callback=self._on_exec_time_toggle,
                                    user_data=ex.exec_id)
                     dpg.configure_item(dpg.last_item(), enabled=cs.allow_exec_time)
                     if not cs.allow_exec_time:
                         dpg.add_text("🔒", color=_C_DIM)
                 else:
-                    dpg.add_button(label="time", width=44, height=18,
+                    dpg.add_button(label="time", width=44, height=20,
                                    callback=self._on_exec_time_toggle,
                                    user_data=ex.exec_id)
-                dpg.add_button(label=pri_label, width=40, height=18,
+                dpg.add_button(label=pri_label, width=40, height=20,
                                callback=self._on_priority_cycle,
                                user_data=ex.exec_id)
                 for _slot, _fn in (('a', ex.btn_a), ('b', ex.btn_b), ('c', ex.btn_c)):
                     _tag = f"ebtn_{_slot}_{ex.exec_id}"
                     dpg.add_button(label=_fn.lower(), tag=_tag,
-                                   width=40, height=18,
+                                   width=40, height=20,
                                    callback=self._on_exec_slot_btn,
                                    user_data=(ex.exec_id, _slot))
             # Fader level row
@@ -10530,7 +10534,7 @@ class GUIEngine:
                 tag=f"exec_fader_{ex.exec_id}",
                 default_value=ex.level,
                 min_value=0.0, max_value=1.0,
-                width=-1, height=14,
+                width=-1, height=16,
                 format="%.2f",
                 callback=self._on_exec_fader,
                 user_data=ex.exec_id,
@@ -10539,7 +10543,7 @@ class GUIEngine:
             dpg.add_progress_bar(
                 tag=f"exec_fade_{ex.exec_id}",
                 default_value=0.0,
-                width=-1, height=4,
+                width=-1, height=5,
                 overlay="",
                 parent="playbacks_list")
             try:
