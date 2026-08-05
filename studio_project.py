@@ -7257,14 +7257,20 @@ class GUIEngine:
                         self._col_btn_themes[n] = ((r, g, b), _cth)
                     except Exception:
                         pass
-            elif n in self._col_btn_themes:
-                # Preset deleted — remove custom theme, revert to default
+            else:
+                if n in self._col_btn_themes:
+                    # Preset deleted — remove custom theme
+                    try:
+                        dpg.delete_item(self._col_btn_themes[n][1])
+                    except Exception:
+                        pass
+                    del self._col_btn_themes[n]
+                # Apply empty theme (consistent with other pools)
                 try:
-                    dpg.bind_item_theme(f"col_btn_{n}", 0)
-                    dpg.delete_item(self._col_btn_themes[n][1])
+                    if self._pool_empty_theme:
+                        dpg.bind_item_theme(f"col_btn_{n}", self._pool_empty_theme)
                 except Exception:
                     pass
-                del self._col_btn_themes[n]
             # Dims
             d = self._dims.get(n) if self._dims else None
             lbl = f"{n}:{d.name[:7]}" if d else f"D{n}"
@@ -7303,13 +7309,18 @@ class GUIEngine:
                         self._dim_btn_themes[n] = (lv, _dth)
                     except Exception:
                         pass
-            elif n in self._dim_btn_themes:
+            else:
+                if n in self._dim_btn_themes:
+                    try:
+                        dpg.delete_item(self._dim_btn_themes[n][1])
+                    except Exception:
+                        pass
+                    del self._dim_btn_themes[n]
                 try:
-                    dpg.bind_item_theme(f"dim_btn_{n}", 0)
-                    dpg.delete_item(self._dim_btn_themes[n][1])
+                    if self._pool_empty_theme:
+                        dpg.bind_item_theme(f"dim_btn_{n}", self._pool_empty_theme)
                 except Exception:
                     pass
-                del self._dim_btn_themes[n]
 
         # Cuestacks (slots 1-48) — highlight the active one
         active = self._active_executor[0] if self._active_executor else None
@@ -7439,6 +7450,9 @@ class GUIEngine:
             lbl = f"{n}:{f.name[:6]}" if f else f"F{n}"
             try:
                 dpg.set_item_label(f"form_btn_{n}", lbl)
+                _ft = self._pool_live_theme if f else self._pool_empty_theme
+                if _ft:
+                    dpg.bind_item_theme(f"form_btn_{n}", _ft)
             except Exception:
                 pass
             try:
@@ -11118,7 +11132,7 @@ class GUIEngine:
             else:
                 dpg.set_value("hdr_cue", "▶  (none)")
             dpg.set_value("hdr_wrap",
-                          "  ⟳WRAP" if getattr(active_cs, 'wrap', False) else "")
+                          "  ⟳wrap" if getattr(active_cs, 'wrap', False) else "")
         except Exception:
             pass
 
