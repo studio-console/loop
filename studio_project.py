@@ -13687,16 +13687,16 @@ def run_command(cmd_str):
                       if ex.cuestack and ex.cuestack.stack_id == n]
             sorted_nums = cs._sorted_cue_numbers()
             lines = [f"cuestack {n}: {cs.name}",
-                     f"  Cues      : {len(sorted_nums)}",
-                     f"  Loop/Wrap : {'ON' if getattr(cs, 'wrap', False) else 'OFF'}",
-                     f"  Chase     : {'ON  ' + str(round(getattr(cs,'chase_bpm',120.0),1)) + ' BPM' if getattr(cs,'chase_enabled',False) else 'OFF'}",
-                     f"  Faders    : {', '.join(faders) or '(none)'}"]
+                     f"  cues      : {len(sorted_nums)}",
+                     f"  loop/wrap : {'on' if getattr(cs, 'wrap', False) else 'off'}",
+                     f"  chase     : {'on  ' + str(round(getattr(cs,'chase_bpm',120.0),1)) + ' bpm' if getattr(cs,'chase_enabled',False) else 'off'}",
+                     f"  faders    : {', '.join(faders) or '(none)'}"]
             if cs.current is not None:
                 cue = cs.cues.get(cs.current)
                 cue_name = cue.name if cue else "?"
-                lines.append(f"  Current   : cue {cs.current:.0f} — {cue_name}")
+                lines.append(f"  current   : cue {cs.current:.0f} — {cue_name}")
             else:
-                lines.append("  Current   : (not started)")
+                lines.append("  current   : (not started)")
             if sorted_nums:
                 lines.append("  cue list  :")
                 for num in sorted_nums[:10]:
@@ -15887,21 +15887,21 @@ def run_command(cmd_str):
         prog_fids = len(set(k.split('.')[0] for k in prog.data if prog.data.get(k)))
         lines = [
             "show overview:",
-            f"  Fixtures     : {len(patch.fixtures)} patched",
+            f"  fixtures     : {len(patch.fixtures)} patched",
             f"  programmer   : {prog_fids} fixture(s) touched",
-            f"  CueStacks    : {len(cuestack_pool.stacks)} stacks  /  {total_cues} cues total",
-            f"  Faders       : {active_faders} active  /  {assigned_faders} assigned",
-            f"  FX Presets   : {len(fx_pool.presets)}",
-            f"  color Presets: {len(color_pool.presets)}",
-            f"  dim Presets  : {len(dim_pool.presets)}",
-            f"  Groups       : {len(group_pool.groups)}",
-            f"  Prog Snaps   : {len(_prog_snapshots)}",
+            f"  cuestacks    : {len(cuestack_pool.stacks)} stacks  /  {total_cues} cues total",
+            f"  faders       : {active_faders} active  /  {assigned_faders} assigned",
+            f"  fx presets   : {len(fx_pool.presets)}",
+            f"  color presets: {len(color_pool.presets)}",
+            f"  dim presets  : {len(dim_pool.presets)}",
+            f"  groups       : {len(group_pool.groups)}",
+            f"  prog snaps   : {len(_prog_snapshots)}",
         ]
         if output_state.blind:
-            lines.append("  Mode         : BLIND")
+            lines.append("  mode         : blind")
         if output_state.freeze_mode:
-            lines.append("  Mode         : FROZEN")
-        lines.append(f"  Master       : {output_state.master_level:.0%}")
+            lines.append("  mode         : frozen")
+        lines.append(f"  master       : {output_state.master_level:.0%}")
         return "\n".join(lines)
 
     if t0 == 'BACKUP':
@@ -16271,7 +16271,7 @@ def run_command(cmd_str):
 
     # ── STATUS overview ──────────────────────────────────────
     if t0 in ('STATUS', 'STATE'):
-        lines = ["=== Console Status ==="]
+        lines = ["=== console status ==="]
         gm = output_state.master_level if output_state else 1.0
         blind = output_state.blind if output_state else False
         bbo   = (gm == 0.0)
@@ -16279,37 +16279,37 @@ def run_command(cmd_str):
         solo   = output_state.solo_mode   if output_state else False
         parked = bool(output_state.parked_fids) if output_state else False
         rec_slot = _macro_recording.get("slot")
-        lines.append(f"  Grand Master: {gm*100:.0f}%"
-                     + ("  [BBO]" if bbo else "")
-                     + ("  [BLIND]" if blind else "")
-                     + ("  [FREEZE]" if freeze else "")
-                     + ("  [SOLO]" if solo else "")
-                     + ("  [PARK]" if parked else "")
-                     + (f"  [REC MACRO {rec_slot}]" if rec_slot is not None else ""))
+        lines.append(f"  grand master: {gm*100:.0f}%"
+                     + ("  [bbo]" if bbo else "")
+                     + ("  [blind]" if blind else "")
+                     + ("  [freeze]" if freeze else "")
+                     + ("  [solo]" if solo else "")
+                     + ("  [park]" if parked else "")
+                     + (f"  [rec macro {rec_slot}]" if rec_slot is not None else ""))
         # Selection + programmer
         sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
         if sel_masters:
-            lines.append(f"  Selection: {len(sel_masters)} fixture(s) "
+            lines.append(f"  selection: {len(sel_masters)} fixture(s) "
                          f"({', '.join(str(m.fixture_id) for m in sel_masters)})")
         else:
-            lines.append("  Selection: none")
+            lines.append("  selection: none")
         prog_active = any(v for v in prog.data.values() if v)
-        lines.append("  programmer: " + ("DIRTY" if prog_active else "clear"))
+        lines.append("  programmer: " + ("dirty" if prog_active else "clear"))
         # Active faders
         active_exs = [ex for ex in executor_pool.executors.values()
                       if ex.is_active and ex.cuestack] if executor_pool else []
         if active_exs:
-            lines.append(f"  Active faders ({len(active_exs)}):")
+            lines.append(f"  active faders ({len(active_exs)}):")
             for ex in active_exs:
                 cs = ex.cuestack
                 cur = f"cue {cs.current:.0f}" if cs.current is not None else "—"
                 lines.append(f"    [{ex.exec_id}] {cs.name[:14]}  {cur}  "
                              f"lv={ex.level*100:.0f}%")
         else:
-            lines.append("  Active faders: none")
+            lines.append("  active faders: none")
         # FX
         n_fx = len(fx_engine._layers) if fx_engine else 0
-        lines.append(f"  FX layers: {n_fx} active")
+        lines.append(f"  fx layers: {n_fx} active")
         return "\n".join(lines)
 
     # ── Stack info ───────────────────────────────────────────
@@ -16324,10 +16324,10 @@ def run_command(cmd_str):
         for n in cs._sorted_cue_numbers():
             c      = cs.cues[n]
             cur    = " ◀" if n == cs.current else ""
-            delay  = f"  Delay:{c.delay_time}s" if getattr(c, 'delay_time', 0.0) > 0 else ""
-            follow = f"  Follow:{c.follow_time:.1f}s" if getattr(c, 'follow_time', 0.0) > 0 else ""
+            delay  = f"  delay:{c.delay_time}s" if getattr(c, 'delay_time', 0.0) > 0 else ""
+            follow = f"  follow:{c.follow_time:.1f}s" if getattr(c, 'follow_time', 0.0) > 0 else ""
             note   = f"  [{c.note}]" if getattr(c, 'note', '') else ""
-            lines.append(f"  [{n:.0f}] {c.name}  Fade:{c.fade_time}s{delay}{follow}{note}{cur}")
+            lines.append(f"  [{n:.0f}] {c.name}  fade:{c.fade_time}s{delay}{follow}{note}{cur}")
         return "\n".join(lines)
 
     # ── group recall / record ─────────────────────────────────
@@ -16384,7 +16384,7 @@ def run_command(cmd_str):
                 m = patch.get(fid)
                 member_strs.append(f"{fid}:{m.name}" if m else str(fid))
             return (f"group {gid}: {g.name}\n"
-                    f"  Members ({len(g.members)}): {', '.join(member_strs) or '(empty)'}")
+                    f"  members ({len(g.members)}): {', '.join(member_strs) or '(empty)'}")
         group_pool.recall(gid, prog)
         g = group_pool.get(gid)
         return f"group {gid} recalled" if g else f"group {gid} not found"
@@ -16656,37 +16656,37 @@ def run_command(cmd_str):
     if t0 == 'LIST' and len(tokens) >= 2:
         sub = tokens[1]
         if sub == 'RATE':
-            lines = ["rate Presets:"] + [f"  {p}" for p in sorted(rate_pool.presets.values(), key=lambda x: x.preset_id)]
+            lines = ["rate presets:"] + [f"  {p}" for p in sorted(rate_pool.presets.values(), key=lambda x: x.preset_id)]
             return "\n".join(lines)
         if sub in ('SIZEP', 'SIZE'):
-            lines = ["size Presets:"] + [f"  {p}" for p in sorted(size_pool.presets.values(), key=lambda x: x.preset_id)]
+            lines = ["size presets:"] + [f"  {p}" for p in sorted(size_pool.presets.values(), key=lambda x: x.preset_id)]
             return "\n".join(lines)
         if sub in ('SPREADP', 'SPREAD'):
-            lines = ["spread Presets:"] + [f"  {p}" for p in sorted(spread_pool.presets.values(), key=lambda x: x.preset_id)]
+            lines = ["spread presets:"] + [f"  {p}" for p in sorted(spread_pool.presets.values(), key=lambda x: x.preset_id)]
             return "\n".join(lines)
         if sub in ('SPEED', 'SPD', 'SPEEDS'):
-            lines = ["speed Masters:"]
+            lines = ["speed masters:"]
             for sid in speed_master_pool.all_slots():
                 m = speed_master_pool.get(sid)
-                lines.append(f"  [{sid:2d}] {m.name:<12}  {m.bpm:.1f} BPM")
+                lines.append(f"  [{sid:2d}] {m.name:<12}  {m.bpm:.1f} bpm")
             return "\n".join(lines)
         if sub == 'FORM':
-            lines = ["form Presets:"] + [f"  {f}" for f in sorted(form_pool.forms.values(), key=lambda x: x.form_id)]
+            lines = ["form presets:"] + [f"  {f}" for f in sorted(form_pool.forms.values(), key=lambda x: x.form_id)]
             return "\n".join(lines)
         if sub in ('COLOR', 'COLOUR', 'COLORS', 'COLOURS'):
             if not color_pool.presets:
                 return "color pool is empty"
-            lines = ["color Presets:"]
+            lines = ["color presets:"]
             for pid in sorted(color_pool.presets):
                 p = color_pool.presets[pid]
                 r, g, b = int(p.red), int(p.green), int(p.blue)
-                rgb = f"R{r} G{g} B{b}"
+                rgb = f"r{r} g{g} b{b}"
                 lines.append(f"  [{pid}] {p.name}  {rgb}")
             return "\n".join(lines)
         if sub in ('DIM', 'DIMS'):
             if not dim_pool.presets:
                 return "dim pool is empty"
-            lines = ["dim Presets:"]
+            lines = ["dim presets:"]
             for pid in sorted(dim_pool.presets):
                 p = dim_pool.presets[pid]
                 lines.append(f"  [{pid}] {p.name}  {p.level:.0%}")
@@ -16694,23 +16694,23 @@ def run_command(cmd_str):
         if sub in ('GROUP', 'GROUPS'):
             if not group_pool.groups:
                 return "group pool is empty"
-            lines = ["Groups:"]
+            lines = ["groups:"]
             for gid in sorted(group_pool.groups):
                 g = group_pool.groups[gid]
                 count = len(g.members)
                 lines.append(f"  [{gid}] {g.name}  ({count} entries)")
             return "\n".join(lines)
         if sub in ('FX', 'FXPRESET', 'FXPRESETS'):
-            lines = [f"FX Presets:"]
+            lines = [f"fx presets:"]
             for pid in sorted(fx_pool.presets):
                 p = fx_pool.presets[pid]
                 waveforms = ", ".join(
                     f"{ld.get('waveform','?')}/{ld.get('channel','?')}"
                     for ld in p.layers)
                 lines.append(f"  [{pid}] {p.name}  {waveforms or '(empty)'}")
-            return "\n".join(lines) if len(lines) > 1 else "FX pool is empty"
+            return "\n".join(lines) if len(lines) > 1 else "fx pool is empty"
         if sub in ('CUESTACKS', 'STACKS', 'CS'):
-            lines = ["CueStacks:"]
+            lines = ["cuestacks:"]
             for sid in sorted(cuestack_pool.stacks):
                 cs = cuestack_pool.stacks[sid]
                 cue_count = len(cs.cues)
@@ -16732,7 +16732,7 @@ def run_command(cmd_str):
                 return f"LIST CUES: {label} not found"
             if not cs.cues:
                 return f"CS {cs.stack_id} '{cs.name}': no cues"
-            lines = [f"CS {cs.stack_id} '{cs.name}' ({len(cs.cues)} cues):"]
+            lines = [f"cs {cs.stack_id} '{cs.name}' ({len(cs.cues)} cues):"]
             for num in cs._sorted_cue_numbers():
                 cue = cs.cues[num]
                 cur_m = " ◀" if num == cs.current else ""
@@ -16901,19 +16901,19 @@ def run_command(cmd_str):
         if not master:
             return f"fixture {fid} not patched"
         prof = master.profile
-        lines = [f"Fixture {fid}: {master.name}",
-                 f"  Profile  : {prof.name}",
-                 f"  Channels : {', '.join(prof.channels)}",
-                 f"  Pixels   : {master.pixel_count}"]
+        lines = [f"fixture {fid}: {master.name}",
+                 f"  profile  : {prof.name}",
+                 f"  channels : {', '.join(prof.channels)}",
+                 f"  pixels   : {master.pixel_count}"]
         # Address table
         for i, sub in enumerate(master.all_subs(), 1):
             if sub.outputs:
                 o = sub.outputs[0]
                 end = o['address'] + len(prof.channels) - 1
-                lines.append(f"  Pixel {i:3d}: U{o['universe']}@{o['address']}-{end}")
+                lines.append(f"  pixel {i:3d}: u{o['universe']}@{o['address']}-{end}")
         # Park status
         if fid in output_state.parked_fids:
-            lines.append("  Status   : PARKED")
+            lines.append("  status   : parked")
         # programmer values
         prog_vals = []
         m_dim = prog.data.get(str(fid), {}).get('dim')
@@ -17882,15 +17882,15 @@ def run_command(cmd_str):
         sel_count = len(prog.selection)
         lines = [
             "programmer:",
-            f"  Masters touched : {m_count}",
-            f"  Sub-fixtures    : {sub_count}",
-            f"  Total params    : {ch_total}",
-            f"  Selection       : {sel_count} fixture(s)",
+            f"  masters touched : {m_count}",
+            f"  sub-fixtures    : {sub_count}",
+            f"  total params    : {ch_total}",
+            f"  selection       : {sel_count} fixture(s)",
         ]
         if prog.data:
             active_fids = sorted(set(k.split('.')[0] for k in prog.data if prog.data[k]),
                                  key=lambda x: int(x) if x.isdigit() else 0)
-            lines.append(f"  Active fixtures : {', '.join(active_fids)}")
+            lines.append(f"  active fixtures : {', '.join(active_fids)}")
         return "\n".join(lines)
 
     # ── Default: programmer ───────────────────────────────────
@@ -18045,13 +18045,13 @@ if STUDIO_HEADLESS:
         run_command("1 AT R 200")
         run_command("2 AT R 100")
         r_ps = run_command("PROGRAMMER STATS")
-        _check("PROGRAMMER STATS shows sub-fixture count", "Sub-fixtures" in r_ps)
+        _check("PROGRAMMER STATS shows sub-fixture count", "sub-fixtures" in r_ps)
         _check("PROGRAMMER STATS shows total params > 0",
-               "Total params" in r_ps and "Total params    : 0" not in r_ps)
+               "total params" in r_ps and "total params    : 0" not in r_ps)
         prog.clear_programmer()
         r_ps_empty = run_command("PROGRAMMER STATS")
         _check("PROGRAMMER STATS shows 0 params when clear",
-               "Total params    : 0" in r_ps_empty or "0" in r_ps_empty)
+               "total params    : 0" in r_ps_empty or "0" in r_ps_empty)
 
         # PROGRAMMER CAPTURE
         prog.clear_programmer()
@@ -18123,7 +18123,7 @@ if STUDIO_HEADLESS:
         _check("LIST COLOR no exception", "color" in r_lc.lower())
 
         r_ld = run_command("LIST DIM")
-        _check("LIST DIM no exception", "Dim" in r_ld)
+        _check("LIST DIM no exception", "dim" in r_ld)
 
         # Verify LIST sub-commands route correctly (not to cuestack listing)
         for _cmd, _kw in [
@@ -18137,10 +18137,10 @@ if STUDIO_HEADLESS:
         # LIST CUES and LIST CUES CS <n>
         _lc_r = run_command("LIST CUES")
         _check("LIST CUES returns cue list for active cuestack",
-               "CS " in _lc_r or "not found" in _lc_r.lower())
+               "cs " in _lc_r.lower() or "not found" in _lc_r.lower())
         _lc_cs1 = run_command("LIST CUES CS 1")
         _check("LIST CUES CS 1 targets cuestack 1",
-               "CS 1" in _lc_cs1 or "not found" in _lc_cs1.lower())
+               "cs 1" in _lc_cs1.lower() or "not found" in _lc_cs1.lower())
 
         # COPY pool preset routing — was broken by overly broad COPY CUE handler
         run_command("RECORD COLOR 5 CopySource 255 128 0")
@@ -18273,8 +18273,8 @@ if STUDIO_HEADLESS:
         # SHOW INFO
         r_si = run_command("SHOW INFO")
         _check("SHOW INFO returns multi-line overview", len(r_si.splitlines()) >= 5)
-        _check("SHOW INFO shows fixture count", "Fixtures" in r_si)
-        _check("SHOW INFO shows master level", "Master" in r_si)
+        _check("SHOW INFO shows fixture count", "fixtures" in r_si)
+        _check("SHOW INFO shows master level", "master" in r_si)
 
         # OUTPUT STATUS
         run_command("MASTER 100")          # ensure master at full
@@ -18316,7 +18316,7 @@ if STUDIO_HEADLESS:
         _check("GROUP recall", "recalled" in r_grp_recall.lower())
         r_gi = run_command("GROUP 9 INFO")
         _check("GROUP INFO shows group name", "SmokeGroup" in r_gi)
-        _check("GROUP INFO shows member count", "Members" in r_gi)
+        _check("GROUP INFO shows member count", "members" in r_gi)
 
         # GROUP ADD / GROUP REMOVE
         _g9 = group_pool.get(9)
@@ -18562,7 +18562,7 @@ if STUDIO_HEADLESS:
         _r_spd_name = run_command("SPEED 4 NAME StrobeClk")
         _check("SPEED NAME renames slot", speed_master_pool.get(4).name == "Strobeclk")
         _r_list_spd = run_command("LIST SPEED")
-        _check("LIST SPEED shows all slots", "speed Masters" in (_r_list_spd or ""))
+        _check("LIST SPEED shows all slots", "speed masters" in (_r_list_spd or "").lower())
         # FX layer with speed master reference uses master BPM
         run_command("FX SINE RED BPM 60")
         _check("FX inline BPM default before speed ref", True)
@@ -18848,7 +18848,7 @@ if STUDIO_HEADLESS:
         # CS INFO
         r_csi = run_command("CS 99 INFO")
         _check("CS INFO shows cuestack name", "WrapTest" in r_csi)
-        _check("CS INFO shows wrap/loop state", "Wrap" in r_csi or "Loop" in r_csi)
+        _check("CS INFO shows wrap/loop state", "wrap" in r_csi or "loop" in r_csi)
         r_csi_bad = run_command("CS 9999 INFO")
         _check("CS INFO rejects unknown cuestack", "not found" in r_csi_bad)
 
