@@ -3389,7 +3389,7 @@ class SpeedMaster:
     def __init__(self, slot_id, bpm=120.0, name=""):
         self.slot_id = int(slot_id)
         self.bpm     = float(bpm)
-        self.name    = name or f"SPD{slot_id}"
+        self.name    = name or f"spd{slot_id}"
     def __repr__(self):
         return f"[SpeedMaster {self.slot_id}] {self.name}  ({self.bpm:.1f} BPM)"
 
@@ -9520,7 +9520,7 @@ class GUIEngine:
                         sid = row * 4 + col + 1
                         m   = self._speed_pool.get(sid) if self._speed_pool else None
                         bpm = m.bpm if m else 120.0
-                        lbl = m.name if m else f"SPD{sid}"
+                        lbl = m.name if m else f"spd{sid}"
                         with dpg.group(horizontal=False):
                             dpg.add_text(f"{sid:2d}: {lbl[:6]}", tag=f"spd_lbl_{sid}",
                                          color=_C_DIM)
@@ -12218,7 +12218,7 @@ class ShowFile:
         for sid_str, md in doc.get("speed_masters", {}).items():
             sid = int(sid_str)
             pool.masters[sid] = SpeedMaster(sid, md.get("bpm", 120.0),
-                                            md.get("name", f"SPD{sid}"))
+                                            md.get("name", f"spd{sid}"))
         n = len(doc.get("speed_masters", {}))
         if n: print(f"  Loaded speed masters — {n}")
         return True
@@ -16431,13 +16431,13 @@ def run_command(cmd_str):
             except ValueError:
                 return "RECORD COLOR: bad R/G/B values"
             _non_num = [t for t in tokens[3:] if not t.lstrip('-').replace('.','',1).isdigit()]
-            name = " ".join(_non_num).title() or f"Color {pid}"
+            name = " ".join(_non_num).title() or f"color {pid}"
             p = ColorPreset(pid, name)
             p.red, p.green, p.blue = float(er), float(eg), float(eb)
             color_pool.presets[pid] = p
             save_show()
             return f"Recorded: {p}  (show saved)"
-        name = _name_after(raw, 3) or f"Color {pid}"
+        name = _name_after(raw, 3) or f"color {pid}"
         _has_rgb = any(any(ch in vals for ch in ('red', 'green', 'blue'))
                        for fid, vals in prog.data.items()
                        if '.' in fid)
@@ -16485,13 +16485,13 @@ def run_command(cmd_str):
                 return "RECORD DIM: bad level value"
             level = max(0.0, min(1.0, pct / 100.0 if pct > 1.0 else pct))
             _non_num = [t for t in tokens[3:] if not t.rstrip('%').replace('.','',1).lstrip('-').isdigit()]
-            name = " ".join(_non_num).title() or f"Dimmer {pid}"
+            name = " ".join(_non_num).title() or f"dimmer {pid}"
             p = DimmerPreset(pid, name)
             p.level = level
             dim_pool.presets[pid] = p
             save_show()
             return f"Recorded: {p}  (show saved)"
-        name = _name_after(raw, 3) or f"Dimmer {pid}"
+        name = _name_after(raw, 3) or f"dimmer {pid}"
         # Check if programmer has dim data before recording
         _has_dim = any('dim' in vals
                        for fid, vals in prog.data.items()
@@ -16586,7 +16586,7 @@ def run_command(cmd_str):
             bpm = float(tokens[-1])
         except ValueError:
             return "RECORD RATE: last token must be BPM value  e.g. RECORD RATE 5 Strobe 240"
-        name = " ".join(tokens[3:-1]).title() or f"Rate {pid}"
+        name = " ".join(tokens[3:-1]).title() or f"rate {pid}"
         p = RatePreset(pid, name, bpm)
         rate_pool.store(pid, p)
         ShowFile.save_rate_pool(rate_pool)
@@ -16602,7 +16602,7 @@ def run_command(cmd_str):
             size = float(tokens[-1])
         except ValueError:
             return "RECORD SIZEP: last token must be size value 0-100  e.g. RECORD SIZEP 4 Big 100"
-        name = " ".join(tokens[3:-1]).title() or f"Size {pid}"
+        name = " ".join(tokens[3:-1]).title() or f"size {pid}"
         p = SizePreset(pid, name, size)
         size_pool.store(pid, p)
         ShowFile.save_size_pool(size_pool)
@@ -16618,7 +16618,7 @@ def run_command(cmd_str):
             spread = float(tokens[-1])
         except ValueError:
             return "RECORD SPREADP: last token must be spread 0-100  e.g. RECORD SPREADP 4 Wave 50"
-        name = " ".join(tokens[3:-1]).title() or f"Spread {pid}"
+        name = " ".join(tokens[3:-1]).title() or f"spread {pid}"
         p = SpreadPreset(pid, name, spread)
         spread_pool.store(pid, p)
         ShowFile.save_spread_pool(spread_pool)
@@ -16632,7 +16632,7 @@ def run_command(cmd_str):
         except ValueError:
             return f"SPEED: bad slot '{tokens[1]}'  (SPEED <1-{SpeedMasterPool._DEFAULT_SLOTS}> <bpm>)"
         if tokens[2] == 'NAME':
-            name = " ".join(tokens[3:]).title() if len(tokens) > 3 else f"SPD{sid}"
+            name = " ".join(tokens[3:]).title() if len(tokens) > 3 else f"spd{sid}"
             m = speed_master_pool.get(sid)
             if not m:
                 speed_master_pool.masters[sid] = SpeedMaster(sid, 120.0, name)
