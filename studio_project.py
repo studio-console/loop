@@ -5834,7 +5834,7 @@ class GUIEngine:
                 dpg.add_text("", tag="hdr_wrap", color=_C_ACCENT)
             dpg.add_separator()
             # Fixed-height scroll area for the cue list
-            with dpg.child_window(tag="cue_list_scroll", width=-1, height=130,
+            with dpg.child_window(tag="cue_list_scroll", width=-1, height=118,
                                   border=True, no_scrollbar=True,
                                   no_scroll_with_mouse=False):
                 dpg.add_group(tag="cue_list_group")
@@ -5849,7 +5849,6 @@ class GUIEngine:
                 dpg.add_button(label="  go ▶  ", tag="go_btn", width=88, height=24,
                                callback=lambda: self._go())
 
-            dpg.add_spacer(height=4)
             # ── Active playbacks ─────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("› active playbacks", color=_C_ACCENT)
@@ -5857,11 +5856,10 @@ class GUIEngine:
                 dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_executors)
             dpg.add_separator()
-            with dpg.child_window(tag="playbacks_list", width=-1, height=120,
+            with dpg.child_window(tag="playbacks_list", width=-1, height=108,
                                   border=False, no_scrollbar=False, no_scroll_with_mouse=False):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
 
-            dpg.add_spacer(height=2)
             # ── FX controls ─────────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("› fx", color=_C_ACCENT)
@@ -5884,7 +5882,8 @@ class GUIEngine:
                                  max_value=100.0, width=_sw,
                                  callback=self._on_fx_spread)
             with dpg.group(horizontal=True):
-                dpg.add_button(label="kill fx", width=_W - 20 - 80 - 4,
+                dpg.add_button(label="kill fx", tag="kill_fx_btn",
+                               width=_W - 20 - 80 - 4,
                                callback=lambda: self._cmd("KILL FX") if self._cmd else None)
                 dpg.add_button(label="rsp pool", width=80,
                                callback=self._on_fx_params_toggle)
@@ -11184,9 +11183,17 @@ class GUIEngine:
             dpg.set_value("fx_rate",   l.rate_bpm)
             dpg.set_value("fx_size",   l.size)
             dpg.set_value("fx_spread", l.spread)
+            try:
+                dpg.bind_item_theme("kill_fx_btn", self._alert_btn_theme)
+            except Exception:
+                pass
         else:
             dpg.set_value("hdr_fx", "fx: off")
             dpg.configure_item("hdr_fx", color=_C_DIM)
+            try:
+                dpg.bind_item_theme("kill_fx_btn", self._dim_btn_theme)
+            except Exception:
+                pass
 
         # Rate/Size/Spread pool button labels + tooltips
         try:
