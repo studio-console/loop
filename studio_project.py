@@ -5035,7 +5035,8 @@ Rules:
                 model=self._model,
                 max_tokens=512,
                 system=system,
-                messages=[{"role": "user", "content": user_msg}]
+                messages=[{"role": "user", "content": user_msg}],
+                timeout=30.0,
             )
             raw = resp.content[0].text.strip()
             # Strip markdown code fences if model wraps in them
@@ -5852,7 +5853,7 @@ class GUIEngine:
 
             # ── Active playbacks ─────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("› active playbacks", color=_C_ACCENT)
+                dpg.add_text("› running cuestacks", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_executors)
@@ -6047,7 +6048,7 @@ class GUIEngine:
         if is_ctrl:
             return
         dpg.set_value("cmd_input",
-                      dpg.get_value("cmd_input") + (hi if is_shift else lo))
+                      dpg.get_value("cmd_input") + lo)
 
     def _on_global_backspace(self, *_):
         """Route Backspace to cmd_input when no other text widget is active."""
@@ -6223,7 +6224,8 @@ class GUIEngine:
                     ("go",    "GO"),    ("back",   "BACK"),
                     ("undo",  "UNDO"),
                 ]:
-                    dpg.add_button(label=label, width=72, height=_BH,
+                    _tag = f"qbtn_{ud.lower()}"
+                    dpg.add_button(label=label, tag=_tag, width=72, height=_BH,
                                    callback=self._numpad_exec, user_data=ud)
 
             dpg.add_separator()
@@ -8179,7 +8181,7 @@ class GUIEngine:
                 ("CUE 5 FXOUTFADE 2.5",   "fX outfade time when cue 5 fires (0 = auto)"),
                 ("CS 2 CUE 5 FADE 3",     "set timing on cue 5 in cuestack 2"),
             ]),
-            ("playback", [
+            ("cuestack go/back", [
                 ("GO",                      "advance to next cue on active fader"),
                 ("GO FADE 3",               "one-shot: fire next cue with 3s fade (does not change the cue's stored fade)"),
                 ("GO FADE 5 DELAY 1",       "one-shot: fire with 5s fade and 1s delay"),
@@ -8288,6 +8290,10 @@ class GUIEngine:
                 ("PROGRAMMER SCALE 200",  "double all programmer values (clamped to max) — amplify a subtle look"),
                 ("PROGRAMMER STATS",      "show how many fixtures/sub-fixtures and channels are active in programmer"),
                 ("PROGRAMMER CAPTURE",     "pull the current live cue-layer output for selected fixtures into the programmer"),
+                ("DEFAULT",               "show current fixture defaults (dim, color, kelvin) applied at boot"),
+                ("SET DEFAULT DIM 0",     "set default dimmer level (0=out, 1=full, or 0–100 as percentage)"),
+                ("SET DEFAULT CLR 5600",  "set default colour temperature in kelvin"),
+                ("SET DEFAULT RED 255",   "set default red channel (0–255); similarly GREEN, BLUE"),
                 ("PROGRAMMER SAVE 1 Pre-show", "save current programmer values to session slot 1 (ephemeral — not in show file)"),
                 ("PROGRAMMER LOAD 1",     "restore programmer values from session slot 1"),
                 ("PROGRAMMER SNAPSHOTS",  "list all saved programmer session snapshots"),
@@ -10217,6 +10223,14 @@ class GUIEngine:
     def _on_ai_send(self):
         if self._ai is None:
             return
+        if not getattr(self._ai, '_enabled', False):
+            try:
+                dpg.configure_item("ai_status",
+                                   default_value="ai disabled — set ANTHROPIC_API_KEY",
+                                   color=(220, 80, 80, 255))
+            except Exception:
+                pass
+            return
         prompt = dpg.get_value("ai_input")
         if not prompt.strip():
             return
@@ -10230,11 +10244,19 @@ class GUIEngine:
             pass
 
         def _run():
-            actions = self._ai.ask(prompt)
             try:
-                dpg.configure_item("ai_status", default_value="", color=_C_DIM)
-            except Exception:
-                pass
+                actions = self._ai.ask(prompt)
+            except Exception as _ae:
+                actions = []
+                try:
+                    self._log(f"ai error: {_ae}")
+                except Exception:
+                    pass
+            finally:
+                try:
+                    dpg.configure_item("ai_status", default_value="", color=_C_DIM)
+                except Exception:
+                    pass
             summary = f"{len(actions)} action(s)" if actions else "no actions"
             entry = {'ts': ts, 'prompt': prompt, 'summary': summary,
                      'actions': [a.get('action', '?') for a in (actions or [])]}
@@ -10439,14 +10461,14 @@ class GUIEngine:
                     dpg.add_text(ft, color=_C_DIM)
 
     def _playbacks_state_hash(self):
-        """Compact snapshot of active executor state — used to detect changes."""
+        """Compact snapshot of running executor state — used to detect changes."""
         if not self._executor_pool:
             return ()
         return tuple(
             (eid, ex.priority, ex.cuestack.current if ex.cuestack else None,
-             ex.time_override_on, ex.time_override_fade)
+             ex.time_override_on, ex.time_override_fade, ex.is_active)
             for eid, ex in sorted(self._executor_pool.executors.items())
-            if ex.cuestack
+            if ex.is_active and ex.cuestack
         )
 
     @staticmethod
@@ -10465,13 +10487,7 @@ class GUIEngine:
             return text
 
     def _rebuild_playbacks(self):
-        """
-        Rebuild the executor-slot list inside the left column. Lists every
-        executor with a cuestack assigned, not just ones currently playing
-        a cue — an idle executor (assigned but never GO'd, or stopped via
-        flash off) still needs its flash/stop/priority buttons reachable
-        by mouse, since those are the only way to trigger it without MIDI.
-        """
+        """Rebuild the running-cuestacks list — only shows actively playing executors."""
         try:
             dpg.delete_item("playbacks_list", children_only=True)
         except Exception:
@@ -10479,11 +10495,11 @@ class GUIEngine:
 
         active = []
         if self._executor_pool:
-            assigned_eids = {eid for eid in self._executor_pool.executors
-                              if self._executor_pool.executors[eid].cuestack}
+            running_eids = {eid for eid, ex in self._executor_pool.executors.items()
+                            if ex.is_active and ex.cuestack}
             ordered = [eid for eid in reversed(self._executor_pool._fire_order)
-                       if eid in assigned_eids]
-            ordered += sorted(assigned_eids - set(ordered))
+                       if eid in running_eids]
+            ordered += sorted(running_eids - set(ordered))
             for eid in ordered:
                 active.append(self._executor_pool.executors[eid])
 
@@ -10768,27 +10784,35 @@ class GUIEngine:
                                   int(self._out.master_level * 100))
             except Exception:
                 pass
-            # Re-apply saved dim fader to programmer layer so output is correct on cold boot
-            try:
-                fd = _fader_dim[0]
-                if fd > 0.0:
-                    for master in patch.all_fixtures():
-                        self._out.programmer_layer.setdefault(
-                            str(master.fixture_id), {})['dim'] = fd
-            except Exception:
-                pass
-            # Auto-reload all executors that have a saved cue position so DMX
-            # outputs immediately on startup without requiring a manual RELOAD.
+            # _fader_dim is restored from state for MIDI soft-takeover,
+            # but NOT applied to programmer_layer on boot — fixtures start
+            # at whatever their cue/default says, not the last fader position.
+            # Auto-reload all executors that have a saved cue position.
+            # Fires with instant (0s) fade so output is live on first frame.
             try:
                 if self._cmd:
+                    reloaded = 0
                     for ex in executor_pool.executors.values():
                         cs = ex.cuestack
                         if cs and cs.current is not None:
-                            ex.reload(patch, fade_engine)
-                            ex.is_active = True
-                    self._log("↺  auto-reload — DMX live")
-            except Exception:
-                pass
+                            prev = (ex.time_override_on,
+                                    ex.time_override_fade,
+                                    ex.time_override_delay)
+                            ex.time_override_on    = True
+                            ex.time_override_fade  = 0.0
+                            ex.time_override_delay = 0.0
+                            try:
+                                ex.reload(patch, fade_engine)
+                                ex.is_active = True
+                                reloaded += 1
+                            finally:
+                                (ex.time_override_on,
+                                 ex.time_override_fade,
+                                 ex.time_override_delay) = prev
+                    if reloaded:
+                        self._log(f"↺  auto-reload — {reloaded} cuestack(s) live")
+            except Exception as _e:
+                self._log(f"auto-reload error: {_e}")
 
         # Consume deferred MIDI table rebuild (must be on main thread)
         if self._pending_table_refresh:
@@ -10917,6 +10941,27 @@ class GUIEngine:
                         dpg.bind_item_theme(f"sb_sel_{fid}", theme)
                     except Exception:
                         pass
+        except Exception:
+            pass
+
+        # CLEAR button — lights up (go_theme) when programmer has data or selection active
+        try:
+            clear_active = bool(
+                (self._prog and (self._prog.data or self._prog.selection or
+                                 self._prog.live_fades)) or
+                (self._prog and self._prog._clear_stage > 0)
+            )
+            theme = self._go_theme if clear_active else self._dim_btn_theme
+            if theme:
+                dpg.bind_item_theme("qbtn_clear", theme)
+        except Exception:
+            pass
+
+        # Enforce lowercase in command input (catches direct keyboard typing)
+        try:
+            _cv = dpg.get_value("cmd_input")
+            if _cv and _cv != _cv.lower():
+                dpg.set_value("cmd_input", _cv.lower())
         except Exception:
             pass
 
@@ -11622,6 +11667,7 @@ class ShowFile:
     EXECUTORS    = os.path.join(DATA_DIR, "executors.json")
     CHANGELOG    = os.path.join(DATA_DIR, "changelog.json")
     AI_PROMPTS   = os.path.join(DATA_DIR, "ai_prompts.json")
+    DEFAULTS     = os.path.join(DATA_DIR, "defaults.json")
     OSC_TARGETS  = os.path.join(DATA_DIR, "osc_targets.json")
     NETWORK      = os.path.join(DATA_DIR, "network.json")
     MACROS       = os.path.join(DATA_DIR, "macros.json")
@@ -12398,6 +12444,17 @@ class ShowFile:
         return True
 
     @staticmethod
+    def save_defaults(defaults: dict):
+        """Save fixture/programmer defaults dict to disk."""
+        _write_file(ShowFile.DEFAULTS, defaults)
+
+    @staticmethod
+    def load_defaults() -> dict:
+        """Load fixture/programmer defaults. Returns {} if file missing."""
+        doc = _read_file(ShowFile.DEFAULTS)
+        return doc if isinstance(doc, dict) else {}
+
+    @staticmethod
     def migrate_legacy(cuestack_pool, cue_pool, group_pool, color_pool, dim_pool, fx_params):
         """Read old studio_show.json and write to new per-file format, then rename it."""
         if not os.path.exists(_LEGACY_FILE):
@@ -12669,6 +12726,26 @@ ShowFile.load_osc_targets(osc)
 ShowFile.load_macros(macro_pool)
 ShowFile.load_state(output_state, executor_pool, cuestack_pool, active_executor,
                     prog_time=_prog_time, fader_dim=_fader_dim)
+
+# ── Fixture defaults ────────────────────────────────────────────────────
+# Loaded from defaults.json; applied to programmer_layer so every fixture
+# starts at these values unless a cue overrides them.
+# Keys: "dim" (0.0–1.0), "red"/"green"/"blue" (0–255), "kelvin" (CCT)
+_fixture_defaults = ShowFile.load_defaults()
+
+def _apply_fixture_defaults():
+    """Write defaults into programmer_layer for all patched fixtures."""
+    for master in patch.all_fixtures():
+        fid = str(master.fixture_id)
+        layer = output_state.programmer_layer.setdefault(fid, {})
+        if 'dim' in _fixture_defaults:
+            layer['dim'] = float(_fixture_defaults['dim'])
+        if 'red' in _fixture_defaults:
+            layer['red']   = int(_fixture_defaults['red'])
+            layer['green'] = int(_fixture_defaults.get('green', 0))
+            layer['blue']  = int(_fixture_defaults.get('blue', 0))
+
+_apply_fixture_defaults()
 
 # Migrate old single-file if new files don't exist yet
 if not _cs_loaded:
@@ -17891,6 +17968,41 @@ def run_command(cmd_str):
             lines.append(f"  active fixtures : {', '.join(active_fids)}")
         return "\n".join(lines)
 
+    # ── SET DEFAULT <param> <value> ───────────────────────────
+    if t0 == 'SET' and len(tokens) >= 4 and tokens[1] == 'DEFAULT':
+        param = tokens[2].lower()
+        raw_val = tokens[3]
+        _VALID_DEFAULTS = {'dim', 'red', 'green', 'blue', 'kelvin', 'clr'}
+        if param not in _VALID_DEFAULTS:
+            return f"unknown default param '{param}'  (valid: dim, red, green, blue, kelvin/clr)"
+        try:
+            num = float(raw_val)
+        except ValueError:
+            return f"set default: value must be a number"
+        if param == 'dim':
+            num = max(0.0, min(1.0, num / 100.0 if num > 1.0 else num))
+            _fixture_defaults['dim'] = num
+        elif param in ('kelvin', 'clr'):
+            _fixture_defaults['kelvin'] = int(num)
+        else:
+            _fixture_defaults[param] = int(max(0, min(255, num)))
+        ShowFile.save_defaults(_fixture_defaults)
+        _apply_fixture_defaults()
+        return f"default {param} → {raw_val}"
+
+    if t0 == 'DEFAULT' and len(tokens) == 1:
+        if not _fixture_defaults:
+            return "no defaults set  (use: set default dim 0, set default clr 5600, etc.)"
+        lines = ["fixture defaults:"]
+        for k, v in sorted(_fixture_defaults.items()):
+            if k == 'dim':
+                lines.append(f"  dim    : {int(v * 100)}%")
+            elif k == 'kelvin':
+                lines.append(f"  kelvin : {v}K")
+            else:
+                lines.append(f"  {k:<6} : {v}")
+        return "\n".join(lines)
+
     # ── Default: programmer ───────────────────────────────────
     try:
         prog.execute(raw)
@@ -18072,6 +18184,25 @@ if STUDIO_HEADLESS:
         r_psnaps = run_command("PROGRAMMER SNAPSHOTS")
         _check("PROGRAMMER SNAPSHOTS lists the saved slot", "TestSnap" in r_psnaps)
         prog.clear_programmer()
+
+        # SET DEFAULT / DEFAULT
+        _saved_defaults = dict(_fixture_defaults)
+        r_sd_dim  = run_command("SET DEFAULT DIM 0")
+        _check("SET DEFAULT DIM returns confirmation", "dim" in r_sd_dim)
+        _check("SET DEFAULT DIM stores 0.0 in _fixture_defaults", _fixture_defaults.get('dim') == 0.0)
+        r_sd_clr  = run_command("SET DEFAULT CLR 5600")
+        _check("SET DEFAULT CLR stores kelvin", _fixture_defaults.get('kelvin') == 5600)
+        r_sd_red  = run_command("SET DEFAULT RED 200")
+        _check("SET DEFAULT RED stores value", _fixture_defaults.get('red') == 200)
+        r_default = run_command("DEFAULT")
+        _check("DEFAULT shows dim",    "dim"    in r_default)
+        _check("DEFAULT shows kelvin", "kelvin" in r_default)
+        r_bad     = run_command("SET DEFAULT FOOBAR 50")
+        _check("SET DEFAULT rejects unknown param", "unknown" in r_bad)
+        # restore
+        _fixture_defaults.clear()
+        _fixture_defaults.update(_saved_defaults)
+        ShowFile.save_defaults(_fixture_defaults)
 
         # PROGRAMMER SHOW
         run_command("1 AT R 200")
