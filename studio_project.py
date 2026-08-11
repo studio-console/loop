@@ -2285,6 +2285,7 @@ class Executor:
         self.size_factor = 1.0
         # Optional human-readable label for this fader slot (independent of the cuestack name)
         self.label = ""
+        self.fx_pool = None    # injected from ExecutorPool
 
     def assign(self, cuestack):
         self.cuestack = cuestack
@@ -2336,7 +2337,23 @@ class Executor:
                 continue
             fx_defs = vals.get('fx', [])
             if fx_defs:
-                fx_defs_by_fid[fid_str] = fx_defs
+                _fp = getattr(self, 'fx_pool', None)
+                if _fp:
+                    _resolved_defs = []
+                    _seen_pids = {}
+                    for _ld in fx_defs:
+                        _pid = _ld.get('fx_preset_ref')
+                        if _pid is not None:
+                            if _pid not in _seen_pids:
+                                _seen_pids[_pid] = True
+                                _p = _fp.get(_pid)
+                                if _p:
+                                    _resolved_defs.extend(_p.layers)
+                        else:
+                            _resolved_defs.append(_ld)
+                    fx_defs = _resolved_defs
+                if fx_defs:
+                    fx_defs_by_fid[fid_str] = fx_defs
 
         # Expand color_id refs and resolve group_id targets
         expanded = _expand_color_fx(fx_defs_by_fid, self.color_pool)
@@ -2463,6 +2480,7 @@ class ExecutorPool:
         self.default_dim_pool    = None
         self.default_group_pool  = None
         self.default_attr_pools  = None   # dict of {attribute_name: AttributePool}
+        self.default_fx_pool     = None   # FXPool instance, injected at startup
         # Pages group executor slots for display/navigation — organizational
         # only, doesn't affect playback. { int: {'name': str, 'slots': [int, ...]} }
         self.pages = {}
@@ -2477,6 +2495,7 @@ class ExecutorPool:
             ex.dim_pool   = self.default_dim_pool
             ex.group_pool = self.default_group_pool
             ex.attr_pools = self.default_attr_pools
+            ex.fx_pool    = self.default_fx_pool
             self.executors[n] = ex
         return self.executors[n]
 
@@ -8127,6 +8146,13 @@ class GUIEngine:
                 ("RECORD CUESTACK 2 Name","create a new named cuestack on fader 2"),
                 ("LOAD CUE 5",            "copy cue 5's data into the programmer for editing and re-recording"),
                 ("LOAD CUE 5 CS 2",       "load cue 5 from cuestack 2 into programmer"),
+                ("LIST REFS COLOR 3",     "show every cue that references color preset 3 (tracks to it)"),
+                ("LIST REFS DIM 2",       "show every cue referencing dim preset 2"),
+                ("LIST REFS FX 1",        "show every cue referencing fx preset 1"),
+                ("UPDATE COLOR 3",        "re-record color preset 3 from programmer and live-push to all tracked cues"),
+                ("UPDATE DIM 2",          "re-record dim preset 2 from programmer and live-push to all tracked cues"),
+                ("UPDATE FX 1",           "re-snapshot fx preset 1 from programmer FX and live-push to all tracked cues"),
+                ("UPDATE POSITION 1",     "re-record position preset 1 and live-push; works for gobo/zoom/focus/beam/control too"),
             ]),
             ("rename / copy / delete", [
                 ("RENAME FIXTURE 3 Bar L","rename fixture 3's display label (saved to patch file)"),
@@ -12697,6 +12723,7 @@ _attr_pools = {
     "control":  control_pool,
 }
 executor_pool.default_attr_pools = _attr_pools
+executor_pool.default_fx_pool    = fx_pool
 
 macro_pool       = {}    # {slot_int: {"name": str, "commands": [str, ...]}}
 _macro_recording = {"slot": None, "cmds": []}
@@ -13681,6 +13708,75 @@ def _apply_timing_edit(cue, raw_str):
         vd = _get(*kw_d)
         if vf is not None: cue.fade_times[grp]  = vf
         if vd is not None: cue.delay_times[grp] = vd
+
+
+def _preset_live_push(preset_type, preset_id):
+    """
+    After updating a preset, push the new values into any executor currently
+    playing a cue that references that preset.
+    preset_type: 'color', 'dim', 'fx', or an attr name ('position', 'gobo', etc.)
+    preset_id:   int preset slot number
+    """
+    for ex in executor_pool.executors.values():
+        if not ex.is_active or not ex.cuestack:
+            continue
+        cue_num = ex.cuestack.current
+        if cue_num is None:
+            continue
+        cue = ex.cuestack.cues.get(cue_num)
+        if not cue:
+            continue
+
+        if preset_type == 'color':
+            p = color_pool.get(preset_id)
+            if not p:
+                continue
+            for fid, vals in cue.data.items():
+                if '.' in fid or vals.get('color_ref') != preset_id:
+                    continue
+                master = patch.get(int(fid)) if fid.isdigit() else None
+                if not master:
+                    continue
+                for sub in master.all_subs():
+                    sfid = str(sub.fixture_id)
+                    ex.layer.setdefault(sfid, {}).update(
+                        {'red': p.red, 'green': p.green, 'blue': p.blue}
+                    )
+
+        elif preset_type == 'dim':
+            p = dim_pool.get(preset_id)
+            if not p:
+                continue
+            for fid, vals in cue.data.items():
+                if '.' in fid or vals.get('dim_ref') != preset_id:
+                    continue
+                ex.layer.setdefault(fid, {})['dim'] = p.level
+
+        elif preset_type == 'fx':
+            affected = any(
+                any(_ld.get('fx_preset_ref') == preset_id
+                    for _ld in vals.get('fx', []))
+                for fid, vals in cue.data.items()
+                if '.' not in fid
+            )
+            if affected:
+                ex._start_cue_fx(cue, patch, default_infade=0.0, default_outfade=0.0)
+
+        else:
+            # generic attribute pool
+            ref_key = f"{preset_type}_ref"
+            ap = _attr_pools.get(preset_type)
+            if not ap:
+                continue
+            p = ap.get(preset_id)
+            if not p:
+                continue
+            for fid, vals in cue.data.items():
+                if '.' in fid or vals.get(ref_key) != preset_id:
+                    continue
+                src = p.data.get(fid, {})
+                if src:
+                    ex.layer.setdefault(fid, {}).update(src)
 
 
 def run_command(cmd_str):
@@ -15511,6 +15607,7 @@ def run_command(cmd_str):
             )
         fx_pool.store(fx_n, preset)
         ShowFile.save_fx_pool(fx_pool)
+        _preset_live_push('fx', fx_n)
         return f"recorded: {preset}  (auto-saved)"
 
     # FIRE FX <n> [group n]  — write preset defs into programmer + preview
@@ -15559,7 +15656,7 @@ def run_command(cmd_str):
             entry = prog.data.setdefault(str(fid), {})
             kept  = [ld for ld in entry.get('fx', [])
                      if ld.get('channel') not in new_channels]
-            fired_defs = [dict(ld) for ld in preset.layers]
+            fired_defs = [{**dict(ld), 'fx_preset_ref': fx_n} for ld in preset.layers]
             # Apply fire-time group override
             if fire_group_id is not None:
                 for d in fired_defs:
@@ -16515,6 +16612,7 @@ def run_command(cmd_str):
             p.red, p.green, p.blue = float(er), float(eg), float(eb)
             color_pool.presets[pid] = p
             save_show()
+            _preset_live_push('color', pid)
             return f"recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"color {pid}"
         _has_rgb = any(any(ch in vals for ch in ('red', 'green', 'blue'))
@@ -16524,6 +16622,7 @@ def run_command(cmd_str):
             return "RECORD COLOR: no RGB data in programmer  (set a colour first)"
         p = color_pool.record(pid, prog, name=name)
         save_show()
+        _preset_live_push('color', pid)
         return f"recorded: {p}  (show saved)"
 
     # ── dim preset recall / record ────────────────────────────
@@ -16569,6 +16668,7 @@ def run_command(cmd_str):
             p.level = level
             dim_pool.presets[pid] = p
             save_show()
+            _preset_live_push('dim', pid)
             return f"recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"dimmer {pid}"
         # Check if programmer has dim data before recording
@@ -16579,6 +16679,7 @@ def run_command(cmd_str):
             return "RECORD DIM: no dimmer data in programmer  (set a dim level first)"
         p = dim_pool.record(pid, prog, name=name)
         save_show()
+        _preset_live_push('dim', pid)
         return f"recorded: {p}  (show saved)"
 
     # ── Attribute pool record / recall ───────────────────────────
@@ -16604,6 +16705,7 @@ def run_command(cmd_str):
         p = pool.record(pid, prog, name=name)
         if p and p.data:
             save_show()
+            _preset_live_push(pool_key.lower(), pid)
             return f"recorded: {p}  (show saved)"
         return (f"RECORD {pool_key}: no {pool_key.lower()} data in programmer "
                 f"(channels: {', '.join(pool.relevant_channels)})")
@@ -16909,9 +17011,13 @@ def run_command(cmd_str):
             if not lines:
                 return "no notes set on any cuestack or cue"
             return "\n".join(lines)
-        return (f"LIST: unknown sub-command '{tokens[1]}' — "
-                "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
-                "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS, NOTES")
+        if sub == 'REFS':
+            # Delegate to the LIST REFS handler below
+            pass
+        else:
+            return (f"LIST: unknown sub-command '{tokens[1]}' — "
+                    "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
+                    "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS, NOTES, REFS")
 
     # ── FIXTURE INFO <n> — detailed per-fixture status ──────────────────────────
     # FIXTURE SWAP <a> <b> — exchange programmer values between two fixtures
@@ -18002,6 +18108,131 @@ def run_command(cmd_str):
             else:
                 lines.append(f"  {k:<6} : {v}")
         return "\n".join(lines)
+
+    # ── LIST REFS <type> <n> — show every cue referencing a preset ──
+    if t0 == 'LIST' and len(tokens) >= 3 and tokens[1] == 'REFS':
+        ref_type = tokens[2].lower()
+        try:
+            ref_id = int(tokens[3]) if len(tokens) >= 4 else None
+        except ValueError:
+            ref_id = None
+        if ref_id is None:
+            return "usage: list refs color <n>  /  list refs dim <n>  /  list refs fx <n>  /  list refs <attr> <n>"
+
+        # Map friendly names to ref key in cue.data
+        if ref_type in ('color', 'colour'):
+            ref_key = 'color_ref'
+            label   = f"color preset {ref_id}"
+        elif ref_type == 'dim':
+            ref_key = 'dim_ref'
+            label   = f"dim preset {ref_id}"
+        elif ref_type == 'fx':
+            ref_key = None  # special: check inside fx list
+            label   = f"fx preset {ref_id}"
+        else:
+            ref_key = f"{ref_type}_ref"
+            label   = f"{ref_type} preset {ref_id}"
+
+        hits = []
+        for cs_id, cs in cuestack_pool.stacks.items():
+            for cue_num in sorted(cs.cues.keys()):
+                cue = cs.cues[cue_num]
+                matched_fids = []
+                for fid, vals in cue.data.items():
+                    if '.' in fid:
+                        continue
+                    if ref_key is not None:
+                        if vals.get(ref_key) == ref_id:
+                            matched_fids.append(fid)
+                    else:
+                        # FX: check inside fx list for fx_preset_ref
+                        for _ld in vals.get('fx', []):
+                            if _ld.get('fx_preset_ref') == ref_id:
+                                matched_fids.append(fid)
+                                break
+                if matched_fids:
+                    fid_str = ', '.join(f'f{f}' for f in sorted(matched_fids, key=lambda x: int(x) if x.isdigit() else 0))
+                    hits.append(f"  cs {cs_id} \"{cs.name}\" → cue {cue_num} \"{cue.name}\"  ({fid_str})")
+
+        if not hits:
+            return f"{label}: no cue references found"
+        lines = [f"{label} referenced by {len(hits)} cue(s):"] + hits
+        return "\n".join(lines)
+
+    # ── UPDATE <type> <n> — re-record preset from programmer + live-push ──
+    if t0 == 'UPDATE' and len(tokens) >= 3:
+        upd_type = tokens[1].lower()
+        try:
+            upd_id = int(tokens[2])
+        except ValueError:
+            return f"UPDATE: bad slot number '{tokens[2]}'"
+
+        if upd_type in ('color', 'colour'):
+            _has_rgb = any(any(ch in vals for ch in ('red', 'green', 'blue'))
+                           for fid, vals in prog.data.items() if '.' in fid)
+            if not _has_rgb:
+                return "UPDATE COLOR: no RGB in programmer"
+            name = _name_after(raw, 3) or ""
+            p = color_pool.record(upd_id, prog, name=name or (color_pool.get(upd_id).name if color_pool.get(upd_id) else f"color {upd_id}"))
+            save_show()
+            _preset_live_push('color', upd_id)
+            return f"updated: {p}  (live-pushed to playing cues)"
+
+        elif upd_type == 'dim':
+            p = dim_pool.get(upd_id)
+            if not p:
+                return f"UPDATE DIM: dim preset {upd_id} not found — use RECORD DIM {upd_id} first"
+            old_name = p.name
+            p = dim_pool.record(upd_id, prog, name=old_name)
+            save_show()
+            _preset_live_push('dim', upd_id)
+            return f"updated: {p}  (live-pushed to playing cues)"
+
+        elif upd_type == 'fx':
+            # Re-snapshot current programmer FX (same as RECORD FX but with live push)
+            seen, defs = set(), []
+            for fid_str, vals in prog.data.items():
+                if '.' in fid_str:
+                    continue
+                for ld in vals.get('fx', []):
+                    key = (ld.get('waveform'), ld.get('channel'))
+                    if key not in seen:
+                        seen.add(key)
+                        defs.append(ld)
+            if not defs:
+                return "UPDATE FX: no FX in programmer"
+            existing = fx_pool.get(upd_id)
+            name = existing.name if existing else f"fx {upd_id}"
+            preset = FXPreset(upd_id, name)
+            for ld in defs:
+                preset.add_layer(
+                    ld.get('waveform','sine'), ld.get('channel','red'),
+                    bpm=ld.get('bpm',60.0), size=ld.get('size',100.0),
+                    spread=ld.get('spread',0.0), phase_offset=ld.get('phase_offset',0.0),
+                    form_id=ld.get('form_id'), rate_id=ld.get('rate_id'),
+                    size_id=ld.get('size_id'), spread_id=ld.get('spread_id'),
+                    dim_id=ld.get('dim_id'), color_id=ld.get('color_id'),
+                    group_id=ld.get('group_id'), speed_id=ld.get('speed_id'),
+                    block_size=ld.get('block_size',1), order=ld.get('order','linear'),
+                    direction=ld.get('direction','forward'),
+                    target_scope=ld.get('target_scope'),
+                )
+            fx_pool.store(upd_id, preset)
+            ShowFile.save_fx_pool(fx_pool)
+            _preset_live_push('fx', upd_id)
+            return f"updated: {preset}  (live-pushed to playing cues)"
+
+        else:
+            # Generic attribute pool
+            ap = _attr_pools.get(upd_type)
+            if ap is None:
+                return f"UPDATE: unknown preset type '{upd_type}'  (valid: color, dim, fx, position, gobo, zoom, focus, beam, control)"
+            existing_p = ap.get(upd_id)
+            old_name = existing_p.name if existing_p else f"{upd_type} {upd_id}"
+            p = ap.record(upd_id, prog, name=old_name)
+            save_show()
+            _preset_live_push(upd_type, upd_id)
+            return f"updated: {p}  (live-pushed to playing cues)"
 
     # ── Default: programmer ───────────────────────────────────
     try:
@@ -20128,6 +20359,55 @@ if STUDIO_HEADLESS:
         _check("PROG FADE CLEAR empties live_fades list", len(prog.live_fades) == 0)
         _check("PROG FADE CLEAR returns confirmation", "clear" in r_pfc.lower())
         prog.clear_programmer()
+
+        # ── Preset tracking — LIST REFS + UPDATE ──────────────────────────
+        run_command("1 THRU 6 AT R 255 G 0 B 100")  # pink
+        run_command("RECORD COLOR 10 Pink")
+        run_command("COLOR 10")   # apply preset (sets color_ref)
+        # record a cue with color_ref
+        _tcs = cuestack_pool.get(1) or cuestack_pool.create(1, "TrackTest")
+        _tcue = Cue(90, "track test cue")
+        _tcue.record(prog)
+        _tcs.cues[float(90)] = _tcue
+        prog.clear_programmer()
+
+        _r_refs = run_command("LIST REFS COLOR 10")
+        _check("LIST REFS finds the cue", "track test cue" in _r_refs or "cue 90" in _r_refs.lower() or "cs 1" in _r_refs.lower())
+
+        # Update the preset and check live-push returns confirmation
+        run_command("1 AT R 200 G 50 B 150")
+        _r_upd = run_command("UPDATE COLOR 10")
+        _check("UPDATE COLOR returns confirmation", "updated" in _r_upd.lower())
+        _check("UPDATE COLOR live-pushed message", "live-pushed" in _r_upd.lower())
+        _check("Color preset 10 updated", color_pool.get(10) is not None)
+
+        # FX preset ref in cue — FIRE FX tags layer defs
+        run_command("FX SINE RED BPM 60")
+        run_command("RECORD FX 11 TrackFX")
+        run_command("CLEAR FX")
+        run_command("FIRE FX 11")
+        _fx_entry = next((v for fid, v in prog.data.items() if '.' not in fid and v.get('fx')), None)
+        _check("FIRE FX tags layers with fx_preset_ref",
+               _fx_entry is not None and any(ld.get('fx_preset_ref') == 11
+                                              for ld in _fx_entry.get('fx', [])))
+        # LIST REFS FX
+        _tcue_fx = Cue(91, "fx track cue")
+        _tcue_fx.record(prog)
+        _tcs.cues[float(91)] = _tcue_fx
+        prog.clear_programmer()
+        _r_fx_refs = run_command("LIST REFS FX 11")
+        _check("LIST REFS FX finds the cue", "fx track cue" in _r_fx_refs.lower() or "cue 91" in _r_fx_refs.lower() or "cs 1" in _r_fx_refs.lower())
+
+        # UPDATE FX
+        run_command("FX SINE RED BPM 90")
+        _r_upd_fx = run_command("UPDATE FX 11")
+        _check("UPDATE FX returns confirmation", "updated" in _r_upd_fx.lower())
+        _check("UPDATE FX live-pushed message", "live-pushed" in _r_upd_fx.lower())
+
+        # Cleanup
+        prog.clear_programmer()
+        _tcs.cues.pop(float(90), None)
+        _tcs.cues.pop(float(91), None)
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
