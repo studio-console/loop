@@ -5558,6 +5558,28 @@ def _make_trig_moment_theme():
     return t
 
 
+def _make_pri_hi_theme():
+    """Green — executor priority: high (beats lower-priority layers)."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (12, 68, 20, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (22, 118, 36, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (38, 175, 58, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (90, 230, 115, 255))
+    return t
+
+
+def _make_pri_lo_theme():
+    """Muted purple — executor priority: low (overridden by normal/high layers)."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (22, 16, 42, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (38, 28, 68, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (55, 40, 95, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (95, 74, 148, 255))
+    return t
+
+
 def _make_active_slot_theme():
     """Brighter border for a slot that has a live cue playing."""
     with dpg.theme() as t:
@@ -5778,6 +5800,8 @@ class GUIEngine:
         self._out_vfade_theme     = _make_out_vfade_theme()
         self._trig_flash_theme    = _make_trig_flash_theme()
         self._trig_moment_theme   = _make_trig_moment_theme()
+        self._pri_hi_theme        = _make_pri_hi_theme()
+        self._pri_lo_theme        = _make_pri_lo_theme()
         self._active_slot_theme   = _make_active_slot_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
@@ -9826,9 +9850,13 @@ class GUIEngine:
                             width=self._FPG_SLOT_W, height=self._FPG_SLOT_H,
                             border=True, no_scrollbar=True, no_scroll_with_mouse=True):
 
-                        # row 1 — exec id + output mode badge
+                        # row 1 — exec id + priority badge + output mode badge
                         with dpg.group(horizontal=True):
                             dpg.add_text(f"{n}", color=_C_DIM)
+                            dpg.add_button(
+                                tag=f"fpg_pri_{n}", label="nrm",
+                                width=28, height=18,
+                                callback=self._on_fpg_pri_cycle, user_data=n)
                             dpg.add_button(
                                 tag=f"fpg_out_{n}", label="nrm",
                                 width=-1, height=18,
@@ -9983,6 +10011,18 @@ class GUIEngine:
             return  # hold polling handled by tick loop
         self._cmd(f"FADER {eid} {fn}")
 
+    def _on_fpg_pri_cycle(self, _sender, _app_data, user_data):
+        """Cycle priority for the executor in fader page slot user_data (nrm→hi→lo→nrm)."""
+        n = int(user_data)
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        if not ex or not self._cmd:
+            return
+        _cycle  = {0: 1, 1: -1, -1: 0}
+        _labels = {-1: 'LOW', 0: 'NORMAL', 1: 'HIGH'}
+        nxt = _cycle.get(getattr(ex, 'priority', 0), 0)
+        self._cmd(f"PRIORITY {eid} {_labels[nxt]}")
+
     def _on_fpg_out_cycle(self, _sender, _app_data, user_data):
         """Cycle output_mode for the executor in fader page slot user_data."""
         n = int(user_data)
@@ -10056,6 +10096,19 @@ class GUIEngine:
                 _ot = _out_themes.get(out_mode, self._dim_btn_theme)
                 if _ot:
                     dpg.bind_item_theme(f"fpg_out_{n}", _ot)
+
+                # ── priority badge ────────────────────────────
+                pri = getattr(ex, 'priority', 0) if ex else 0
+                _pri_labels = {-1: 'lo', 0: 'nrm', 1: 'hi'}
+                dpg.set_item_label(f"fpg_pri_{n}", _pri_labels.get(pri, 'nrm'))
+                _pri_themes = {
+                    -1: self._pri_lo_theme,
+                     0: self._dim_btn_theme,
+                     1: self._pri_hi_theme,
+                }
+                _pt = _pri_themes.get(pri, self._dim_btn_theme)
+                if _pt:
+                    dpg.bind_item_theme(f"fpg_pri_{n}", _pt)
 
                 # ── trigger mode badge ────────────────────────
                 trig_mode = getattr(ex, 'trigger_mode', 'toggle') if ex else 'toggle'
