@@ -21065,8 +21065,8 @@ audio_engine.stop()
 # =============================================================================
 #
 # PROJECT: Studio Console
-# FILE:    /Users/c/Documents/studio_project.py  (~6000 lines, single file)
-# SHOW DATA: /Users/c/Documents/studio_data/  (per-category JSON files)
+# FILE:    studio_project/studio_project.py  (~21k lines, single file)
+# SHOW DATA: studio_project/studio_data/  (per-category JSON files)
 #
 # ── WHAT THIS IS ──────────────────────────────────────────────────────────────
 # Custom Python lighting console controlling 6 SGM LT-200 pixel tubes
