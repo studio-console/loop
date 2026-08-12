@@ -5694,6 +5694,7 @@ class GUIEngine:
         self._ai_history       = []   # list of {ts, prompt, summary, actions}
         self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
         self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows exec (page-1)*15+N
+        self._fpg_last_win_size = (0, 0)
 
     # ── Popup layout persistence ─────────────────────────────
 
@@ -9779,12 +9780,12 @@ class GUIEngine:
     # ── fader page popup ─────────────────────────────────────────────────────
 
     _FPG_SLOTS  = 15
-    _FPG_SLOT_W = 88     # slightly wider to fit mode badges
-    _FPG_SLOT_H = 285    # taller for extra rows
-    _FPG_FADER_H= 100    # taller fader track
-    _FPG_FADER_W= 72     # fader width
-    _FPG_BTN_W  = 76     # button fills slot width
-    _FPG_BTN_H  = 24     # slightly taller buttons
+    _FPG_SLOT_W = 88     # initial slot width (reflow updates dynamically)
+    _FPG_SLOT_H = 340    # initial slot height (reflow updates dynamically)
+    _FPG_FADER_H= 140    # initial fader track height
+    _FPG_FADER_W= 72     # initial fader width
+    _FPG_BTN_W  = 76     # initial button width
+    _FPG_BTN_H  = 24     # button height
 
     @staticmethod
     def _fpg_exec_for_slot(page, slot):
@@ -9921,6 +9922,31 @@ class GUIEngine:
             pass
         self._fpg_refresh_all()
 
+    def _fpg_reflow(self, win_w, win_h):
+        """Resize all fader slot child-windows to fill the current window dimensions."""
+        _H_HDR  = 80   # title bar + page-controls row + separator + window padding
+        _W_EDGE = 22   # left + right outer window padding
+        _W_GAP  = 4    # gap between adjacent child-window slots
+        _ROW_FX = 200  # sum of all fixed row heights + inter-row spacing inside a slot
+
+        slot_h  = max(220, win_h - _H_HDR)
+        slot_w  = max(68,  (win_w - _W_EDGE) // self._FPG_SLOTS - _W_GAP)
+        fader_h = max(30,  slot_h - _ROW_FX)
+        fader_w = max(28,  slot_w - 16)
+        btn_w   = max(36,  slot_w - 12)
+
+        for n in range(1, self._FPG_SLOTS + 1):
+            try:
+                dpg.configure_item(f"fpg_slot_{n}",  width=slot_w,  height=slot_h)
+                dpg.configure_item(f"fpg_fader_{n}", width=fader_w, height=fader_h)
+                dpg.configure_item(f"fpg_name_{n}",  wrap=slot_w - 6)
+                dpg.configure_item(f"fpg_cue_{n}",   wrap=slot_w - 6)
+                for _s in ('a', 'b', 'c'):
+                    dpg.configure_item(f"fpg_btn{_s}_{n}", width=btn_w)
+                dpg.configure_item(f"fpg_trig_{n}", width=btn_w)
+            except Exception:
+                pass
+
     def _fpg_refresh_all(self):
         """Sync all fader page slot labels and fader positions from executor pool."""
         if not self._executor_pool:
@@ -10051,6 +10077,16 @@ class GUIEngine:
 
             except Exception:
                 pass
+
+        # ── reflow on window resize ───────────────────────────
+        try:
+            _sz  = dpg.get_item_rect_size("fader_page_window")
+            _wsz = (int(_sz[0]), int(_sz[1]))
+            if _wsz[0] > 10 and _wsz != self._fpg_last_win_size:
+                self._fpg_last_win_size = _wsz
+                self._fpg_reflow(_wsz[0], _wsz[1])
+        except Exception:
+            pass
 
     def _tick_audio(self):
         """Update live level meters + capture/mapping status (called from _tick)."""
