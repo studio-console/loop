@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-12",
+      "summary": "Rename cuestack/executor vocabulary to stk/fdr (lowercase)",
+      "details": []
+    },
+    {
+      "date": "2026-08-12",
       "summary": "Fader page: cue list beside thin fader, full name, button colors",
       "details": []
     },
