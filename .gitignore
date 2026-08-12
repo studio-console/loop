@@ -11,3 +11,5 @@
 !studio_project/CURRENT.md
 !studio_project/studio_console/
 !studio_project/studio_console/**
+studio_project/studio_console/**/__pycache__/
+studio_project/studio_console/**/*.pyc
