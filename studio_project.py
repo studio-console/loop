@@ -5580,6 +5580,28 @@ def _make_pri_lo_theme():
     return t
 
 
+def _make_go_btn_theme():
+    """Accent purple — GO / primary action button."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (55, 35, 100, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (95, 62, 165, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (140, 95, 230, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (200, 170, 255, 255))
+    return t
+
+
+def _make_stop_btn_theme():
+    """Dark red — STOP button."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (80, 18, 18, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (140, 32, 32, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (200, 50, 50, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (255, 130, 130, 255))
+    return t
+
+
 def _make_active_slot_theme():
     """Brighter border for a slot that has a live cue playing."""
     with dpg.theme() as t:
@@ -5802,6 +5824,8 @@ class GUIEngine:
         self._trig_moment_theme   = _make_trig_moment_theme()
         self._pri_hi_theme        = _make_pri_hi_theme()
         self._pri_lo_theme        = _make_pri_lo_theme()
+        self._go_btn_theme        = _make_go_btn_theme()
+        self._stop_btn_theme      = _make_stop_btn_theme()
         self._active_slot_theme   = _make_active_slot_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
@@ -9866,19 +9890,23 @@ class GUIEngine:
                         dpg.add_text("—", tag=f"fpg_name_{n}", color=_C_ACCENT,
                                      wrap=self._FPG_SLOT_W - 6)
 
-                        # row 3 — cue label
-                        dpg.add_text("—", tag=f"fpg_cue_{n}", color=_C_DIM,
-                                     wrap=self._FPG_SLOT_W - 6)
-
-                        # row 4 — vertical fader (centred)
-                        dpg.add_slider_int(
-                            tag=f"fpg_fader_{n}",
-                            vertical=True,
-                            width=self._FPG_FADER_W, height=self._FPG_FADER_H,
-                            min_value=0, max_value=255,
-                            default_value=255, format="",
-                            no_input=True,
-                            callback=self._on_fpg_fader, user_data=n)
+                        # rows 3-4 — cue list + thin fader side by side
+                        with dpg.group(horizontal=True):
+                            dpg.add_listbox(
+                                tag=f"fpg_cuelist_{n}",
+                                items=["—"],
+                                num_items=7,
+                                width=self._FPG_SLOT_W - 22,
+                                callback=self._on_fpg_cuelist_click,
+                                user_data=n)
+                            dpg.add_slider_int(
+                                tag=f"fpg_fader_{n}",
+                                vertical=True,
+                                width=14, height=self._FPG_FADER_H,
+                                min_value=0, max_value=255,
+                                default_value=255, format="",
+                                no_input=True,
+                                callback=self._on_fpg_fader, user_data=n)
 
                         # row 5 — level %
                         dpg.add_text("100%", tag=f"fpg_level_{n}", color=_C_DIM)
@@ -9952,28 +9980,30 @@ class GUIEngine:
 
     def _fpg_reflow(self, win_w, win_h):
         """Resize all fader slot child-windows to fill the current window dimensions."""
-        _H_HDR  = 80   # title bar + page-controls row + separator + window padding
-        _W_EDGE = 22   # left + right outer window padding
-        _W_GAP  = 4    # gap between adjacent child-window slots
-        _ROW_FX = 200  # sum of all fixed row heights + inter-row spacing inside a slot
+        _H_HDR   = 80   # title bar + page-controls row + separator + window padding
+        _W_EDGE  = 22   # left + right outer window padding
+        _W_GAP   = 4    # gap between adjacent child-window slots
+        # fixed rows: padding(16) + badges(22) + name(16) + level(16)
+        #             + 3 btns(72) + separator(4) + trig(24) = 170
+        _ROW_FX  = 170
 
-        slot_h  = max(220, win_h - _H_HDR)
-        slot_w  = max(68,  (win_w - _W_EDGE) // self._FPG_SLOTS - _W_GAP)
-        fader_h = max(30,  slot_h - _ROW_FX)
-        fader_w = max(28,  slot_w - 16)
-        btn_w   = max(36,  slot_w - 12)
-        # split remaining row-1 width equally between the two header badges
-        # (~20px for the slot-number text + item spacing)
-        badge_w = max(24,  (slot_w - 20) // 2 - 2)
+        slot_h      = max(220, win_h - _H_HDR)
+        slot_w      = max(68,  (win_w - _W_EDGE) // self._FPG_SLOTS - _W_GAP)
+        fader_h     = max(40,  slot_h - _ROW_FX)
+        btn_w       = max(36,  slot_w - 12)
+        badge_w     = max(24,  (slot_w - 20) // 2 - 2)
+        cuelist_w   = max(32,  slot_w - 22)
+        n_items     = max(3,   fader_h // 21)
 
         for n in range(1, self._FPG_SLOTS + 1):
             try:
-                dpg.configure_item(f"fpg_slot_{n}",  width=slot_w,  height=slot_h)
-                dpg.configure_item(f"fpg_fader_{n}", width=fader_w, height=fader_h)
-                dpg.configure_item(f"fpg_name_{n}",  wrap=slot_w - 6)
-                dpg.configure_item(f"fpg_cue_{n}",   wrap=slot_w - 6)
-                dpg.configure_item(f"fpg_pri_{n}",   width=badge_w)
-                dpg.configure_item(f"fpg_out_{n}",   width=badge_w)
+                dpg.configure_item(f"fpg_slot_{n}",    width=slot_w,    height=slot_h)
+                dpg.configure_item(f"fpg_fader_{n}",   height=fader_h)
+                dpg.configure_item(f"fpg_cuelist_{n}", width=cuelist_w,
+                                   num_items=n_items)
+                dpg.configure_item(f"fpg_name_{n}",    wrap=slot_w - 6)
+                dpg.configure_item(f"fpg_pri_{n}",     width=badge_w)
+                dpg.configure_item(f"fpg_out_{n}",     width=badge_w)
                 for _s in ('a', 'b', 'c'):
                     dpg.configure_item(f"fpg_btn{_s}_{n}", width=btn_w)
                 dpg.configure_item(f"fpg_trig_{n}", width=btn_w)
@@ -9989,7 +10019,7 @@ class GUIEngine:
             ex = self._executor_pool.executors.get(eid)
             try:
                 if ex and ex.cuestack:
-                    dpg.set_value(f"fpg_name_{n}", ex.cuestack.name[:9])
+                    dpg.set_value(f"fpg_name_{n}", ex.cuestack.name)
                 else:
                     dpg.set_value(f"fpg_name_{n}", "—")
                 dpg.set_value(f"fpg_fader_{n}", round((ex.level if ex else 1.0) * 255))
@@ -10015,6 +10045,19 @@ class GUIEngine:
         if fn == 'FLASH':
             return  # hold polling handled by tick loop
         self._cmd(f"FADER {eid} {fn}")
+
+    def _on_fpg_cuelist_click(self, _sender, value, user_data):
+        """GOTO the cue the user clicked in the fader page cue list."""
+        if not value or value.strip() in ("—", ""):
+            return
+        n   = int(user_data)
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        try:
+            cue_num = float(value.strip().lstrip("▶").strip().split()[0])
+            if self._cmd:
+                self._cmd(f"GOTO {eid} {cue_num}")
+        except (ValueError, IndexError):
+            pass
 
     def _on_fpg_pri_cycle(self, _sender, _app_data, user_data):
         """Cycle priority for the executor in fader page slot user_data (nrm→hi→lo→nrm)."""
@@ -10067,16 +10110,27 @@ class GUIEngine:
             eid = self._fpg_exec_for_slot(self._fpg_page, n)
             ex  = self._executor_pool.executors.get(eid)
             try:
-                # ── name + cue ───────────────────────────────
-                name = ex.cuestack.name[:12] if (ex and ex.cuestack) else "—"
-                dpg.set_value(f"fpg_name_{n}", name)
-                if ex and ex.cuestack and ex.cuestack.current is not None:
-                    cur = ex.cuestack.current
-                    cue = ex.cuestack.cues.get(cur)
-                    cue_lbl = f"▶{cur:.0f}" + (f" {cue.name[:6]}" if cue else "")
+                # ── name ─────────────────────────────────────
+                dpg.set_value(f"fpg_name_{n}",
+                              ex.cuestack.name if (ex and ex.cuestack) else "—")
+
+                # ── cue list ─────────────────────────────────
+                if ex and ex.cuestack:
+                    _cs   = ex.cuestack
+                    _cur  = _cs.current
+                    _items, _sel = [], None
+                    for _cn in sorted(_cs.cues.keys()):
+                        _c   = _cs.cues[_cn]
+                        _lbl = f"{'▶' if _cn == _cur else ' '}{_cn:.0f} {_c.name}"
+                        _items.append(_lbl)
+                        if _cn == _cur:
+                            _sel = _lbl
+                    dpg.configure_item(f"fpg_cuelist_{n}",
+                                       items=_items if _items else ["—"])
+                    if _sel:
+                        dpg.set_value(f"fpg_cuelist_{n}", _sel)
                 else:
-                    cue_lbl = "—"
-                dpg.set_value(f"fpg_cue_{n}", cue_lbl)
+                    dpg.configure_item(f"fpg_cuelist_{n}", items=["—"])
 
                 # ── fader (sync when not dragging) ───────────
                 if not dpg.is_item_active(f"fpg_fader_{n}"):
@@ -10084,10 +10138,19 @@ class GUIEngine:
                 lv = (ex.level * 100) if ex else 100
                 dpg.set_value(f"fpg_level_{n}", f"{lv:.0f}%")
 
-                # ── button labels ─────────────────────────────
+                # ── button labels + color themes ──────────────
+                _btn_defaults = {'a': 'GO', 'b': 'BACK', 'c': 'STOP'}
+                _btn_themes   = {
+                    'GO':    self._go_btn_theme,
+                    'FLASH': self._go_btn_theme,
+                    'STOP':  self._stop_btn_theme,
+                }
                 for _s in ('a', 'b', 'c'):
-                    fn = getattr(ex, f'btn_{_s}', {'a': 'GO', 'b': 'BACK', 'c': 'STOP'}[_s]) if ex else {'a': 'GO', 'b': 'BACK', 'c': 'STOP'}[_s]
+                    fn = getattr(ex, f'btn_{_s}', _btn_defaults[_s]) if ex else _btn_defaults[_s]
                     dpg.set_item_label(f"fpg_btn{_s}_{n}", fn.lower())
+                    _bt = _btn_themes.get(fn, self._dim_btn_theme)
+                    if _bt:
+                        dpg.bind_item_theme(f"fpg_btn{_s}_{n}", _bt)
 
                 # ── output mode badge ─────────────────────────
                 out_mode = getattr(ex, 'output_mode', 'normal') if ex else 'normal'
