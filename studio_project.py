@@ -9842,12 +9842,12 @@ class GUIEngine:
                                      wrap=self._FPG_SLOT_W - 6)
 
                         # row 4 — vertical fader (centred)
-                        dpg.add_slider_float(
+                        dpg.add_slider_int(
                             tag=f"fpg_fader_{n}",
                             vertical=True,
                             width=self._FPG_FADER_W, height=self._FPG_FADER_H,
-                            min_value=0.0, max_value=1.0,
-                            default_value=1.0, format="",
+                            min_value=0, max_value=255,
+                            default_value=255, format="",
                             no_input=True,
                             callback=self._on_fpg_fader, user_data=n)
 
@@ -9933,7 +9933,7 @@ class GUIEngine:
                     dpg.set_value(f"fpg_name_{n}", ex.cuestack.name[:9])
                 else:
                     dpg.set_value(f"fpg_name_{n}", "—")
-                dpg.set_value(f"fpg_fader_{n}", ex.level if ex else 1.0)
+                dpg.set_value(f"fpg_fader_{n}", round((ex.level if ex else 1.0) * 255))
             except Exception:
                 pass
 
@@ -9943,7 +9943,7 @@ class GUIEngine:
             eid = self._fpg_exec_for_slot(self._fpg_page, n)
             ex = self._executor_pool.executors.get(eid)
             if ex:
-                ex.level = max(0.0, min(1.0, float(value)))
+                ex.level = max(0.0, min(1.0, float(value) / 255.0))
                 _exec_fader_mode_hook(ex)
 
     def _on_fpg_btn(self, _sender, _app_data, user_data):
@@ -10009,7 +10009,7 @@ class GUIEngine:
 
                 # ── fader (sync when not dragging) ───────────
                 if not dpg.is_item_active(f"fpg_fader_{n}"):
-                    dpg.set_value(f"fpg_fader_{n}", ex.level if ex else 1.0)
+                    dpg.set_value(f"fpg_fader_{n}", round((ex.level if ex else 1.0) * 255))
                 lv = (ex.level * 100) if ex else 100
                 dpg.set_value(f"fpg_level_{n}", f"{lv:.0f}%")
 
@@ -10863,12 +10863,12 @@ class GUIEngine:
                                    callback=self._on_exec_slot_btn,
                                    user_data=(ex.exec_id, _slot))
             # fader level row
-            dpg.add_slider_float(
+            dpg.add_slider_int(
                 tag=f"exec_fader_{ex.exec_id}",
-                default_value=ex.level,
-                min_value=0.0, max_value=1.0,
+                default_value=int(ex.level * 255),
+                min_value=0, max_value=255,
                 width=-1, height=16,
-                format="%.2f",
+                format="%d",
                 callback=self._on_exec_fader,
                 user_data=ex.exec_id,
                 parent="playbacks_list")
@@ -10946,7 +10946,7 @@ class GUIEngine:
         if self._executor_pool:
             ex = self._executor_pool.executors.get(int(user_data))
             if ex:
-                ex.level = float(value)
+                ex.level = max(0.0, min(1.0, float(value) / 255.0))
                 _exec_fader_mode_hook(ex)
 
     def _on_fixture_dim_slider(self, _sender, value, user_data):
@@ -11320,7 +11320,7 @@ class GUIEngine:
                 tag = f"exec_fader_{eid}"
                 try:
                     if not dpg.is_item_active(tag):
-                        dpg.set_value(tag, ex.level)
+                        dpg.set_value(tag, round(ex.level * 255))
                 except Exception:
                     pass
                 # Fade progress bar
