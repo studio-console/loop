@@ -9855,11 +9855,11 @@ class GUIEngine:
                             dpg.add_text(f"{n}", color=_C_DIM)
                             dpg.add_button(
                                 tag=f"fpg_pri_{n}", label="nrm",
-                                width=28, height=18,
+                                width=30, height=18,
                                 callback=self._on_fpg_pri_cycle, user_data=n)
                             dpg.add_button(
                                 tag=f"fpg_out_{n}", label="nrm",
-                                width=-1, height=18,
+                                width=30, height=18,
                                 callback=self._on_fpg_out_cycle, user_data=n)
 
                         # row 2 — cuestack name
@@ -9962,6 +9962,9 @@ class GUIEngine:
         fader_h = max(30,  slot_h - _ROW_FX)
         fader_w = max(28,  slot_w - 16)
         btn_w   = max(36,  slot_w - 12)
+        # split remaining row-1 width equally between the two header badges
+        # (~20px for the slot-number text + item spacing)
+        badge_w = max(24,  (slot_w - 20) // 2 - 2)
 
         for n in range(1, self._FPG_SLOTS + 1):
             try:
@@ -9969,6 +9972,8 @@ class GUIEngine:
                 dpg.configure_item(f"fpg_fader_{n}", width=fader_w, height=fader_h)
                 dpg.configure_item(f"fpg_name_{n}",  wrap=slot_w - 6)
                 dpg.configure_item(f"fpg_cue_{n}",   wrap=slot_w - 6)
+                dpg.configure_item(f"fpg_pri_{n}",   width=badge_w)
+                dpg.configure_item(f"fpg_out_{n}",   width=badge_w)
                 for _s in ('a', 'b', 'c'):
                     dpg.configure_item(f"fpg_btn{_s}_{n}", width=btn_w)
                 dpg.configure_item(f"fpg_trig_{n}", width=btn_w)
