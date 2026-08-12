@@ -2286,6 +2286,10 @@ class Executor:
         # Optional human-readable label for this fader slot (independent of the cuestack name)
         self.label = ""
         self.fx_pool = None    # injected from ExecutorPool
+        self.output_mode  = 'normal'   # 'normal' | 'moment' | 'vfade'
+        self.vfade_from   = None       # snapshot when vfade cue loaded
+        self.vfade_to     = None       # resolved target cue data
+        self.off_time     = 0.0        # release fade time (seconds) for moment button mode
 
     def assign(self, cuestack):
         self.cuestack = cuestack
@@ -2436,16 +2440,16 @@ class Executor:
         """
         Snap the current (or first) cue on instantly, bypassing crossfade —
         for 'flash' trigger_mode: live only while held, released via
-        flash_off(). Reuses the existing executor time-override mechanism
-        (still subject to the cuestack's allow_exec_time flag) rather than
-        a separate instant-fire path.
+        flash_off(). Always snaps (override=0, no fade, no delay, bypass TIMELOCK).
         """
         if not self.cuestack:
             return f"fader {self.exec_id}: no cuestack assigned"
         prev_override = (self.time_override_on, self.time_override_fade, self.time_override_delay)
+        prev_allow    = self.cuestack.allow_exec_time
         self.time_override_on    = True
         self.time_override_fade  = 0.0
         self.time_override_delay = 0.0
+        self.cuestack.allow_exec_time = True   # bypass TIMELOCK — flash always snaps
         try:
             if self.cuestack.current is not None:
                 result = self.goto(self.cuestack.current, patch, fade_engine)
@@ -2454,11 +2458,15 @@ class Executor:
         finally:
             (self.time_override_on, self.time_override_fade,
              self.time_override_delay) = prev_override
+            self.cuestack.allow_exec_time = prev_allow
         return result
 
     def flash_off(self):
-        """Release a flash — fully stops the executor (clears layer + FX)."""
-        self.stop()
+        """Release flash — deactivates output but preserves cue position."""
+        self._clear_fx()
+        self.is_active = False
+        self.layer.clear()
+        # cuestack.current intentionally not reset — position is preserved
 
     def stop(self):
         self._clear_fx()
@@ -2466,6 +2474,27 @@ class Executor:
         self.layer.clear()
         if self.cuestack:
             self.cuestack.current = None
+
+    def moment_on(self, patch, fade_engine):
+        """Press a moment button: fire the current (or first) cue with normal fade times.
+        Unlike flash, moment respects cue fade times and TIMELOCK."""
+        if not self.cuestack:
+            return f"fader {self.exec_id}: no cuestack assigned"
+        if self.cuestack.current is not None:
+            return self.goto(self.cuestack.current, patch, fade_engine)
+        return self.go(patch, fade_engine)
+
+    def moment_off(self, fade_engine):
+        """Release a moment button: fade out over off_time, then stop."""
+        off_t = getattr(self, 'off_time', 0.0)
+        if off_t <= 0.0:
+            self._clear_fx()
+            self.is_active = False
+            self.layer.clear()
+            return
+        # Start release fade; stop() is called when fade completes
+        self._clear_fx()
+        fade_engine.fire_release(self, off_t, done_callback=self.stop)
 
 
 class ExecutorPool:
@@ -2520,6 +2549,8 @@ class ExecutorPool:
         for i, eid in enumerate(self._fire_order):
             ex = self.executors.get(eid)
             if ex and ex.is_active and ex.cuestack:
+                if getattr(ex, 'output_mode', 'normal') == 'moment' and ex.level <= 0.0:
+                    continue  # moment fader: excluded from LTP when at floor
                 entries.append((ex.priority, i, ex.layer, ex.level))
         entries.sort(key=lambda e: (e[0], e[1]))
         return [(layer, level) for _, _, layer, level in entries]
@@ -2709,13 +2740,14 @@ class Fade:
     }
 
     def __init__(self, data_from, data_to, fade_time, delay_time, executor,
-                 fade_times=None, delay_times=None):
+                 fade_times=None, delay_times=None, done_callback=None):
         self.data_from    = data_from
         self.data_to      = data_to
         self._default_ft  = float(fade_time)
         self._default_dt  = float(delay_time)
         self.executor     = executor
         self.done         = False
+        self._done_callback = done_callback
 
         now = time.monotonic()
         _ft  = fade_times  or {}
@@ -2759,6 +2791,12 @@ class Fade:
                 self.executor.set_value(fid, ch, v_from + (v_to - v_from) * t)
 
         self.done = all_done
+        if self.done and self._done_callback:
+            try:
+                self._done_callback()
+            except Exception:
+                pass
+            self._done_callback = None
 
 
 # ------------------------------------------------------------
@@ -2803,6 +2841,19 @@ class FadeEngine:
             self._fades.append(fade)
         src = " [override]" if override_fade is not None else ""
         print(f"  Fade: {dt}s delay → {ft}s crossfade{src}")
+
+    def fire_release(self, executor, off_time, done_callback=None):
+        """Fade executor's current layer to dark over off_time, then call done_callback."""
+        fade = Fade(
+            data_from     = executor.snapshot_layer(),
+            data_to       = {},   # empty = all channels fade to 0
+            fade_time     = max(0.0, float(off_time)),
+            delay_time    = 0.0,
+            executor      = executor,
+            done_callback = done_callback,
+        )
+        with self._lock:
+            self._fades.append(fade)
 
     def _run(self):
         while self._running:
@@ -2998,6 +3049,44 @@ def _resolve_cue_refs(cue_data, patch, color_pool, dim_pool, attr_pools=None):
     return resolved
 
 
+def _vfade_apply(ex):
+    """Lerp executor.layer between vfade_from and vfade_to at ex.level.
+    Channels in 'from' only fade out; channels in 'to' only fade in.
+    FX and metadata keys are skipped."""
+    t       = max(0.0, min(1.0, ex.level))
+    from_d  = ex.vfade_from or {}
+    to_d    = ex.vfade_to   or {}
+    _SKIP   = {'fx', 'fx_kill', 'color_ref', 'dim_ref', 'color_baked'}
+    all_fids = set(from_d) | set(to_d)
+    ex.layer.clear()
+    for fid in all_fids:
+        fv = from_d.get(fid, {})
+        tv = to_d.get(fid,   {})
+        all_chs = (set(fv) | set(tv)) - _SKIP
+        row = {}
+        for ch in all_chs:
+            f_val = fv.get(ch, 0.0)
+            t_val = tv.get(ch, 0.0)
+            if isinstance(f_val, (int, float)) and isinstance(t_val, (int, float)):
+                row[ch] = f_val + (t_val - f_val) * t
+        if row:
+            ex.layer[fid] = row
+
+
+def _exec_fader_mode_hook(ex):
+    """Called whenever an executor's fader level changes. Handles output_mode side-effects."""
+    mode = getattr(ex, 'output_mode', 'normal')
+    if mode == 'moment':
+        if ex.level <= 0.0:
+            ex.is_active = False
+        elif ex.cuestack and ex.cuestack.current is not None:
+            ex.is_active = True
+    elif mode == 'vfade':
+        if getattr(ex, 'vfade_to', None) is not None:
+            ex.is_active = True
+            _vfade_apply(ex)
+
+
 def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     cue = self.cues[cue_number]
     self.current = cue_number
@@ -3078,6 +3167,16 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     follow = getattr(cue, 'follow_time', 0.0)
     executor._follow_at = (time.monotonic() + follow) if follow > 0 else None
 
+    if getattr(executor, 'output_mode', 'normal') == 'vfade':
+        executor.vfade_from = executor.snapshot_layer()
+        executor.vfade_to   = copy.deepcopy(resolved)
+        executor.is_active  = True
+        _vfade_apply(executor)
+        # auto-follow still works
+        follow = getattr(cue, 'follow_time', 0.0)
+        executor._follow_at = (time.monotonic() + follow) if follow > 0 else None
+        return f"vfade → {cue.name}  (fader controls crossfade)"
+    # Normal path: FadeEngine drives the crossfade
     fade_engine.fire(cue, executor, data_to=resolved,
                      override_fade=ov_fade, override_delay=ov_delay)
     return f"GO → {cue.name}"
@@ -8255,9 +8354,14 @@ class GUIEngine:
                 ("FADER 1 GOTO LAST",       "jump fader 1 to the last cue in its cuestack and fire it"),
                 ("FADER 1 LEVEL 75",        "set fader 1 master level to 75% (GUI slider also works)"),
                 ("FADER 1 MODE FLASH",      "set trigger mode: live only while held"),
+                ("FADER 1 MODE MOMENT",     "button hold mode: fades in on press (using cue fade time), fades out on release using off time"),
                 ("FADER 1 mode toggle",     "set trigger mode: GO/BACK advance (default)"),
                 ("FADER 1 flash on",        "fire instantly (0s), works regardless of mode"),
                 ("FADER 1 flash off",       "release a flash — fully stops the fader"),
+                ("FADER 1 OUTPUT MOMENT",   "fader output mode: output only while level > 0; at zero the executor leaves the LTP stack"),
+                ("FADER 1 OUTPUT VFADE",    "fader output mode: fader position manually controls the crossfade into the current cue"),
+                ("FADER 1 OUTPUT NORMAL",   "fader output mode: normal LTP — cue output persists at any level"),
+                ("FADER 1 OFFTIME 2.0",     "release fade time in seconds for moment button mode (0 = snap off)"),
                 ("FADER 1 BTN A GO",        "set fader 1's A button to GO (A/B/C · GO/BACK/STOP/FLASH/RATE+/RATE-)"),
                 ("FADER 1 RATE+ / RATE-",   "nudge playback speed ×1.25 / ÷1.25 (divides fade times)"),
                 ("FADER 1 RATE RESET",      "restore normal playback speed"),
@@ -9748,6 +9852,7 @@ class GUIEngine:
             ex = self._executor_pool.executors.get(eid)
             if ex:
                 ex.level = max(0.0, min(1.0, float(value)))
+                _exec_fader_mode_hook(ex)
 
     def _on_fpg_btn(self, _sender, _app_data, user_data):
         n, slot = user_data
@@ -9772,7 +9877,9 @@ class GUIEngine:
             try:
                 # Name and cue labels
                 name = ex.cuestack.name[:9] if (ex and ex.cuestack) else "—"
-                dpg.set_value(f"fpg_name_{n}", name)
+                mode_abbr = {'moment': ' [mom]', 'vfade': ' [vfd]'}.get(
+                    getattr(ex, 'output_mode', 'normal'), '')
+                dpg.set_value(f"fpg_name_{n}", name + mode_abbr)
                 if ex and ex.cuestack and ex.cuestack.current is not None:
                     cur = ex.cuestack.current
                     cue = ex.cuestack.cues.get(cur)
@@ -10680,6 +10787,7 @@ class GUIEngine:
             ex = self._executor_pool.executors.get(int(user_data))
             if ex:
                 ex.level = float(value)
+                _exec_fader_mode_hook(ex)
 
     def _on_fixture_dim_slider(self, _sender, value, user_data):
         """Write dim directly into programmer layer without changing fixture selection."""
@@ -11140,12 +11248,18 @@ class GUIEngine:
                 was_held = self._flash_held.get(eid, False)
                 if held and not was_held:
                     try:
-                        self._cmd(f"FADER {eid} flash on")
+                        if ex.trigger_mode == 'moment':
+                            self._cmd(f"FADER {eid} moment on")
+                        else:
+                            self._cmd(f"FADER {eid} flash on")
                     except Exception:
                         pass
                 elif not held and was_held:
                     try:
-                        self._cmd(f"FADER {eid} flash off")
+                        if ex.trigger_mode == 'moment':
+                            self._cmd(f"FADER {eid} moment off")
+                        else:
+                            self._cmd(f"FADER {eid} flash off")
                     except Exception:
                         pass
                 self._flash_held[eid] = held
@@ -11815,6 +11929,8 @@ class ShowFile:
                 "level":        ex.level,
                 "priority":     ex.priority,
                 "trigger_mode": ex.trigger_mode,
+                "output_mode":  ex.output_mode,
+                "off_time":     getattr(ex, 'off_time', 0.0),
                 "btn_a":        ex.btn_a,
                 "btn_b":        ex.btn_b,
                 "btn_c":        ex.btn_c,
@@ -11844,6 +11960,8 @@ class ShowFile:
             ex.level        = float(edata.get("level",  1.0))
             ex.priority     = int(edata.get("priority", 0))
             ex.trigger_mode = edata.get("trigger_mode", "toggle")
+            ex.output_mode  = edata.get("output_mode", "normal")
+            ex.off_time     = float(edata.get("off_time", 0.0))
             _valid_fns      = {'GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-', 'SIZE+', 'SIZE-'}
             ex.btn_a        = edata.get("btn_a", "GO")  if edata.get("btn_a", "GO")   in _valid_fns else "GO"
             ex.btn_b        = edata.get("btn_b", "BACK") if edata.get("btn_b", "BACK") in _valid_fns else "BACK"
@@ -14301,14 +14419,45 @@ def run_command(cmd_str):
             else:
                 ex.flash_off()
                 return f"fader {ex_n} flash off"
+        elif verb == 'MOMENT':
+            if len(tokens) < 4 or tokens[3] not in ('ON', 'OFF'):
+                return "usage: fader <n> moment on | off"
+            if tokens[3] == 'ON':
+                executor_pool.bump_priority(ex_n)
+                msg = ex.moment_on(patch, fade_engine)
+                if ex.cuestack:
+                    _on_cue_fire(ex.cuestack.current)
+                return msg or f"fader {ex_n} moment on"
+            else:
+                ex.moment_off(fade_engine)
+                return f"fader {ex_n} moment off"
         elif verb == 'MODE':
-            # exec <n> mode toggle | flash — how GUI/MIDI should trigger this executor.
-            # 'toggle' = GO/BACK advance normally. 'flash' = live only while held
-            # (use exec <n> flash on/OFF, or a MIDI note's on/off callbacks).
-            if len(tokens) < 4 or tokens[3] not in ('TOGGLE', 'FLASH'):
-                return "usage: exec <n> mode toggle | flash"
+            # exec <n> mode toggle | flash | moment — how GUI/MIDI should trigger this executor.
+            # 'toggle' = GO/BACK advance normally. 'flash' = live only while held.
+            # 'moment' = fires with cue times on press, fades out on release.
+            if len(tokens) < 4 or tokens[3] not in ('TOGGLE', 'FLASH', 'MOMENT'):
+                return "usage: fader <n> mode toggle | flash | moment"
             ex.trigger_mode = tokens[3].lower()
-            return f"fader {ex_n} trigger_mode → {ex.trigger_mode}"
+            return f"fader {ex_n} mode → {ex.trigger_mode}"
+        elif verb == 'OFFTIME':
+            if len(tokens) < 4:
+                return f"fader {ex_n} off_time: {getattr(ex, 'off_time', 0.0):.1f}s"
+            try:
+                ex.off_time = max(0.0, float(tokens[3]))
+            except ValueError:
+                return "FADER OFFTIME: usage  FADER <n> OFFTIME <seconds>"
+            save_show()
+            return f"fader {ex_n} off time → {ex.off_time:.1f}s"
+        elif verb == 'OUTPUT':
+            if len(tokens) < 4 or tokens[3] not in ('NORMAL', 'MOMENT', 'VFADE'):
+                return (f"fader {ex_n} output_mode: {getattr(ex, 'output_mode', 'normal')}"
+                        f"  (usage: FADER <n> OUTPUT normal|moment|vfade)")
+            ex.output_mode = tokens[3].lower()
+            if ex.output_mode != 'vfade':
+                ex.vfade_from = None
+                ex.vfade_to   = None
+            save_show()
+            return f"fader {ex_n} output → {ex.output_mode}"
         elif verb == 'BTN':
             # EXEC <n> BTN A|B|C GO|BACK|STOP|FLASH — assign action button function
             if len(tokens) < 4:
@@ -14332,6 +14481,7 @@ def run_command(cmd_str):
             except ValueError:
                 return "FADER LEVEL: usage  FADER <n> LEVEL <0-100>"
             ex.level = max(0.0, min(1.0, pct / 100.0))
+            _exec_fader_mode_hook(ex)
             save_show()
             return f"fader {ex_n} level → {ex.level * 100:.0f}%"
         elif verb in ('RATE+', 'RATE-'):
@@ -14438,6 +14588,8 @@ def run_command(cmd_str):
             lines.append(f"  Level     : {ex.level * 100:.0f}%")
             lines.append(f"  Priority  : {Executor.PRIORITY_LABELS[ex.priority]}")
             lines.append(f"  Trigger   : {ex.trigger_mode}")
+            lines.append(f"  Output    : {ex.output_mode}")
+            lines.append(f"  Off time  : {getattr(ex, 'off_time', 0.0):.1f}s")
             lines.append(f"  rate      : ×{ex.rate_factor:.2f}")
             lines.append(f"  FX size   : ×{ex.size_factor:.2f}")
             lines.append(f"  Buttons   : A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}")
@@ -20408,6 +20560,70 @@ if STUDIO_HEADLESS:
         prog.clear_programmer()
         _tcs.cues.pop(float(90), None)
         _tcs.cues.pop(float(91), None)
+
+        # ── Flash mode fix ────────────────────────────────────────────────────
+        _fe = executor_pool.get(98)
+        _fe_cs = cuestack_pool.create(98, "FlashTest") if not cuestack_pool.get(98) else cuestack_pool.get(98)
+        if not _fe_cs.cues:
+            _fc = Cue(1, "flash cue")
+            _fc.data = {"1": {"dim": 1.0}}
+            _fe_cs.add_cue(_fc)
+        executor_pool.assign(98, _fe_cs)
+        _fe.trigger_mode = 'flash'
+        _fe.flash_on(patch, fade_engine)
+        _check("flash_on activates executor", _fe.is_active)
+        _saved_pos = _fe_cs.current
+        _fe.flash_off()
+        _check("flash_off deactivates executor", not _fe.is_active)
+        _check("flash_off preserves cue position", _fe_cs.current == _saved_pos)
+
+        # ── Fader output_mode: moment ─────────────────────────────────────────
+        _me = executor_pool.get(97)
+        _me_cs = cuestack_pool.create(97, "MomentTest") if not cuestack_pool.get(97) else cuestack_pool.get(97)
+        if not _me_cs.cues:
+            _mc = Cue(1, "moment cue")
+            _mc.data = {"1": {"dim": 1.0}}
+            _me_cs.add_cue(_mc)
+        executor_pool.assign(97, _me_cs)
+        _me.output_mode = 'moment'
+        _me.level = 0.0
+        _me.is_active = True
+        _active = executor_pool.active_layers()
+        _check("moment fader excluded from active_layers at level 0",
+               all(lyr is not _me.layer for lyr, _ in _active))
+        _me.level = 0.5
+        _exec_fader_mode_hook(_me)
+        _check("moment fader is_active True when level > 0", _me.is_active)
+
+        # ── Fader output_mode: vfade ──────────────────────────────────────────
+        r_vfd = run_command("FADER 97 OUTPUT VFADE")
+        _check("FADER OUTPUT VFADE command works", "vfade" in r_vfd.lower())
+        _check("output_mode set to vfade", _me.output_mode == 'vfade')
+        run_command("FADER 97 OUTPUT NORMAL")
+        _check("FADER OUTPUT NORMAL resets mode", _me.output_mode == 'normal')
+
+        # ── trigger_mode moment ───────────────────────────────────────────────
+        r_mom = run_command("FADER 97 MODE MOMENT")
+        _check("FADER MODE MOMENT accepted", "moment" in r_mom.lower())
+        _check("trigger_mode set to moment", _me.trigger_mode == 'moment')
+        r_offt = run_command("FADER 97 OFFTIME 1.5")
+        _check("FADER OFFTIME sets off_time", abs(_me.off_time - 1.5) < 0.001)
+        run_command("FADER 97 MODE TOGGLE")   # restore
+
+        # ── _vfade_apply ─────────────────────────────────────────────────────
+        _ve = executor_pool.get(96)
+        _ve.output_mode = 'vfade'
+        _ve.vfade_from  = {"1": {"red": 0.0}}
+        _ve.vfade_to    = {"1": {"red": 255.0}}
+        _ve.level       = 0.5
+        _vfade_apply(_ve)
+        _check("vfade_apply lerps at 0.5", abs(_ve.layer.get("1", {}).get("red", 0) - 127.5) < 0.5)
+        _ve.level = 0.0
+        _vfade_apply(_ve)
+        _check("vfade_apply at 0 = from state", _ve.layer.get("1", {}).get("red", -1) == 0.0)
+        _ve.level = 1.0
+        _vfade_apply(_ve)
+        _check("vfade_apply at 1 = to state", abs(_ve.layer.get("1", {}).get("red", 0) - 255.0) < 0.5)
 
     except Exception as e:
         _check(f"smoke test raised {type(e).__name__}: {e}", False)
