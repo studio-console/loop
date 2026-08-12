@@ -5514,6 +5514,59 @@ def _make_pool_empty_theme():
     return t
 
 
+def _make_out_moment_theme():
+    """Amber — fader output mode: moment (active only while level > 0)."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (90, 52,  8, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (160, 98, 14, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (220, 145, 28, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (255, 195, 80, 255))
+    return t
+
+
+def _make_out_vfade_theme():
+    """Teal-blue — fader output mode: vfade (fader is crossfader)."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (8, 52, 90, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (14, 98, 160, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (28, 145, 220, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (80, 195, 255, 255))
+    return t
+
+
+def _make_trig_flash_theme():
+    """Red-orange — trigger mode: flash (snap on/off, no fade)."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (90, 22, 8, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (160, 44, 14, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (220, 70, 28, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (255, 130, 90, 255))
+    return t
+
+
+def _make_trig_moment_theme():
+    """Gold — trigger mode: moment (fades in/out on hold/release)."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (75, 60,  8, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (140, 115, 14, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (200, 170, 28, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          (240, 215, 80, 255))
+    return t
+
+
+def _make_active_slot_theme():
+    """Brighter border for a slot that has a live cue playing."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvChildWindow):
+            dpg.add_theme_color(dpg.mvThemeCol_Border,       (162, 115, 255, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg,      (22, 16, 48, 255))
+    return t
+
+
 _CONSOLE_FONT_CANDIDATES = [
     "/System/Library/Fonts/SFNSMono.ttf",                                   # macOS
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",                  # Debian/Ubuntu
@@ -5720,6 +5773,11 @@ class GUIEngine:
         self._numpad_digit_theme  = _make_numpad_digit_theme()
         self._pool_live_theme     = _make_pool_live_theme()
         self._pool_empty_theme    = _make_pool_empty_theme()
+        self._out_moment_theme    = _make_out_moment_theme()
+        self._out_vfade_theme     = _make_out_vfade_theme()
+        self._trig_flash_theme    = _make_trig_flash_theme()
+        self._trig_moment_theme   = _make_trig_moment_theme()
+        self._active_slot_theme   = _make_active_slot_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
                             # non-resizable full-height viewport, clipping the bottom
@@ -9721,12 +9779,12 @@ class GUIEngine:
     # ── fader page popup ─────────────────────────────────────────────────────
 
     _FPG_SLOTS  = 15
-    _FPG_SLOT_W = 78     # per-slot child_window width (includes borders)
-    _FPG_SLOT_H = 215    # per-slot child_window height
-    _FPG_FADER_H= 80     # vertical slider track length
-    _FPG_FADER_W= 64     # vertical slider lateral width
-    _FPG_BTN_W  = 66     # button width inside slot
-    _FPG_BTN_H  = 22     # button height
+    _FPG_SLOT_W = 88     # slightly wider to fit mode badges
+    _FPG_SLOT_H = 285    # taller for extra rows
+    _FPG_FADER_H= 100    # taller fader track
+    _FPG_FADER_W= 72     # fader width
+    _FPG_BTN_W  = 76     # button fills slot width
+    _FPG_BTN_H  = 24     # slightly taller buttons
 
     @staticmethod
     def _fpg_exec_for_slot(page, slot):
@@ -9766,26 +9824,60 @@ class GUIEngine:
                             tag=f"fpg_slot_{n}",
                             width=self._FPG_SLOT_W, height=self._FPG_SLOT_H,
                             border=True, no_scrollbar=True, no_scroll_with_mouse=True):
-                        dpg.add_text(f"{n}", color=_C_DIM)
-                        dpg.add_text("—", tag=f"fpg_name_{n}", color=_C_TEXT,   wrap=self._FPG_SLOT_W - 8)
-                        dpg.add_text("—", tag=f"fpg_cue_{n}",  color=_C_ACCENT, wrap=self._FPG_SLOT_W - 8)
+
+                        # row 1 — exec id + output mode badge
+                        with dpg.group(horizontal=True):
+                            dpg.add_text(f"{n}", color=_C_DIM)
+                            dpg.add_button(
+                                tag=f"fpg_out_{n}", label="nrm",
+                                width=-1, height=18,
+                                callback=self._on_fpg_out_cycle, user_data=n)
+
+                        # row 2 — cuestack name
+                        dpg.add_text("—", tag=f"fpg_name_{n}", color=_C_ACCENT,
+                                     wrap=self._FPG_SLOT_W - 6)
+
+                        # row 3 — cue label
+                        dpg.add_text("—", tag=f"fpg_cue_{n}", color=_C_DIM,
+                                     wrap=self._FPG_SLOT_W - 6)
+
+                        # row 4 — vertical fader (centred)
                         dpg.add_slider_float(
                             tag=f"fpg_fader_{n}",
                             vertical=True,
                             width=self._FPG_FADER_W, height=self._FPG_FADER_H,
                             min_value=0.0, max_value=1.0,
-                            default_value=1.0, format="%.0f%%",
+                            default_value=1.0, format="",
                             no_input=True,
                             callback=self._on_fpg_fader, user_data=n)
-                        dpg.add_button(tag=f"fpg_btna_{n}", label="go",
-                                       width=self._FPG_BTN_W, height=self._FPG_BTN_H,
-                                       callback=self._on_fpg_btn, user_data=(n, 'a'))
-                        dpg.add_button(tag=f"fpg_btnb_{n}", label="back",
-                                       width=self._FPG_BTN_W, height=self._FPG_BTN_H,
-                                       callback=self._on_fpg_btn, user_data=(n, 'b'))
-                        dpg.add_button(tag=f"fpg_btnc_{n}", label="stop",
-                                       width=self._FPG_BTN_W, height=self._FPG_BTN_H,
-                                       callback=self._on_fpg_btn, user_data=(n, 'c'))
+
+                        # row 5 — level %
+                        dpg.add_text("100%", tag=f"fpg_level_{n}", color=_C_DIM)
+
+                        # rows 6-8 — A/B/C buttons with right-click reassign popups
+                        for _s, _default_lbl in (('a', 'go'), ('b', 'back'), ('c', 'stop')):
+                            _btag = f"fpg_btn{_s}_{n}"
+                            dpg.add_button(
+                                tag=_btag, label=_default_lbl,
+                                width=self._FPG_BTN_W, height=self._FPG_BTN_H,
+                                callback=self._on_fpg_btn, user_data=(n, _s))
+                            with dpg.popup(_btag, mousebutton=1):
+                                dpg.add_text(f"assign button {_s.upper()}", color=_C_ACCENT)
+                                dpg.add_separator()
+                                for _fn in ('GO', 'BACK', 'STOP', 'FLASH', 'RATE+', 'RATE-', 'SIZE+', 'SIZE-'):
+                                    dpg.add_menu_item(
+                                        label=_fn.lower(),
+                                        callback=self._on_fpg_btn_assign,
+                                        user_data=(n, _s, _fn))
+
+                        # row 9 — separator
+                        dpg.add_separator()
+
+                        # row 10 — trigger mode badge (full-width, cycles on click)
+                        dpg.add_button(
+                            tag=f"fpg_trig_{n}", label="tgl",
+                            width=self._FPG_BTN_W, height=self._FPG_BTN_H,
+                            callback=self._on_fpg_trig_cycle, user_data=n)
 
     def _on_fader_page_toggle(self, *_):
         try:
@@ -9865,35 +9957,98 @@ class GUIEngine:
             return  # hold polling handled by tick loop
         self._cmd(f"FADER {eid} {fn}")
 
+    def _on_fpg_out_cycle(self, _sender, _app_data, user_data):
+        """Cycle output_mode for the executor in fader page slot user_data."""
+        n = int(user_data)
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        if not ex or not self._cmd:
+            return
+        _cycle = {'normal': 'moment', 'moment': 'vfade', 'vfade': 'normal'}
+        nxt = _cycle.get(getattr(ex, 'output_mode', 'normal'), 'normal')
+        self._cmd(f"FADER {eid} OUTPUT {nxt.upper()}")
+
+    def _on_fpg_trig_cycle(self, _sender, _app_data, user_data):
+        """Cycle trigger_mode for the executor in fader page slot user_data."""
+        n = int(user_data)
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        if not ex or not self._cmd:
+            return
+        _cycle = {'toggle': 'flash', 'flash': 'moment', 'moment': 'toggle'}
+        nxt = _cycle.get(getattr(ex, 'trigger_mode', 'toggle'), 'toggle')
+        self._cmd(f"FADER {eid} MODE {nxt.upper()}")
+
+    def _on_fpg_btn_assign(self, _sender, _app_data, user_data):
+        """Assign a new function to fader page button slot (right-click popup)."""
+        n, btn_slot, fn = user_data
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        if self._cmd:
+            self._cmd(f"FADER {eid} BTN {btn_slot.upper()} {fn}")
+
     def _tick_fader_page(self):
-        """Update fader page slot labels + FLASH polling (called from _tick)."""
+        """Update fader page slot labels + mode badges (called from _tick)."""
         if not dpg.is_item_shown("fader_page_window"):
             return
         if not self._executor_pool:
             return
         for n in range(1, self._FPG_SLOTS + 1):
             eid = self._fpg_exec_for_slot(self._fpg_page, n)
-            ex = self._executor_pool.executors.get(eid)
+            ex  = self._executor_pool.executors.get(eid)
             try:
-                # Name and cue labels
-                name = ex.cuestack.name[:9] if (ex and ex.cuestack) else "—"
-                mode_abbr = {'moment': ' [mom]', 'vfade': ' [vfd]'}.get(
-                    getattr(ex, 'output_mode', 'normal'), '')
-                dpg.set_value(f"fpg_name_{n}", name + mode_abbr)
+                # ── name + cue ───────────────────────────────
+                name = ex.cuestack.name[:12] if (ex and ex.cuestack) else "—"
+                dpg.set_value(f"fpg_name_{n}", name)
                 if ex and ex.cuestack and ex.cuestack.current is not None:
                     cur = ex.cuestack.current
                     cue = ex.cuestack.cues.get(cur)
-                    cue_lbl = f"▶{cur:.0f}" + (f":{cue.name[:4]}" if cue else "")
+                    cue_lbl = f"▶{cur:.0f}" + (f" {cue.name[:6]}" if cue else "")
                 else:
                     cue_lbl = "—"
                 dpg.set_value(f"fpg_cue_{n}", cue_lbl)
-                # Sync fader only when not actively dragged
+
+                # ── fader (sync when not dragging) ───────────
                 if not dpg.is_item_active(f"fpg_fader_{n}"):
                     dpg.set_value(f"fpg_fader_{n}", ex.level if ex else 1.0)
-                # Button labels from configurable function
-                for _s, _tag in (('a', f"fpg_btna_{n}"), ('b', f"fpg_btnb_{n}"), ('c', f"fpg_btnc_{n}")):
-                    fn = getattr(ex, f'btn_{_s}', 'GO') if ex else {'a': 'GO', 'b': 'BACK', 'c': 'STOP'}[_s]
-                    dpg.set_item_label(_tag, fn.lower())
+                lv = (ex.level * 100) if ex else 100
+                dpg.set_value(f"fpg_level_{n}", f"{lv:.0f}%")
+
+                # ── button labels ─────────────────────────────
+                for _s in ('a', 'b', 'c'):
+                    fn = getattr(ex, f'btn_{_s}', {'a': 'GO', 'b': 'BACK', 'c': 'STOP'}[_s]) if ex else {'a': 'GO', 'b': 'BACK', 'c': 'STOP'}[_s]
+                    dpg.set_item_label(f"fpg_btn{_s}_{n}", fn.lower())
+
+                # ── output mode badge ─────────────────────────
+                out_mode = getattr(ex, 'output_mode', 'normal') if ex else 'normal'
+                _out_labels = {'normal': 'nrm', 'moment': 'mom', 'vfade': 'vfd'}
+                dpg.set_item_label(f"fpg_out_{n}", _out_labels.get(out_mode, 'nrm'))
+                _out_themes = {
+                    'normal': self._dim_btn_theme,
+                    'moment': self._out_moment_theme,
+                    'vfade':  self._out_vfade_theme,
+                }
+                _ot = _out_themes.get(out_mode, self._dim_btn_theme)
+                if _ot:
+                    dpg.bind_item_theme(f"fpg_out_{n}", _ot)
+
+                # ── trigger mode badge ────────────────────────
+                trig_mode = getattr(ex, 'trigger_mode', 'toggle') if ex else 'toggle'
+                _trig_labels = {'toggle': 'tgl', 'flash': 'fls', 'moment': 'mom'}
+                dpg.set_item_label(f"fpg_trig_{n}", _trig_labels.get(trig_mode, 'tgl'))
+                _trig_themes = {
+                    'toggle': self._dim_btn_theme,
+                    'flash':  self._trig_flash_theme,
+                    'moment': self._trig_moment_theme,
+                }
+                _tt = _trig_themes.get(trig_mode, self._dim_btn_theme)
+                if _tt:
+                    dpg.bind_item_theme(f"fpg_trig_{n}", _tt)
+
+                # ── active slot highlight ─────────────────────
+                is_live = bool(ex and ex.is_active and ex.cuestack)
+                if is_live and self._active_slot_theme:
+                    dpg.bind_item_theme(f"fpg_slot_{n}", self._active_slot_theme)
+
             except Exception:
                 pass
 
@@ -10599,7 +10754,8 @@ class GUIEngine:
             return ()
         return tuple(
             (eid, ex.priority, ex.cuestack.current if ex.cuestack else None,
-             ex.time_override_on, ex.time_override_fade, ex.is_active)
+             ex.time_override_on, ex.time_override_fade, ex.is_active,
+             getattr(ex, 'output_mode', 'normal'), getattr(ex, 'trigger_mode', 'toggle'))
             for eid, ex in sorted(self._executor_pool.executors.items())
             if ex.is_active and ex.cuestack
         )
@@ -10664,7 +10820,11 @@ class GUIEngine:
             else:
                 cue_label = "▶ —"
             pri_label = Executor.PRIORITY_LABELS.get(ex.priority, 'nrm')
-            _full_name = f"[{ex.exec_id}] {cs.name}"
+            _mode_tag = {'moment': ' ◉', 'vfade': ' ⇕'}.get(
+                getattr(ex, 'output_mode', 'normal'), '')
+            _trig_tag = {'flash': ' ⚡', 'moment': ' ◌'}.get(
+                getattr(ex, 'trigger_mode', 'toggle'), '')
+            _full_name = f"[{ex.exec_id}] {cs.name}{_mode_tag}{_trig_tag}"
             _fit_name  = self._fit_text(_full_name, _name_w)
             _fit_cue   = self._fit_text(cue_label, _cue_w)
             if i > 0:
