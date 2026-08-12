@@ -3,6 +3,16 @@
   "entries": [
     {
       "date": "2026-08-12",
+      "summary": "Fix stale absolute paths in session-handoff comment after folder move",
+      "details": []
+    },
+    {
+      "date": "2026-08-12",
+      "summary": "Move project files into studio_project/ subfolder",
+      "details": []
+    },
+    {
+      "date": "2026-08-12",
       "summary": "Font size 17px; add CLAUDE.md architecture reference and CURRENT.md state doc",
       "details": []
     },
