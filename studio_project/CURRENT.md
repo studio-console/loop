@@ -1,9 +1,9 @@
 # Studio Console — Current State
 
-**Date:** 2026-08-12  
-**Version:** v0.21  
-**Smoke test:** 456/456 PASS  
-**Branch:** main, 2 commits ahead of origin (not pushed)
+**Date:** 2026-08-12
+**Version:** v0.21
+**Smoke test:** 456/456 PASS
+**Branch:** main, up to date with origin
 
 ---
 
@@ -22,37 +22,41 @@
 - OSC input: MA3-compatible `/gma3/fader/...` routes
 - AI engine integration
 - Save/load show, backup, named saves in `studio_saves/`
+- Commands are case-insensitive (`stk`, `STK`, `fdr`, `FDR` all work)
 
-## Recent changes (this session)
+## Recent changes
 
-1. **stk/fdr rename** (DeepSeek, 2026-08-12): Full executor→fader / cuestack→stack rename
-   - Short aliases: `CS`/`EXEC` removed; now `stk`/`fdr`
-   - Data files renamed: `stacks.json`, `faders.json`, `fader_pages.json`
-   - Parser, help text, UI labels, changelog all updated
+1. **Project moved into subfolder** (2026-08-12):
+   - All files now live in `studio_project/` (was Documents root)
+   - Git repo root stays at `/Users/c/Documents`; `.gitignore` updated to match new paths
+   - VS Code workspace should be opened at `/Users/c/Documents/studio_project/`
+   - Session history for prior work: `~/.claude/projects/-Users-c-Documents/305f777b-...jsonl`
+
+2. **Font set to 17px Avenir** (2026-08-12):
+   - `_setup_fonts()` at line ~5665: both surface and mono fonts at 17px
+   - Previously 13px (DeepSeek), bumped through 14→15→18→17 to find sweet spot
+
+3. **GUI visual polish** (DeepSeek, 2026-08-12):
+   - Avenir font throughout, rounded corners (12px panels), deeper violet palette
+   - Elevated card panels, inset input wells, STUDIO wordmark in header
+   - Forms pool width fix, 6th fixture clipping fix in stage visualiser
+
+4. **stk/fdr rename** (DeepSeek, 2026-08-12):
+   - `CS`/`EXEC` removed — now `stk`/`fdr` (or full `stack`/`fader`)
+   - Data files: `stacks.json`, `faders.json`, `fader_pages.json`
    - Commits: `e1a2026`, `1b265a2`
 
-2. **GUI visual polish** (DeepSeek, 2026-08-12):
-   - Font switched to Avenir 17px throughout (was mono 14px)
-   - Rounded corners: 12px panels, 9px sliders
-   - Deeper violet background, elevated card panels, inset input wells
-   - Forms pool width fix (right edge now symmetric)
-   - 6th fixture clipping fix in stage visualiser
-   - STUDIO wordmark in header
-
-3. **Test stacks 11–14** in `studio_data/stacks.json`:
-   - 11: vFade A↔B (amber/cyan crossfade via fader level)
-   - 12: Moment Flash (white, holds while button held, fades out in 0.8s)
-   - 13: HI Override Blue (priority=1, dominates NRM stacks in LTP merge)
-   - 14: FX Chase (3 FX looks, auto-advance every 5s, wrap=True)
+5. **CLAUDE.md + CURRENT.md added** for AI handoff efficiency
 
 ## Known / pending
 
-- Stacks 11–14 in show file need re-seeding after any headless smoke test run (smoke test SaveShow wipes them — known issue, not fixed yet)
-- 2 local commits not pushed to remote
-- File split planned: studio_project.py is 21k lines / ~319k tokens — expensive for AI context. Plan is to split into models / engine / commands / gui / drivers / show / tests / main
-- No other known bugs
+- Test stacks 11–14 get wiped by headless smoke test (`SaveShow` overwrites files) — re-seed manually after any headless run
+- File split planned: `studio_project.py` is ~21k lines / ~319k tokens. Plan: split into `models.py`, `engine.py`, `commands.py`, `gui.py`, `drivers.py`, `show.py`, `tests.py`, `main.py`
+- DeepSeek API ($2 budget) used for the rename + GUI polish sessions — ~$1.60 spent
 
-## How to hand off to another AI
+## How to hand off to a new AI session
 
-Paste `CLAUDE.md` for architecture context, then this file for current state.  
-Point the AI at the specific function/line rather than loading the whole file.
+1. Open VS Code workspace at `/Users/c/Documents/studio_project/`
+2. In Continue or Claude Code, reference: `@CLAUDE.md` and `@CURRENT.md`
+3. Or paste both files' contents at the start of the chat
+4. Point the AI at specific functions/lines rather than loading the whole file
