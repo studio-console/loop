@@ -9,3 +9,5 @@
 !studio_project/studio_data/*.json
 !studio_project/CLAUDE.md
 !studio_project/CURRENT.md
+!studio_project/studio_console/
+!studio_project/studio_console/**

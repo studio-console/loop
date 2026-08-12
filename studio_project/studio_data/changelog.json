@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-12",
+      "summary": "Phase 0: add studio_console/ package, centralize DATA_DIR in paths.py",
+      "details": []
+    },
+    {
+      "date": "2026-08-12",
       "summary": "Fix stale absolute paths in session-handoff comment after folder move",
       "details": []
     },
