@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-12",
+      "summary": "Font size 17px; add CLAUDE.md architecture reference and CURRENT.md state doc",
+      "details": []
+    },
+    {
+      "date": "2026-08-12",
       "summary": "Rename cuestack/executor vocabulary to stk/fdr (lowercase)",
       "details": []
     },

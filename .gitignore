@@ -3,8 +3,9 @@
 
 # Track these
 !.gitignore
-!studio_project.py
-!studio_data/
-!studio_data/*.json
-!CLAUDE.md
-!CURRENT.md
+!studio_project/
+!studio_project/studio_project.py
+!studio_project/studio_data/
+!studio_project/studio_data/*.json
+!studio_project/CLAUDE.md
+!studio_project/CURRENT.md
