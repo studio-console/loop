@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-12",
+      "summary": "Phase 6: extract gui/theme.py \u2014 palette, DPG themes, font setup",
+      "details": []
+    },
+    {
+      "date": "2026-08-12",
       "summary": "Phase 0: add studio_console/ package, centralize DATA_DIR in paths.py",
       "details": []
     },
