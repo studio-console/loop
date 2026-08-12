@@ -1,7 +1,7 @@
 {
   "version": "3.0",
   "fx_scale": 2,
-  "cuestacks": {
+  "stacks": {
     "1": {
       "name": "Color Show",
       "allow_exec_time": true,

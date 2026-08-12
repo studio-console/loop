@@ -1931,7 +1931,7 @@ class GroupPool:
 
 # ============================================================
 # STUDIO CONSOLE - Core Object Model
-# Block 6: cue and CueStack
+# Block 6: cue and Stack
 # Delta-based tracking, decimal cue numbers,
 # fade/delay times, GO/BACK/GOTO playback.
 # ============================================================
@@ -2028,9 +2028,9 @@ class Cue:
         return f"[cue {self.cue_number}] \"{self.name}\" | {timing}"
 
 
-class CueStack:
+class Stack:
     """
-    An ordered list of cues — like a sequence/executor in MA3.
+    An ordered list of cues — like a sequence/fader in MA3.
     Supports decimal cue numbers for inserting between existing cues.
     Tracks current playback position.
 
@@ -2041,10 +2041,10 @@ class CueStack:
     """
     def __init__(self, stack_id, name=""):
         self.stack_id        = stack_id
-        self.name            = name if name else f"cuestack {stack_id}"
+        self.name            = name if name else f"stack {stack_id}"
         self.cues            = {}        # { cue_number (float): cue }
         self.current         = None      # Current cue number (float) or None
-        self.allow_exec_time = True      # False = ignore executor time override for this stack
+        self.allow_exec_time = True      # False = ignore fader time override for this stack
         self.wrap            = False     # True = fire cue 1 clean on wrap-around (no LTP bleed)
         self.bounce          = False     # True = reverse direction at ends (ping-pong)
         self._bounce_dir     = 1        # 1 = forward, -1 = backward (runtime, not saved)
@@ -2097,7 +2097,7 @@ class CueStack:
         """
         numbers = self._sorted_cue_numbers()
         if not numbers:
-            print("cuestack is empty.")
+            print("stack is empty.")
             return
 
         if self.current is None:
@@ -2115,7 +2115,7 @@ class CueStack:
         """Step to the previous cue."""
         numbers = self._sorted_cue_numbers()
         if not numbers:
-            print("cuestack is empty.")
+            print("stack is empty.")
             return
 
         if self.current is None:
@@ -2209,10 +2209,10 @@ class CuePool:
         return cue
 
 
-class CueStackPool:
-    """Pool of cuestack objects (executors), numbered 1-based."""
+class StackPool:
+    """Pool of stack objects (faders), numbered 1-based."""
     def __init__(self):
-        self.stacks = {}    # { int slot: cuestack }
+        self.stacks = {}    # { int slot: stack }
 
     def get(self, n):
         return self.stacks.get(int(n))
@@ -2223,12 +2223,12 @@ class CueStackPool:
     def create(self, n, name=""):
         existing = self.stacks.get(int(n))
         if existing:
-            # Rename in-place — preserves cues and executor references
-            existing.name = name or f"cuestack {n}"
+            # Rename in-place — preserves cues and fader references
+            existing.name = name or f"stack {n}"
             return existing
-        cs = CueStack(int(n), name or f"cuestack {n}")
-        self.stacks[int(n)] = cs
-        return cs
+        stk = Stack(int(n), name or f"stack {n}")
+        self.stacks[int(n)] = stk
+        return stk
 
     def delete(self, n):
         self.stacks.pop(int(n), None)
@@ -2238,15 +2238,15 @@ class CueStackPool:
 
 
 # ============================================================
-# Executor + ExecutorPool
-# Each executor is a live playback slot that holds a CueStack
+# Fader + FaderPool
+# Each fader is a live playback slot that holds a Stack
 # reference and owns its own output layer dict.
-# OutputState reads from all active executor layers and merges
+# OutputState reads from all active fader layers and merges
 # them LTP (most recently fired = highest priority).
 # ============================================================
 
-class Executor:
-    """One physical playback slot — a cuestack running in real time."""
+class Fader:
+    """One physical playback slot — a stack running in real time."""
 
     # Priority constants
     PRIORITY_LOW    = -1
@@ -2254,25 +2254,25 @@ class Executor:
     PRIORITY_HIGH   =  1
     PRIORITY_LABELS = {-1: 'lo', 0: 'nrm', 1: 'hi'}
 
-    def __init__(self, exec_id):
-        self.exec_id      = exec_id
-        self.cuestack     = None
+    def __init__(self, fdr_id):
+        self.fdr_id      = fdr_id
+        self.stack     = None
         self.is_active    = False
         self.level        = 1.0      # master fader, 0.0–1.0
         self.priority     = 0        # -1 low / 0 normal / 1 high
         self.trigger_mode = 'toggle' # 'toggle' (GO/BACK advance) or 'flash' (live only while held)
         self.layer     = {}       # { fid_str: { channel: value } }
-        self._fx_ids     = []     # FX engine layer IDs currently active for this executor
+        self._fx_ids     = []     # FX engine layer IDs currently active for this fader
         self._fx_counter = 0      # ever-increasing; avoids ID reuse during outfade overlap
-        self.fx_engine  = None    # injected from ExecutorPool
-        self.form_pool  = None    # injected from ExecutorPool
-        self.color_pool = None    # injected from ExecutorPool
-        self.dim_pool   = None    # injected from ExecutorPool
-        self.group_pool = None    # injected from ExecutorPool
+        self.fx_engine  = None    # injected from FaderPool
+        self.form_pool  = None    # injected from FaderPool
+        self.color_pool = None    # injected from FaderPool
+        self.dim_pool   = None    # injected from FaderPool
+        self.group_pool = None    # injected from FaderPool
         # Time overrides — None means "use cue's own time"
         self.time_override_fade  = None   # float seconds or None
         self.time_override_delay = None   # float seconds or None
-        self.time_override_on    = False  # master enable for this executor's override
+        self.time_override_on    = False  # master enable for this fader's override
         self._follow_at          = None   # monotonic time to auto-GO via FOLLOW
         self._chase_next_at      = None   # monotonic time for next chase GO
         # Three assignable action buttons per fader slot
@@ -2283,16 +2283,16 @@ class Executor:
         self.rate_factor = 1.0
         # FX amplitude multiplier: 1.0 = normal, 2.0 = double, 0.5 = half (applied to all owned layers)
         self.size_factor = 1.0
-        # Optional human-readable label for this fader slot (independent of the cuestack name)
+        # Optional human-readable label for this fader slot (independent of the stack name)
         self.label = ""
-        self.fx_pool = None    # injected from ExecutorPool
+        self.fx_pool = None    # injected from FaderPool
         self.output_mode  = 'normal'   # 'normal' | 'moment' | 'vfade'
         self.vfade_from   = None       # snapshot when vfade cue loaded
         self.vfade_to     = None       # resolved target cue data
         self.off_time     = 0.0        # release fade time (seconds) for moment button mode
 
-    def assign(self, cuestack):
-        self.cuestack = cuestack
+    def assign(self, stack):
+        self.stack = stack
 
     def set_value(self, fid, channel, value):
         """Called by Fade.tick() on every interpolation step."""
@@ -2307,7 +2307,7 @@ class Executor:
     # ── FX management ────────────────────────────────────────
 
     def _clear_fx(self):
-        """Remove all FX layers owned by this executor from the shared engine."""
+        """Remove all FX layers owned by this fader from the shared engine."""
         if self.fx_engine:
             for fxid in self._fx_ids:
                 self.fx_engine.remove(fxid)
@@ -2317,7 +2317,7 @@ class Executor:
         """
         Read FX defs from cue.data master entries and start layers.
         Old layers are outfaded (not instant-killed) so FX crossfades naturally.
-        Each layer ID is exec_id * 10000 + ever-increasing counter so IDs never
+        Each layer ID is fdr_id * 10000 + ever-increasing counter so IDs never
         repeat even while outfading layers are still in the engine.
         default_infade  — fallback infade when the FX def doesn't set one;
                           callers pass the effective cue fade time.
@@ -2365,7 +2365,7 @@ class Executor:
 
         def _add(ld, ch, targets):
             self._fx_counter += 1
-            fxid = self.exec_id * 10000 + self._fx_counter
+            fxid = self.fdr_id * 10000 + self._fx_counter
             # Use default_infade (cue fade time) when the FX def has no explicit infade
             infade = ld['infade'] if 'infade' in ld else default_infade
             self.fx_engine.add(
@@ -2388,7 +2388,7 @@ class Executor:
                 direction    = ld.get('direction','forward'),
             )
             self._fx_ids.append(fxid)
-            # Apply executor size_factor to the newly-created layer
+            # Apply fader size_factor to the newly-created layer
             if self.size_factor != 1.0:
                 layer = self.fx_engine._layers.get(fxid)
                 if layer is not None:
@@ -2412,29 +2412,29 @@ class Executor:
     # ── Playback ─────────────────────────────────────────────
 
     def go(self, patch, fade_engine):
-        if not self.cuestack:
-            return f"fader {self.exec_id}: no cuestack assigned"
+        if not self.stack:
+            return f"fader {self.fdr_id}: no stack assigned"
         self.is_active = True
-        return self.cuestack.go(patch, fade_engine, self)
+        return self.stack.go(patch, fade_engine, self)
 
     def back(self, patch, fade_engine):
-        if not self.cuestack:
-            return f"fader {self.exec_id}: no cuestack assigned"
+        if not self.stack:
+            return f"fader {self.fdr_id}: no stack assigned"
         self.is_active = True
-        return self.cuestack.back(patch, fade_engine, self)
+        return self.stack.back(patch, fade_engine, self)
 
     def goto(self, num, patch, fade_engine):
-        if not self.cuestack:
-            return f"fader {self.exec_id}: no cuestack assigned"
+        if not self.stack:
+            return f"fader {self.fdr_id}: no stack assigned"
         self.is_active = True
-        return self.cuestack.goto(num, patch, fade_engine, self)
+        return self.stack.goto(num, patch, fade_engine, self)
 
     def reload(self, patch, fade_engine):
         """Re-fire the current cue from scratch without advancing."""
-        if not self.cuestack:
-            return f"fader {self.exec_id}: no cuestack assigned"
+        if not self.stack:
+            return f"fader {self.fdr_id}: no stack assigned"
         self.is_active = True
-        return self.cuestack.reload(patch, fade_engine, self)
+        return self.stack.reload(patch, fade_engine, self)
 
     def flash_on(self, patch, fade_engine):
         """
@@ -2442,23 +2442,23 @@ class Executor:
         for 'flash' trigger_mode: live only while held, released via
         flash_off(). Always snaps (override=0, no fade, no delay, bypass TIMELOCK).
         """
-        if not self.cuestack:
-            return f"fader {self.exec_id}: no cuestack assigned"
+        if not self.stack:
+            return f"fader {self.fdr_id}: no stack assigned"
         prev_override = (self.time_override_on, self.time_override_fade, self.time_override_delay)
-        prev_allow    = self.cuestack.allow_exec_time
+        prev_allow    = self.stack.allow_exec_time
         self.time_override_on    = True
         self.time_override_fade  = 0.0
         self.time_override_delay = 0.0
-        self.cuestack.allow_exec_time = True   # bypass TIMELOCK — flash always snaps
+        self.stack.allow_exec_time = True   # bypass TIMELOCK — flash always snaps
         try:
-            if self.cuestack.current is not None:
-                result = self.goto(self.cuestack.current, patch, fade_engine)
+            if self.stack.current is not None:
+                result = self.goto(self.stack.current, patch, fade_engine)
             else:
                 result = self.go(patch, fade_engine)
         finally:
             (self.time_override_on, self.time_override_fade,
              self.time_override_delay) = prev_override
-            self.cuestack.allow_exec_time = prev_allow
+            self.stack.allow_exec_time = prev_allow
         return result
 
     def flash_off(self):
@@ -2466,22 +2466,22 @@ class Executor:
         self._clear_fx()
         self.is_active = False
         self.layer.clear()
-        # cuestack.current intentionally not reset — position is preserved
+        # stack.current intentionally not reset — position is preserved
 
     def stop(self):
         self._clear_fx()
         self.is_active = False
         self.layer.clear()
-        if self.cuestack:
-            self.cuestack.current = None
+        if self.stack:
+            self.stack.current = None
 
     def moment_on(self, patch, fade_engine):
         """Press a moment button: fire the current (or first) cue with normal fade times.
         Unlike flash, moment respects cue fade times and TIMELOCK."""
-        if not self.cuestack:
-            return f"fader {self.exec_id}: no cuestack assigned"
-        if self.cuestack.current is not None:
-            return self.goto(self.cuestack.current, patch, fade_engine)
+        if not self.stack:
+            return f"fader {self.fdr_id}: no stack assigned"
+        if self.stack.current is not None:
+            return self.goto(self.stack.current, patch, fade_engine)
         return self.go(patch, fade_engine)
 
     def moment_off(self, fade_engine):
@@ -2497,11 +2497,11 @@ class Executor:
         fade_engine.fire_release(self, off_t, done_callback=self.stop)
 
 
-class ExecutorPool:
-    """Numbered bank of Executor slots (1-based)."""
+class FaderPool:
+    """Numbered bank of Fader slots (1-based)."""
 
     def __init__(self):
-        self.executors       = {}    # { int: Executor }
+        self.faders       = {}    # { int: Fader }
         self._fire_order     = []    # exec_ids ordered by last GO (last = highest priority)
         self.default_fx_engine   = None
         self.default_form_pool   = None
@@ -2510,14 +2510,14 @@ class ExecutorPool:
         self.default_group_pool  = None
         self.default_attr_pools  = None   # dict of {attribute_name: AttributePool}
         self.default_fx_pool     = None   # FXPool instance, injected at startup
-        # Pages group executor slots for display/navigation — organizational
+        # Pages group fader slots for display/navigation — organizational
         # only, doesn't affect playback. { int: {'name': str, 'slots': [int, ...]} }
         self.pages = {}
 
     def get(self, n):
         n = int(n)
-        if n not in self.executors:
-            ex = Executor(n)
+        if n not in self.faders:
+            ex = Fader(n)
             ex.fx_engine  = self.default_fx_engine
             ex.form_pool  = self.default_form_pool
             ex.color_pool = self.default_color_pool
@@ -2525,30 +2525,30 @@ class ExecutorPool:
             ex.group_pool = self.default_group_pool
             ex.attr_pools = self.default_attr_pools
             ex.fx_pool    = self.default_fx_pool
-            self.executors[n] = ex
-        return self.executors[n]
+            self.faders[n] = ex
+        return self.faders[n]
 
-    def assign(self, exec_id, cuestack):
-        ex = self.get(exec_id)
-        ex.assign(cuestack)
+    def assign(self, fdr_id, stack):
+        ex = self.get(fdr_id)
+        ex.assign(stack)
         return ex
 
-    def bump_priority(self, exec_id):
-        """Move exec to top of the LTP stack (called when it fires GO)."""
-        if exec_id in self._fire_order:
-            self._fire_order.remove(exec_id)
-        self._fire_order.append(exec_id)
+    def bump_priority(self, fdr_id):
+        """Move fdr to top of the LTP stack (called when it fires GO)."""
+        if fdr_id in self._fire_order:
+            self._fire_order.remove(fdr_id)
+        self._fire_order.append(fdr_id)
 
     def active_layers(self):
         """
         Returns list of (layer_dict, level) in merge order.
         First entry = lowest priority, last entry = highest (LTP — last written wins).
-        Sorted by: executor priority level first, then fire order within same level.
+        Sorted by: fader priority level first, then fire order within same level.
         """
         entries = []
         for i, eid in enumerate(self._fire_order):
-            ex = self.executors.get(eid)
-            if ex and ex.is_active and ex.cuestack:
+            ex = self.faders.get(eid)
+            if ex and ex.is_active and ex.stack:
                 if getattr(ex, 'output_mode', 'normal') == 'moment' and ex.level <= 0.0:
                     continue  # moment fader: excluded from LTP when at floor
                 entries.append((ex.priority, i, ex.layer, ex.level))
@@ -2556,14 +2556,14 @@ class ExecutorPool:
         return [(layer, level) for _, _, layer, level in entries]
 
     def all_slots(self):
-        return sorted(self.executors.keys())
+        return sorted(self.faders.keys())
 
     # ── Pages ────────────────────────────────────────────────
 
     def get_page(self, n):
         n = int(n)
         if n not in self.pages:
-            self.pages[n] = {'name': f'page {n}', 'cuestacks': []}
+            self.pages[n] = {'name': f'page {n}', 'stacks': []}
         return self.pages[n]
 
     def set_page_name(self, n, name):
@@ -2572,14 +2572,14 @@ class ExecutorPool:
     def add_to_page(self, n, cs_id):
         page = self.get_page(n)
         cs_id = int(cs_id)
-        if cs_id not in page['cuestacks']:
-            page['cuestacks'].append(cs_id)
+        if cs_id not in page['stacks']:
+            page['stacks'].append(cs_id)
 
     def remove_from_page(self, n, cs_id):
         page = self.get_page(n)
         cs_id = int(cs_id)
-        if cs_id in page['cuestacks']:
-            page['cuestacks'].remove(cs_id)
+        if cs_id in page['stacks']:
+            page['stacks'].remove(cs_id)
 
     def delete_page(self, n):
         self.pages.pop(int(n), None)
@@ -2722,7 +2722,7 @@ class Fade:
     One active crossfade between two states.
     Interpolates linearly from data_from → data_to
     over fade_time seconds, after an optional delay_time.
-    Writes into executor.layer via executor.set_value().
+    Writes into fader.layer via fader.set_value().
     """
 
     # Map channel names to attribute groups for per-group timing
@@ -2739,13 +2739,13 @@ class Fade:
         'control': 'control', 'macro': 'control', 'animation': 'control',
     }
 
-    def __init__(self, data_from, data_to, fade_time, delay_time, executor,
+    def __init__(self, data_from, data_to, fade_time, delay_time, fader,
                  fade_times=None, delay_times=None, done_callback=None):
         self.data_from    = data_from
         self.data_to      = data_to
         self._default_ft  = float(fade_time)
         self._default_dt  = float(delay_time)
-        self.executor     = executor
+        self.fader     = fader
         self.done         = False
         self._done_callback = done_callback
 
@@ -2788,7 +2788,7 @@ class Fade:
                 if t < 1.0:
                     all_done = False
 
-                self.executor.set_value(fid, ch, v_from + (v_to - v_from) * t)
+                self.fader.set_value(fid, ch, v_from + (v_to - v_from) * t)
 
         self.done = all_done
         if self.done and self._done_callback:
@@ -2809,7 +2809,7 @@ class FadeEngine:
     Runs in a background thread at 44Hz.
     Multiple fades can overlap — new cue fires while previous
     is still running and they crossfade naturally.
-    Each fade writes to its executor's own layer.
+    Each fade writes to its fader's own layer.
     """
     def __init__(self):
         self._fades  = []
@@ -2818,22 +2818,22 @@ class FadeEngine:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
-    def fire(self, cue, executor, data_to=None,
+    def fire(self, cue, fader, data_to=None,
              override_fade=None, override_delay=None):
-        """snapshot executor's current layer and fade to new cue state.
+        """snapshot fader's current layer and fade to new cue state.
         data_to: pre-resolved DMX dict; falls back to cue.data if not provided.
-        override_fade / override_delay: time override from executor or programmer."""
+        override_fade / override_delay: time override from fader or programmer."""
         ft = override_fade  if override_fade  is not None else cue.fade_time
         dt = override_delay if override_delay is not None else cue.delay_time
         # Per-attribute times are suppressed when a global override is active
         fat = None if override_fade  is not None else (cue.fade_times  or None)
         dat = None if override_delay is not None else (cue.delay_times or None)
         fade = Fade(
-            data_from   = executor.snapshot_layer(),
+            data_from   = fader.snapshot_layer(),
             data_to     = data_to if data_to is not None else cue.data,
             fade_time   = ft,
             delay_time  = dt,
-            executor    = executor,
+            fader    = fader,
             fade_times  = fat,
             delay_times = dat,
         )
@@ -2842,14 +2842,14 @@ class FadeEngine:
         src = " [override]" if override_fade is not None else ""
         print(f"  Fade: {dt}s delay → {ft}s crossfade{src}")
 
-    def fire_release(self, executor, off_time, done_callback=None):
-        """Fade executor's current layer to dark over off_time, then call done_callback."""
+    def fire_release(self, fader, off_time, done_callback=None):
+        """Fade fader's current layer to dark over off_time, then call done_callback."""
         fade = Fade(
-            data_from     = executor.snapshot_layer(),
+            data_from     = fader.snapshot_layer(),
             data_to       = {},   # empty = all channels fade to 0
             fade_time     = max(0.0, float(off_time)),
             delay_time    = 0.0,
-            executor      = executor,
+            fader      = fader,
             done_callback = done_callback,
         )
         with self._lock:
@@ -2864,14 +2864,14 @@ class FadeEngine:
                 self._fades = [f for f in self._fades if not f.done]
             time.sleep(1 / 44)
 
-    def fade_progress(self, executor):
+    def fade_progress(self, fader):
         """Return (elapsed_fraction, total_seconds) for the most recent active fade on
-        this executor, or None if no fade is currently running."""
+        this fader, or None if no fade is currently running."""
         now = time.monotonic()
         best = None
         with self._lock:
             for fade in self._fades:
-                if fade.executor is executor and not fade.done:
+                if fade.fader is fader and not fade.done:
                     ft = fade._default_ft
                     elapsed = now - fade._default_start
                     t = 1.0 if ft == 0 else min(1.0, max(0.0, elapsed / ft))
@@ -2973,7 +2973,7 @@ class NetworkEngine:
 
 
 # ------------------------------------------------------------
-# Updated cuestack playback methods
+# Updated stack playback methods
 # go / back / goto now route through FadeEngine
 # ------------------------------------------------------------
 
@@ -3050,7 +3050,7 @@ def _resolve_cue_refs(cue_data, patch, color_pool, dim_pool, attr_pools=None):
 
 
 def _vfade_apply(ex):
-    """Lerp executor.layer between vfade_from and vfade_to at ex.level.
+    """Lerp fader.layer between vfade_from and vfade_to at ex.level.
     Channels in 'from' only fade out; channels in 'to' only fade in.
     FX and metadata keys are skipped."""
     t       = max(0.0, min(1.0, ex.level))
@@ -3074,12 +3074,12 @@ def _vfade_apply(ex):
 
 
 def _exec_fader_mode_hook(ex):
-    """Called whenever an executor's fader level changes. Handles output_mode side-effects."""
+    """Called whenever an fader's fader level changes. Handles output_mode side-effects."""
     mode = getattr(ex, 'output_mode', 'normal')
     if mode == 'moment':
         if ex.level <= 0.0:
             ex.is_active = False
-        elif ex.cuestack and ex.cuestack.current is not None:
+        elif ex.stack and ex.stack.current is not None:
             ex.is_active = True
     elif mode == 'vfade':
         if getattr(ex, 'vfade_to', None) is not None:
@@ -3087,13 +3087,13 @@ def _exec_fader_mode_hook(ex):
             _vfade_apply(ex)
 
 
-def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
+def _stack_fire_cue(self, cue_number, patch, fade_engine, fader):
     cue = self.cues[cue_number]
     self.current = cue_number
-    executor.is_active = True
+    fader.is_active = True
 
     # fx_kill: instant-apply by default so FX dies immediately without waiting
-    # for the fade to interpolate 0→1.  Pre-setting executor.layer to 1.0 before
+    # for the fade to interpolate 0→1.  Pre-setting fader.layer to 1.0 before
     # FadeEngine.fire() snapshots it means v_from==v_to==1 — no interpolation.
     # Leaving an fx_kill cue: clear it now so the Fade starts from 0 (not stale 1).
     new_cue_has_fx_kill = any(
@@ -3103,35 +3103,35 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     if new_cue_has_fx_kill:
         for fid_str, vals in cue.data.items():
             if isinstance(vals, dict) and vals.get('fx_kill'):
-                executor.layer.setdefault(fid_str, {})['fx_kill'] = 1.0
+                fader.layer.setdefault(fid_str, {})['fx_kill'] = 1.0
     else:
-        for fid_vals in executor.layer.values():
+        for fid_vals in fader.layer.values():
             fid_vals.pop('fx_kill', None)
 
     resolved = _resolve_cue_refs(
         cue.data, patch,
-        getattr(executor, 'color_pool',    None),
-        getattr(executor, 'dim_pool',      None),
-        getattr(executor, 'attr_pools',    None),
+        getattr(fader, 'color_pool',    None),
+        getattr(fader, 'dim_pool',      None),
+        getattr(fader, 'attr_pools',    None),
     )
-    print(f"\nGO → {cue}  [fader {executor.exec_id}]")
+    print(f"\nGO → {cue}  [fader {fader.fdr_id}]")
 
-    # Resolve time override: executor override wins; programmer time is fallback
+    # Resolve time override: fader override wins; programmer time is fallback
     ov_fade = ov_delay = None
-    cs = executor.cuestack
-    if (executor.time_override_on
-            and (cs is None or cs.allow_exec_time)):
-        if executor.time_override_fade  is not None:
-            ov_fade  = executor.time_override_fade
-        if executor.time_override_delay is not None:
-            ov_delay = executor.time_override_delay
-    # programmer time fallback — only if no executor override applied
+    stk = fader.stack
+    if (fader.time_override_on
+            and (stk is None or stk.allow_exec_time)):
+        if fader.time_override_fade  is not None:
+            ov_fade  = fader.time_override_fade
+        if fader.time_override_delay is not None:
+            ov_delay = fader.time_override_delay
+    # programmer time fallback — only if no fader override applied
     if ov_fade is None and _prog_time.get('on'):
         ov_fade  = float(_prog_time['fade'])
         ov_delay = float(_prog_time['delay'])
 
-    # Apply executor rate_factor — scales fade (and delay) times; >1.0 = faster
-    _rate = getattr(executor, 'rate_factor', 1.0)
+    # Apply fader rate_factor — scales fade (and delay) times; >1.0 = faster
+    _rate = getattr(fader, 'rate_factor', 1.0)
     if _rate > 0 and _rate != 1.0:
         ov_fade  = (ov_fade  if ov_fade  is not None else cue.fade_time)  / _rate
         ov_delay = (ov_delay if ov_delay is not None else cue.delay_time) / _rate
@@ -3161,39 +3161,39 @@ def _cuestack_fire_cue(self, cue_number, patch, fade_engine, executor):
     if _cue_fx_out is not None:
         fx_outfade = float(_cue_fx_out)
 
-    executor._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=fx_outfade)
+    fader._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=fx_outfade)
 
     # Auto-follow: arm timer so _tick() fires GO after follow_time seconds
     follow = getattr(cue, 'follow_time', 0.0)
-    executor._follow_at = (time.monotonic() + follow) if follow > 0 else None
+    fader._follow_at = (time.monotonic() + follow) if follow > 0 else None
 
-    if getattr(executor, 'output_mode', 'normal') == 'vfade':
-        executor.vfade_from = executor.snapshot_layer()
-        executor.vfade_to   = copy.deepcopy(resolved)
-        executor.is_active  = True
-        _vfade_apply(executor)
+    if getattr(fader, 'output_mode', 'normal') == 'vfade':
+        fader.vfade_from = fader.snapshot_layer()
+        fader.vfade_to   = copy.deepcopy(resolved)
+        fader.is_active  = True
+        _vfade_apply(fader)
         # auto-follow still works
         follow = getattr(cue, 'follow_time', 0.0)
-        executor._follow_at = (time.monotonic() + follow) if follow > 0 else None
+        fader._follow_at = (time.monotonic() + follow) if follow > 0 else None
         return f"vfade → {cue.name}  (fader controls crossfade)"
     # Normal path: FadeEngine drives the crossfade
-    fade_engine.fire(cue, executor, data_to=resolved,
+    fade_engine.fire(cue, fader, data_to=resolved,
                      override_fade=ov_fade, override_delay=ov_delay)
     return f"GO → {cue.name}"
 
-def _cuestack_go(self, patch, fade_engine, executor):
+def _stack_go(self, patch, fade_engine, fader):
     numbers = self._sorted_cue_numbers()
     if not numbers:
-        return "cuestack is empty"
+        return "stack is empty"
     if getattr(self, 'bounce', False):
         if self.current is None:
             self._bounce_dir = 1
-            return _cuestack_fire_cue(self, numbers[0], patch, fade_engine, executor)
+            return _stack_fire_cue(self, numbers[0], patch, fade_engine, fader)
         try:
             idx = numbers.index(self.current)
         except ValueError:
             self._bounce_dir = 1
-            return _cuestack_fire_cue(self, numbers[0], patch, fade_engine, executor)
+            return _stack_fire_cue(self, numbers[0], patch, fade_engine, fader)
         d = getattr(self, '_bounce_dir', 1)
         next_idx = idx + d
         if next_idx >= len(numbers):
@@ -3206,7 +3206,7 @@ def _cuestack_go(self, patch, fade_engine, executor):
             next_idx = idx + 1
             if next_idx >= len(numbers):
                 next_idx = len(numbers) - 1
-        return _cuestack_fire_cue(self, numbers[next_idx], patch, fade_engine, executor)
+        return _stack_fire_cue(self, numbers[next_idx], patch, fade_engine, fader)
     wrap_occurred = False
     if self.current is None:
         next_num = numbers[0]
@@ -3219,13 +3219,13 @@ def _cuestack_go(self, patch, fade_engine, executor):
         except ValueError:
             next_num = numbers[0]
     if wrap_occurred and getattr(self, 'wrap', False):
-        executor.layer.clear()  # no LTP bleed from last cue back to first
-    return _cuestack_fire_cue(self, next_num, patch, fade_engine, executor)
+        fader.layer.clear()  # no LTP bleed from last cue back to first
+    return _stack_fire_cue(self, next_num, patch, fade_engine, fader)
 
-def _cuestack_back(self, patch, fade_engine, executor):
+def _stack_back(self, patch, fade_engine, fader):
     numbers = self._sorted_cue_numbers()
     if not numbers:
-        return "cuestack is empty"
+        return "stack is empty"
     wrap_occurred = False
     if self.current is None:
         prev_num = numbers[-1]
@@ -3238,25 +3238,25 @@ def _cuestack_back(self, patch, fade_engine, executor):
         except ValueError:
             prev_num = numbers[-1]
     if wrap_occurred and getattr(self, 'wrap', False):
-        executor.layer.clear()  # no LTP bleed from first cue back to last
-    return _cuestack_fire_cue(self, prev_num, patch, fade_engine, executor)
+        fader.layer.clear()  # no LTP bleed from first cue back to last
+    return _stack_fire_cue(self, prev_num, patch, fade_engine, fader)
 
-def _cuestack_goto(self, cue_number, patch, fade_engine, executor):
+def _stack_goto(self, cue_number, patch, fade_engine, fader):
     num = float(cue_number)
     if num not in self.cues:
         return f"cue {cue_number} not found"
-    return _cuestack_fire_cue(self, num, patch, fade_engine, executor)
+    return _stack_fire_cue(self, num, patch, fade_engine, fader)
 
-def _cuestack_reload(self, patch, fade_engine, executor):
+def _stack_reload(self, patch, fade_engine, fader):
     """Re-fire the current cue without advancing the pointer."""
     if self.current is None:
         return "no active cue — use go to start"
-    return _cuestack_fire_cue(self, self.current, patch, fade_engine, executor)
+    return _stack_fire_cue(self, self.current, patch, fade_engine, fader)
 
-CueStack.go     = _cuestack_go
-CueStack.back   = _cuestack_back
-CueStack.goto   = _cuestack_goto
-CueStack.reload = _cuestack_reload
+Stack.go     = _stack_go
+Stack.back   = _stack_back
+Stack.goto   = _stack_goto
+Stack.reload = _stack_reload
 
 
 # ============================================================
@@ -3608,7 +3608,7 @@ class FXLayer:
         self._size_inline   = float(size)
         self._spread_inline = float(spread)
 
-        # Per-executor amplitude multiplier — set by FADER n SIZE; 1.0 = normal
+        # Per-fader amplitude multiplier — set by FADER n SIZE; 1.0 = normal
         self.size_scale = 1.0
 
     def begin_outfade(self, now=None):
@@ -3921,7 +3921,7 @@ class FXEngine:
 
 
 # ------------------------------------------------------------
-# _bucket_fx_defs — shared by _prog_fx_start and Executor._start_cue_fx
+# _bucket_fx_defs — shared by _prog_fx_start and Fader._start_cue_fx
 # ------------------------------------------------------------
 
 def _bucket_fx_defs(fx_defs_by_fid, patch):
@@ -4250,10 +4250,10 @@ class AudioMapper:
 
 
 # ------------------------------------------------------------
-# Final OutputState — merges all executor layers + programmer
+# Final OutputState — merges all fader layers + programmer
 # + audio + FX.
 # Priority (base layers, highest → lowest):
-#   programmer  > audio  > executor layers (LTP)
+#   programmer  > audio  > fader layers (LTP)
 # FX is additive on top of whichever base layer wins — FX always visible
 # ------------------------------------------------------------
 
@@ -4262,7 +4262,7 @@ class OutputState:
     The final resolved DMX state for every sub-fixture.
 
     Layers merged in priority order (lowest → highest):
-      cue (via executor_pool LTP merge) → audio_layer → programmer_layer → fx_layer
+      cue (via fader_pool LTP merge) → audio_layer → programmer_layer → fx_layer
     Master fader and per-fixture dim are applied last.
 
     get_dmx_for_universe() builds a 512-slot tuple ready to hand
@@ -4273,7 +4273,7 @@ class OutputState:
         self.programmer_layer = {}
         self.fx_layer         = {}
         self.audio_layer      = {}
-        self.executor_pool    = None   # set via link_executor_pool()
+        self.fader_pool    = None   # set via link_fader_pool()
         self.master_level     = 1.0   # grand master fader (0.0–1.0)
         self.blind            = False  # when True, programmer layer is suppressed from DMX output
         self.highlight_mode   = False  # when True, selected fixtures go full-white at 100%
@@ -4290,15 +4290,15 @@ class OutputState:
     def link_programmer(self, programmer):
         self.programmer_layer = programmer.data
 
-    def link_executor_pool(self, pool):
-        self.executor_pool = pool
+    def link_fader_pool(self, pool):
+        self.fader_pool = pool
 
     def _merged_cue_layer(self):
-        """LTP merge of all active executor layers. Called inside _lock."""
+        """LTP merge of all active fader layers. Called inside _lock."""
         merged = {}
-        if not self.executor_pool:
+        if not self.fader_pool:
             return merged
-        for (layer, level) in self.executor_pool.active_layers():
+        for (layer, level) in self.fader_pool.active_layers():
             for fid, vals in layer.items():
                 if fid not in merged:
                     merged[fid] = {}
@@ -4803,7 +4803,7 @@ class OSCEngine:
 
     grandMA3-compatible addresses (input):
       /gma3/cmd              string   — command line (e.g. "Go+ cue 1")
-      /gma3/fader/P/E        float    — fader 0.0-1.0 (page P, exec E)
+      /gma3/fader/P/E        float    — fader 0.0-1.0 (page P, fdr E)
       /gma3/key/P/E/K        int      — key 0/1 press/release
 
     Lightform Creator (output):
@@ -4907,16 +4907,16 @@ class OSCEngine:
         """Convenience alias for the console-state feedback target."""
         self.add_target("_feedback", host, port)
 
-    def broadcast_state(self, output_state, executor_pool, patch):
+    def broadcast_state(self, output_state, fader_pool, patch):
         """
         Send a concise state snapshot over OSC to all feedback targets.
         Called from the GUI tick loop at ~1 Hz.
 
         Addresses:
           /studio/master            float  0.0-1.0
-          /studio/exec/N/level      float  0.0-1.0
-          /studio/exec/N/cue        string current cue name or ""
-          /studio/exec/N/active     int    1/0
+          /studio/fdr/N/level      float  0.0-1.0
+          /studio/fdr/N/cue        string current cue name or ""
+          /studio/fdr/N/active     int    1/0
           /studio/fixture/F/dim     float  0.0-1.0
           /studio/fixture/F/r       int    0-255
           /studio/fixture/F/g       int    0-255
@@ -4928,16 +4928,16 @@ class OSCEngine:
         try:
             master = getattr(output_state, 'master_level', 1.0)
             fb.send_message("/studio/master", float(master))
-            if executor_pool:
-                for eid, ex in sorted(executor_pool.executors.items()):
+            if fader_pool:
+                for eid, ex in sorted(fader_pool.faders.items()):
                     level  = float(getattr(ex, 'level', 0.0))
                     active = 1 if getattr(ex, 'is_active', False) else 0
-                    fb.send_message(f"/studio/exec/{eid}/level",  level)
-                    fb.send_message(f"/studio/exec/{eid}/active", active)
-                    cs  = getattr(ex, 'cuestack', None)
-                    cur = cs.current if cs else None
-                    cue = cs.cues.get(cur) if (cs and cur is not None) else None
-                    fb.send_message(f"/studio/exec/{eid}/cue",
+                    fb.send_message(f"/studio/fdr/{eid}/level",  level)
+                    fb.send_message(f"/studio/fdr/{eid}/active", active)
+                    stk  = getattr(ex, 'stack', None)
+                    cur = stk.current if stk else None
+                    cue = stk.cues.get(cur) if (stk and cur is not None) else None
+                    fb.send_message(f"/studio/fdr/{eid}/cue",
                                     cue.name if cue else "")
             cue_merged = output_state._merged_cue_layer() if output_state else {}
             for master_fix in patch.all_fixtures():
@@ -4988,7 +4988,7 @@ class AIEngine:
 
     The AI knows about:
     - Your fixtures and their IDs
-    - All cuestacks and their cues
+    - All stacks and their cues
     - Available FX waveforms and parameters
     - programmer commands (same syntax as command line)
     """
@@ -5008,7 +5008,7 @@ Return a JSON array of action objects. Each action is one of:
 {"action": "fx_clear"}
 {"action": "group_select","group": 2}
 {"action": "fade_time",   "seconds": 3.0}
-{"action": "exec_level",  "exec": 1, "level": 0.75}
+{"action": "exec_level",  "fdr": 1, "level": 0.75}
 
 Rules:
 - "group_select" selects all fixtures in group N as the programmer selection.
@@ -5020,15 +5020,15 @@ Rules:
   apply to (e.g. a slow fade into a cue: [{"action":"fade_time","seconds":5},
   {"action":"goto_cue","stack":1,"num":2}]). It does not change any other
   timing and is not a standing default.
-- "stack" identifies a cuestack by id, not a fader slot — it is resolved
-  to whichever fader that cuestack is currently assigned to.
+- "stack" identifies a stack by id, not a fader slot — it is resolved
+  to whichever fader that stack is currently assigned to.
 - Only return the JSON array. No explanation, no markdown.
 """
 
     _CMD_HISTORY_MAX = 12
 
     def __init__(self, patch, prog, output_state, fx_engine, fade_engine,
-                 cuestack_pool=None, executor_pool=None, cmd_fn=None, log_fn=None,
+                 stack_pool=None, fader_pool=None, cmd_fn=None, log_fn=None,
                  model="claude-haiku-4-5-20251001"):
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
@@ -5044,9 +5044,9 @@ Rules:
         self._fx             = fx_engine
         self._fade           = fade_engine
         # Live pool reference (not a snapshot) so newly created/loaded
-        # cuestacks are visible without re-constructing the AI engine.
-        self._stack_pool     = cuestack_pool
-        self._executor_pool  = executor_pool
+        # stacks are visible without re-constructing the AI engine.
+        self._stack_pool     = stack_pool
+        self._fader_pool  = fader_pool
         self._cmd            = cmd_fn    # run_command — full console command parser
         self._log            = log_fn    # GUI log callback
         self._enabled        = True
@@ -5093,27 +5093,27 @@ Rules:
                 prog_data[fid] = {k: round(v, 3) for k, v in vals.items()}
         except Exception:
             pass
-        # Active executors
+        # Active faders
         active_execs = []
-        if self._executor_pool:
-            for eid, ex in sorted(self._executor_pool.executors.items()):
-                if ex.is_active and ex.cuestack:
-                    cur  = ex.cuestack.current
-                    cue  = ex.cuestack.cues.get(cur) if cur is not None else None
+        if self._fader_pool:
+            for eid, ex in sorted(self._fader_pool.faders.items()):
+                if ex.is_active and ex.stack:
+                    cur  = ex.stack.current
+                    cue  = ex.stack.cues.get(cur) if cur is not None else None
                     active_execs.append({
-                        "exec": eid,
-                        "cuestack": ex.cuestack.name,
+                        "fdr": eid,
+                        "stack": ex.stack.name,
                         "current_cue": cur,
                         "cue_name": cue.name if cue else None,
                         "level": round(ex.level, 2),
-                        "priority": Executor.PRIORITY_LABELS.get(ex.priority, 'NRM'),
+                        "priority": Fader.PRIORITY_LABELS.get(ex.priority, 'NRM'),
                     })
         return {
             "fixtures": fixtures,
-            "cuestacks": stacks,
+            "stacks": stacks,
             "fx": fx_active,
             "programmer": prog_data,
-            "active_executors": active_execs,
+            "active_faders": active_execs,
             "recent_commands": list(self._cmd_history),
         }
 
@@ -5194,24 +5194,24 @@ Rules:
 
     def _exec_for_stack(self, stack_id):
         """
-        Resolve a cuestack id (as used in ACTION_SCHEMA's "stack" field and
-        in _state()'s cuestacks section) to the executor slot it's actually
-        assigned to. Falls back to a same-numbered executor slot if no
-        executor currently has that cuestack assigned (preserves the
-        default 1:1 stack/executor wiring set up at startup).
+        Resolve a stack id (as used in ACTION_SCHEMA's "stack" field and
+        in _state()'s stacks section) to the fader slot it's actually
+        assigned to. Falls back to a same-numbered fader slot if no
+        fader currently has that stack assigned (preserves the
+        default 1:1 stack/fader wiring set up at startup).
         """
-        if not self._executor_pool:
+        if not self._fader_pool:
             return None
-        for ex in self._executor_pool.executors.values():
-            if ex.cuestack and ex.cuestack.stack_id == stack_id:
+        for ex in self._fader_pool.faders.values():
+            if ex.stack and ex.stack.stack_id == stack_id:
                 return ex
-        return self._executor_pool.get(stack_id)
+        return self._fader_pool.get(stack_id)
 
     def _fire(self, ex, fire_fn, *args):
         """
-        Fire a cue via one of Executor.go/back/goto, applying a pending
+        Fire a cue via one of Fader.go/back/goto, applying a pending
         fade_time override (if any) for just this one fire, then logging
-        the result (including failures like 'no cuestack assigned', which
+        the result (including failures like 'no stack assigned', which
         were previously discarded silently).
         """
         if self._last_fade is not None:
@@ -5244,17 +5244,17 @@ Rules:
                 elif act == "goto_cue":
                     ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
-                        self._executor_pool.bump_priority(ex.exec_id)
+                        self._fader_pool.bump_priority(ex.fdr_id)
                         self._fire(ex, ex.goto, a["num"], self._patch, self._fade)
                 elif act == "cue_go":
                     ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
-                        self._executor_pool.bump_priority(ex.exec_id)
+                        self._fader_pool.bump_priority(ex.fdr_id)
                         self._fire(ex, ex.go, self._patch, self._fade)
                 elif act == "cue_back":
                     ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
-                        self._executor_pool.bump_priority(ex.exec_id)
+                        self._fader_pool.bump_priority(ex.fdr_id)
                         self._fire(ex, ex.back, self._patch, self._fade)
                 elif act == "dim":
                     # Clamp like every sibling dim-setter (programmer.set_dimmer,
@@ -5290,7 +5290,7 @@ Rules:
                 elif act == "cue_fire" and "num" in a:
                     ex = self._exec_for_stack(a.get("stack", 1))
                     if ex:
-                        self._executor_pool.bump_priority(ex.exec_id)
+                        self._fader_pool.bump_priority(ex.fdr_id)
                         self._fire(ex, ex.goto, float(a["num"]), self._patch, self._fade)
                 elif act == "group_select":
                     if self._cmd:
@@ -5302,14 +5302,14 @@ Rules:
                     else:
                         self._fx.clear()
                 elif act == "exec_level":
-                    if self._executor_pool and self._cmd:
-                        self._cmd(f"FADER {a.get('exec', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
+                    if self._fader_pool and self._cmd:
+                        self._cmd(f"FADER {a.get('fdr', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
                 elif act == "fx_clear":
                     # Route through the real FX CLEAR handler — it both stops
                     # the FX engine layers *and* clears the programmer's
                     # pending 'fx' defs, so a rebuild tick can't resurrect
                     # them. self._fx.clear() alone did neither correctly:
-                    # it also wiped executor-owned cue FX layers whose ids
+                    # it also wiped fader-owned cue FX layers whose ids
                     # are tracked separately in ex._fx_ids.
                     if self._cmd:
                         self._cmd("FX CLEAR")
@@ -5333,7 +5333,7 @@ Rules:
 #
 # Panels:
 #   - Header: title bar + current cue status
-#   - Cuestack: cue list, GO / BACK, live indicator
+#   - Stack: cue list, GO / BACK, live indicator
 #   - FX: rate / size / spread sliders, Kill button
 #   - Output monitor: per-tube RGB+dim bars
 #   - MIDI mapping: table with add / remove / learn
@@ -5433,7 +5433,7 @@ def _make_go_theme():
 
 
 def _make_fade_bar_theme():
-    """Amber progress bar for executor fade progress indicator."""
+    """Amber progress bar for fader fade progress indicator."""
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvProgressBar):
             dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram, (200, 130, 20, 200))
@@ -5559,7 +5559,7 @@ def _make_trig_moment_theme():
 
 
 def _make_pri_hi_theme():
-    """Green — executor priority: high (beats lower-priority layers)."""
+    """Green — fader priority: high (beats lower-priority layers)."""
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvButton):
             dpg.add_theme_color(dpg.mvThemeCol_Button,        (12, 68, 20, 255))
@@ -5570,7 +5570,7 @@ def _make_pri_hi_theme():
 
 
 def _make_pri_lo_theme():
-    """Muted purple — executor priority: low (overridden by normal/high layers)."""
+    """Muted purple — fader priority: low (overridden by normal/high layers)."""
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvButton):
             dpg.add_theme_color(dpg.mvThemeCol_Button,        (22, 16, 42, 255))
@@ -5655,7 +5655,7 @@ class GUIEngine:
 
     Usage:
         gui = GUIEngine(midi, fx_engine, fade_engine, output_state,
-                        patch, cuestacks, prog, cue_go_fn, cue_back_fn,
+                        patch, stacks, prog, cue_go_fn, cue_back_fn,
                         goto_fn, ai=ai_instance)
         gui.build()    # set up all windows/widgets (main thread)
         gui.run()      # hand control to DearPyGui (blocks until closed)
@@ -5667,11 +5667,11 @@ class GUIEngine:
     target_registry = {}
 
     def __init__(self, midi, fx_engine, fade_engine, output_state, patch,
-                 cuestacks, prog, go_fn, back_fn, goto_fn, reload_fn=None, ai=None,
+                 stacks, prog, go_fn, back_fn, goto_fn, reload_fn=None, ai=None,
                  save_fn=None, cmd_fn=None,
                  group_pool=None, color_pool=None, dim_pool=None,
-                 cue_pool=None, cuestack_pool=None, active_executor=None,
-                 executor_pool=None, fx_pool=None, form_pool=None,
+                 cue_pool=None, stack_pool=None, active_fader=None,
+                 fader_pool=None, fx_pool=None, form_pool=None,
                  rate_pool=None, size_pool=None, spread_pool=None,
                  speed_master_pool=None,
                  attr_pools=None, osc=None,
@@ -5682,7 +5682,7 @@ class GUIEngine:
         self._fade       = fade_engine
         self._out        = output_state
         self._patch      = patch
-        self._stacks     = cuestacks       # {stack_id: CueStack}
+        self._stacks     = stacks       # {stack_id: Stack}
         self._prog       = prog
         self._go         = go_fn
         self._back       = back_fn
@@ -5694,9 +5694,9 @@ class GUIEngine:
         self._colors     = color_pool
         self._dims       = dim_pool
         self._cue_pool        = cue_pool
-        self._cuestack_pool   = cuestack_pool
-        self._active_executor = active_executor  # list[int] so mutations are visible
-        self._executor_pool   = executor_pool
+        self._stack_pool   = stack_pool
+        self._active_fader = active_fader  # list[int] so mutations are visible
+        self._fader_pool   = fader_pool
         self._fx_pool    = fx_pool
         self._form_pool  = form_pool
         self._rate_pool   = rate_pool
@@ -5716,7 +5716,7 @@ class GUIEngine:
         self._cmd_history = []         # entered commands for ↑↓ recall
         self._cmd_hist_i  = -1        # history cursor
 
-        self._flash_held  = {}         # {exec_id: bool} — tracks held state of FLASH buttons
+        self._flash_held  = {}         # {fdr_id: bool} — tracks held state of FLASH buttons
         self._col_btn_themes  = {}     # {slot_n: ((r,g,b), theme_id)} — per-color-preset button themes
         self._dim_btn_themes  = {}     # {slot_n: (level, theme_id)} — per-dim-preset button themes
         self._out_bar_themes  = {}     # {fid: ((r,g,b), theme_id)} — output monitor bar tints
@@ -5737,7 +5737,7 @@ class GUIEngine:
         self._reassign_pending = None
         self._ai_history       = []   # list of {ts, prompt, summary, actions}
         self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
-        self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows exec (page-1)*15+N
+        self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows fdr (page-1)*15+N
         self._fpg_last_win_size = (0, 0)
 
     # ── Popup layout persistence ─────────────────────────────
@@ -6046,7 +6046,7 @@ class GUIEngine:
         dpg.add_separator()
 
     def _build_left_column(self):
-        self._displayed_executor  = None
+        self._displayed_fader  = None
         self._displayed_cs_name   = None
         self._last_playbacks_hash = None
         _W = self._W_LEFT
@@ -6054,7 +6054,7 @@ class GUIEngine:
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── cue list ─────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("› cuestack", color=_C_ACCENT)
+                dpg.add_text("› stack", color=_C_ACCENT)
                 dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
                               width=-120, height_mode=dpg.mvComboHeight_Small,
                               callback=self._on_cs_combo_select)
@@ -6078,10 +6078,10 @@ class GUIEngine:
 
             # ── Active playbacks ─────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("› running cuestacks", color=_C_ACCENT)
+                dpg.add_text("› running stacks", color=_C_ACCENT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="stop all", width=78, height=24,
-                               callback=self._on_stop_all_executors)
+                               callback=self._on_stop_all_faders)
             dpg.add_separator()
             with dpg.child_window(tag="playbacks_list", width=-1, height=108,
                                   border=False, no_scrollbar=False, no_scroll_with_mouse=False):
@@ -6743,11 +6743,11 @@ class GUIEngine:
                 sy0  = sub_y0 + row * dot_s
                 sfid = str(sub.fixture_id)
                 ps   = self._out.programmer_layer.get(sfid, {})
-                cs   = cue_merged.get(sfid, {})
+                stk   = cue_merged.get(sfid, {})
                 fs   = self._out.fx_layer.get(sfid, {})
-                br   = ps.get('red',   cs.get('red',   0))
-                bg2  = ps.get('green', cs.get('green', 0))
-                bb   = ps.get('blue',  cs.get('blue',  0))
+                br   = ps.get('red',   stk.get('red',   0))
+                bg2  = ps.get('green', stk.get('green', 0))
+                bb   = ps.get('blue',  stk.get('blue',  0))
                 # Envelope-blended merge (matches get_dmx_for_universe)
                 if 'red' in fs:
                     env_r = fs.get('_env_red', 1.0)
@@ -6806,9 +6806,9 @@ class GUIEngine:
             self._build_group_panel()
             self._build_color_panel()
             self._build_dim_panel()
-        # Row 2: Cuestacks | Cues | FX Pool
+        # Row 2: Stacks | Cues | FX Pool
         with dpg.group(horizontal=True):
-            self._build_cuestack_panel()
+            self._build_stack_panel()
             self._build_cue_panel()
             self._build_fx_pool_panel()
         # Row 3: Forms (full width)
@@ -6992,42 +6992,42 @@ class GUIEngine:
                 pass
         self._focus_cmd()
 
-    def _build_cuestack_panel(self):
+    def _build_stack_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
-        with dpg.child_window(tag="pool_cuestacks", width=self._PANEL_W,
+        with dpg.child_window(tag="pool_stacks", width=self._PANEL_W,
                               height=self._POOL_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
-            dpg.add_text("› cuestacks", color=_C_P_CS)
+            dpg.add_text("› stacks", color=_C_P_CS)
             dpg.add_separator()
             for row in range(rows):
                 with dpg.group(horizontal=True):
                     for col in range(self._POOL_COLS):
                         n = row * self._POOL_COLS + col + 1
                         dpg.add_button(
-                            tag=f"cs_btn_{n}", label=f"cs{n}",
+                            tag=f"cs_btn_{n}", label=f"stk{n}",
                             width=self._BTN_W, height=self._BTN_H,
-                            callback=self._on_cuestack_click, user_data=n)
+                            callback=self._on_stack_click, user_data=n)
                         with dpg.tooltip(f"cs_btn_{n}"):
-                            dpg.add_text(f"cuestack {n}", tag=f"cs_tip_{n}")
+                            dpg.add_text(f"stack {n}", tag=f"cs_tip_{n}")
                         with dpg.popup(f"cs_btn_{n}", mousebutton=1):
-                            dpg.add_text(f"cuestack {n}", color=_C_P_CS)
+                            dpg.add_text(f"stack {n}", color=_C_P_CS)
                             dpg.add_separator()
                             dpg.add_menu_item(label="select / activate",
-                                callback=self._on_cuestack_click,
+                                callback=self._on_stack_click,
                                 user_data=n)
                             dpg.add_menu_item(label="create / rename...",
                                 callback=self._ctx_prefill,
-                                user_data=f"RECORD CUESTACK {n} ")
+                                user_data=f"RECORD STACK {n} ")
                             dpg.add_menu_item(label="rename...",
                                 callback=self._ctx_prefill,
-                                user_data=f"RENAME CUESTACK {n} ")
+                                user_data=f"RENAME STACK {n} ")
                             dpg.add_menu_item(label="assign to fader...",
                                 callback=self._ctx_prefill,
-                                user_data=f"ASSIGN CS {n} TO FADER ")
+                                user_data=f"ASSIGN stk {n} TO FADER ")
                             dpg.add_separator()
-                            dpg.add_menu_item(label="delete cuestack",
+                            dpg.add_menu_item(label="delete stack",
                                 callback=self._ctx_exec,
-                                user_data=f"delete cueSTACK {n}")
+                                user_data=f"delete stack {n}")
 
     def _build_cue_panel(self):
         rows = self._POOL_SLOTS // self._POOL_COLS
@@ -7066,17 +7066,17 @@ class GUIEngine:
                                 callback=self._ctx_exec,
                                 user_data=f"delete cue {n}")
 
-    def _on_cuestack_click(self, _sender, _app_data, user_data):
+    def _on_stack_click(self, _sender, _app_data, user_data):
         n = user_data
-        if self._cuestack_pool and self._cuestack_pool.get(n):
-            if self._active_executor is not None:
-                self._active_executor[0] = n
-            cs = self._cuestack_pool.get(n)
-            self._log(f"> CUESTACK {n}  selected — {cs.name}")
+        if self._stack_pool and self._stack_pool.get(n):
+            if self._active_fader is not None:
+                self._active_fader[0] = n
+            stk = self._stack_pool.get(n)
+            self._log(f"> STACK {n}  selected — {stk.name}")
         else:
-            self._log(f"> CUESTACK {n} is empty — name it to create:")
+            self._log(f"> STACK {n} is empty — name it to create:")
             try:
-                dpg.set_value("cmd_input", f"RECORD CUESTACK {n} ")
+                dpg.set_value("cmd_input", f"RECORD STACK {n} ")
             except Exception:
                 pass
         self._focus_cmd()
@@ -7188,7 +7188,7 @@ class GUIEngine:
     # themselves (_build_attr_pool_panel) and their live tick/click wiring
     # (_tick_pools, _on_attr_click) were already correct and untouched —
     # this just gives them a floating home, same pattern as the MIDI and
-    # executor-pages popups.
+    # fader-pages popups.
 
     def _build_attr_popup(self):
         """Floating attribute pool panel — hidden by default, opened via header button."""
@@ -7551,20 +7551,20 @@ class GUIEngine:
                 except Exception:
                     pass
 
-        # Cuestacks (slots 1-48) — highlight the active one
-        active = self._active_executor[0] if self._active_executor else None
+        # Stacks (slots 1-48) — highlight the active one
+        active = self._active_fader[0] if self._active_fader else None
         for n in range(1, self._POOL_SLOTS + 1):
-            cs = self._cuestack_pool.get(n) if self._cuestack_pool else None
-            lbl = f"{n}:{cs.name[:5]}" if cs else f"cs{n}"
+            stk = self._stack_pool.get(n) if self._stack_pool else None
+            lbl = f"{n}:{stk.name[:5]}" if stk else f"stk{n}"
             try:
                 dpg.set_item_label(f"cs_btn_{n}", lbl)
             except Exception:
                 pass
             try:
-                is_active = (n == active and cs is not None)
+                is_active = (n == active and stk is not None)
                 if is_active:
                     theme = self._go_theme
-                elif cs:
+                elif stk:
                     theme = self._pool_live_theme
                 else:
                     theme = self._pool_empty_theme
@@ -7572,22 +7572,22 @@ class GUIEngine:
             except Exception:
                 pass
             try:
-                if cs:
-                    ncues = len(cs.cues)
-                    cur   = cs.current
-                    cs_tip = f"cuestack {n}: {cs.name}\n{ncues} cue(s)"
+                if stk:
+                    ncues = len(stk.cues)
+                    cur   = stk.current
+                    cs_tip = f"stack {n}: {stk.name}\n{ncues} cue(s)"
                     if cur is not None:
                         cs_tip += f"\n▶ cue {cur:.0f}"
                 else:
-                    cs_tip = f"cuestack {n} — empty"
+                    cs_tip = f"stack {n} — empty"
                 dpg.set_value(f"cs_tip_{n}", cs_tip)
             except Exception:
                 pass
 
-        # Cues (slots 1-48, from the active cuestack)
+        # Cues (slots 1-48, from the active stack)
         active_cs = None
-        if self._cuestack_pool and self._active_executor:
-            active_cs = self._cuestack_pool.get(self._active_executor[0])
+        if self._stack_pool and self._active_fader:
+            active_cs = self._stack_pool.get(self._active_fader[0])
         current_cue = active_cs.current if active_cs else None
         for n in range(1, self._POOL_SLOTS + 1):
             cue = active_cs.cues.get(float(n)) if active_cs else None
@@ -7976,7 +7976,7 @@ class GUIEngine:
             dpg.add_separator()
             dpg.add_text("go directly to a cue via note:", color=_C_DIM)
             with dpg.group(horizontal=True):
-                dpg.add_text("cs", color=_C_DIM)
+                dpg.add_text("stk", color=_C_DIM)
                 dpg.add_input_int(tag="midi_go_cs",  label="", width=46,
                                   default_value=1, min_value=1, max_value=16,
                                   step=0, step_fast=0)
@@ -7991,7 +7991,7 @@ class GUIEngine:
             dpg.add_separator()
             dpg.add_text("flash a fader while a pad is held:", color=_C_DIM)
             with dpg.group(horizontal=True):
-                dpg.add_text("exec", color=_C_DIM)
+                dpg.add_text("fdr", color=_C_DIM)
                 dpg.add_input_int(tag="midi_flash_exec", label="", width=46,
                                   default_value=1, min_value=1, max_value=99,
                                   step=0, step_fast=0)
@@ -8002,7 +8002,7 @@ class GUIEngine:
             dpg.add_separator()
             dpg.add_text("go/back a specific fader via note:", color=_C_DIM)
             with dpg.group(horizontal=True):
-                dpg.add_text("exec", color=_C_DIM)
+                dpg.add_text("fdr", color=_C_DIM)
                 dpg.add_input_int(tag="midi_exec_gb_num", label="", width=46,
                                   default_value=1, min_value=1, max_value=99,
                                   step=0, step_fast=0)
@@ -8311,11 +8311,11 @@ class GUIEngine:
             ]),
             ("list / inspect", [
                 ("STATUS",                "console overview: GM, selection, active faders, FX"),
-                ("CUES / STACK / LIST",   "show all cues in active cuestack with fade times"),
-                ("LIST CUESTACKS",        "list all recorded cuestacks and cue counts"),
+                ("CUES / STACK / LIST",   "show all cues in active stack with fade times"),
+                ("LIST STACKS",        "list all recorded stacks and cue counts"),
                 ("LIST NOTES",            "list all cuelist and cue notes set in the show — quick production overview"),
-                ("LIST CUES",             "list all cues in the active cuestack with fade times"),
-                ("LIST CUES CS 2",        "list cues in cuestack 2 specifically"),
+                ("LIST CUES",             "list all cues in the active stack with fade times"),
+                ("LIST CUES stk 2",        "list cues in stack 2 specifically"),
                 ("LIST COLOR",            "list all color presets with RGB sample"),
                 ("LIST DIM",             "list all dim presets with level"),
                 ("LIST GROUP",            "list all groups and member counts"),
@@ -8335,7 +8335,7 @@ class GUIEngine:
                 ("LIST OSC",              "list registered OSC output targets"),
                 ("LIST PATCH",            "list patched fixtures with universe/address"),
                 ("FX LIST",               "show active programmer/fader FX layers"),
-                ("page list",             "show all pages and cuestacks on each"),
+                ("page list",             "show all pages and stacks on each"),
             ]),
             ("record", [
                 ("REC CUE 5",             "record current programmer to cue 5"),
@@ -8349,9 +8349,9 @@ class GUIEngine:
                 ("RECORD DIM 3 75%",      "record explicit level (no programmer needed)"),
                 ("record form 6 Wave 0,0 0.5,1 1,0",  "record custom waveform"),
                 ("RECORD RATE 3 Name 120","record 120 bpm to rate pool slot 3"),
-                ("RECORD CUESTACK 2 Name","create a new named cuestack on fader 2"),
+                ("RECORD STACK 2 Name","create a new named stack on fader 2"),
                 ("LOAD CUE 5",            "copy cue 5's data into the programmer for editing and re-recording"),
-                ("LOAD CUE 5 CS 2",       "load cue 5 from cuestack 2 into programmer"),
+                ("LOAD CUE 5 stk 2",       "load cue 5 from stack 2 into programmer"),
                 ("LIST REFS COLOR 3",     "show every cue that references color preset 3 (tracks to it)"),
                 ("LIST REFS DIM 2",       "show every cue referencing dim preset 2"),
                 ("LIST REFS FX 1",        "show every cue referencing fx preset 1"),
@@ -8362,9 +8362,9 @@ class GUIEngine:
             ]),
             ("rename / copy / delete", [
                 ("RENAME FIXTURE 3 Bar L","rename fixture 3's display label (saved to patch file)"),
-                ("RENAME CUESTACK 2 Tour","rename cuestack 2 — all cues kept"),
-                ("RENAME CUE 3 Intro",    "rename cue 3 in active cuestack"),
-                ("RENAME CS 2 CUE 5 End", "rename cue 5 in cuestack 2"),
+                ("RENAME STACK 2 Tour","rename stack 2 — all cues kept"),
+                ("RENAME CUE 3 Intro",    "rename cue 3 in active stack"),
+                ("RENAME stk 2 CUE 5 End", "rename cue 5 in stack 2"),
                 ("RENAME COLOR 4 Coral",  "rename colour preset 4"),
                 ("RENAME GROUP 1 Tubes",  "rename group 1"),
                 ("RENAME POSITION 1 Wide","rename attr pool preset (works for all 6 attr types)"),
@@ -8376,14 +8376,14 @@ class GUIEngine:
                 ("COPY POSITION 1 TO 2",  "same pattern for all 6 attr pool types"),
                 ("COPY FIXTURE 1 TO 2 3", "copy programmer values from fixture 1 to fixtures 2 and 3"),
                 ("FIXTURE SWAP 1 2",      "exchange all programmer values between fixtures 1 and 2"),
-                ("COPY CUE 3 TO 5",       "copy cue 3 → cue 5 (active cuestack)"),
+                ("COPY CUE 3 TO 5",       "copy cue 3 → cue 5 (active stack)"),
                 ("COPY CUE 3 TO 5 Intro", "copy with new name"),
-                ("COPY CS 2 CUE 3 TO CS 1 CUE 9", "cross-cuestack copy"),
-                ("MOVE CUE 3 TO 5",       "move (rename in place) cue 3 → cue 5, active cuestack"),
-                ("MOVE CS 2 CUE 3 TO CS 1 CUE 9", "cross-cuestack move — removes cue from source"),
-                ("delete cue 3",          "delete cue 3 from active cuestack (saves show)"),
-                ("delete cue 3 CS 2",     "delete cue 3 from cuestack 2"),
-                ("delete cueSTACK 5",     "delete cuestack 5 and stop its fader"),
+                ("COPY stk 2 CUE 3 TO stk 1 CUE 9", "cross-stack copy"),
+                ("MOVE CUE 3 TO 5",       "move (rename in place) cue 3 → cue 5, active stack"),
+                ("MOVE stk 2 CUE 3 TO stk 1 CUE 9", "cross-stack move — removes cue from source"),
+                ("delete cue 3",          "delete cue 3 from active stack (saves show)"),
+                ("delete cue 3 stk 2",     "delete cue 3 from stack 2"),
+                ("delete stack 5",     "delete stack 5 and stop its fader"),
                 ("DELETE FORM 7",         "delete custom form 7 (built-ins 1-4 protected)"),
                 ("DELETE RATE 2 / DELETE SIZEP 2 / DELETE SPREADP 2", "delete rate/size/spread pool slot"),
                 ("DELETE POSITION 1 / DELETE GOBO 1 / ...", "delete attr pool preset (all 6 types)"),
@@ -8395,40 +8395,40 @@ class GUIEngine:
                 ("CLEAR FORM 7",          "delete custom form 7 (built-ins 1-4 protected)"),
                 ("CLEAR POSITION 1",      "delete position preset 1 (works for all 6 attr types)"),
                 ("RATE 3 / SIZEP 2 / SPREADP 1", "recall a rate/size/spread preset onto the live BPM/size/spread"),
-                ("CS 2 INFO",             "detailed status of cuestack 2: cue list, current cue, loop/wrap, assigned faders"),
-                ("CUESTACK MERGE 2 INTO 1", "append all cues from CS 2 into CS 1 (renumbered after CS 1's last cue)"),
-                ("CS 1 REVERSE",           "reverse cue playback order in cuestack 1 (renumbers 1-N from last to first)"),
-                ("CS 1 COMPRESS",          "renumber cues to sequential integers 1, 2, 3… — collapses gaps left by deletions"),
-                ("CS 1 RENUMBER STEP 10",  "renumber cues at multiples of 10 (→10,20,30…) to leave room for future inserts"),
-                ("CS 1 EXTRACT 3",         "copy cue 3 from CS 1 into a new standalone single-cue cuestack (auto-picks slot)"),
-                ("CS 1 EXTRACT 3 INTO 10", "as above but place the extracted cuestack in slot 10"),
-                ("CS 1 DUPLICATE",         "deep-copy all cues from CS 1 to a new auto-picked slot (preserves timing/notes)"),
-                ("CS 1 DUPLICATE INTO 5",  "duplicate CS 1 into slot 5 specifically"),
+                ("stk 2 INFO",             "detailed status of stack 2: cue list, current cue, loop/wrap, assigned faders"),
+                ("STACK MERGE 2 INTO 1", "append all cues from stk 2 into stk 1 (renumbered after stk 1's last cue)"),
+                ("stk 1 REVERSE",           "reverse cue playback order in stack 1 (renumbers 1-N from last to first)"),
+                ("stk 1 COMPRESS",          "renumber cues to sequential integers 1, 2, 3… — collapses gaps left by deletions"),
+                ("stk 1 RENUMBER STEP 10",  "renumber cues at multiples of 10 (→10,20,30…) to leave room for future inserts"),
+                ("stk 1 EXTRACT 3",         "copy cue 3 from stk 1 into a new standalone single-cue stack (auto-picks slot)"),
+                ("stk 1 EXTRACT 3 INTO 10", "as above but place the extracted stack in slot 10"),
+                ("stk 1 DUPLICATE",         "deep-copy all cues from stk 1 to a new auto-picked slot (preserves timing/notes)"),
+                ("stk 1 DUPLICATE INTO 5",  "duplicate stk 1 into slot 5 specifically"),
                 ("CUE 5 SHOW",            "inspect cue 5 contents (fixtures, RGB, FX, timing)"),
                 ("CUE 5 NOTE Pre-show",   "set a production note on cue 5"),
-                ("CUE 3 SHIFT 5",         "move cue 3 to cue 8 in the active cuestack (offset by +5)"),
+                ("CUE 3 SHIFT 5",         "move cue 3 to cue 8 in the active stack (offset by +5)"),
                 ("CUE 5 FADE 3",          "set fade time on cue 5 (no programmer needed)"),
                 ("CUE 5 FADE 2 DELAY 1",  "set fade + delay"),
                 ("CUE 5 FADE 2 DFADE 5",  "global fade + dim-only fade override"),
                 ("CUE 5 FXOUTFADE 2.5",   "fX outfade time when cue 5 fires (0 = auto)"),
-                ("CS 2 CUE 5 FADE 3",     "set timing on cue 5 in cuestack 2"),
+                ("stk 2 CUE 5 FADE 3",     "set timing on cue 5 in stack 2"),
             ]),
-            ("cuestack go/back", [
+            ("stack go/back", [
                 ("GO",                      "advance to next cue on active fader"),
                 ("GO FADE 3",               "one-shot: fire next cue with 3s fade (does not change the cue's stored fade)"),
                 ("GO FADE 5 DELAY 1",       "one-shot: fire with 5s fade and 1s delay"),
                 ("BACK",                    "step to previous cue"),
-                ("GOTO 3",                  "jump directly to cue 3 (active cuestack)"),
-                ("CUESTACK 2",              "switch active fader to slot 2"),
-                ("ASSIGN CS 2 TO FADER 1",  "wire cuestack 2 to fader 1"),
-                ("FADER 1 ASSIGN CS 2",     "shorthand for ASSIGN CS 2 TO FADER 1"),
-                ("FADER 1 UNASSIGN",        "detach the cuestack from fader 1 without deleting it (fader goes dark)"),
-                ("FADER SWAP 1 2",          "swap the cuestacks on faders 1 and 2"),
-                ("FADER 1 INFO",            "detailed status of fader 1: level, priority, rate, buttons, cuestack, current cue"),
-                ("FADER 1 CLEAR",           "stop fader 1 and reset its cuestack to 'not started' (position resets to top)"),
-                ("FADER ALL CLEAR",         "stop every fader and reset all cuestack positions to the start"),
-                ("FADER 1 LOOP ON",         "set fader 1's cuestack to loop: fires cue 1 again after the last cue"),
-                ("FADER 1 LOOP OFF",        "disable looping on fader 1's cuestack (stop after last cue)"),
+                ("GOTO 3",                  "jump directly to cue 3 (active stack)"),
+                ("STACK 2",              "switch active fader to slot 2"),
+                ("ASSIGN stk 2 TO FADER 1",  "wire stack 2 to fader 1"),
+                ("FADER 1 ASSIGN stk 2",     "shorthand for ASSIGN stk 2 TO FADER 1"),
+                ("FADER 1 UNASSIGN",        "detach the stack from fader 1 without deleting it (fader goes dark)"),
+                ("FADER SWAP 1 2",          "swap the stacks on faders 1 and 2"),
+                ("FADER 1 INFO",            "detailed status of fader 1: level, priority, rate, buttons, stack, current cue"),
+                ("FADER 1 CLEAR",           "stop fader 1 and reset its stack to 'not started' (position resets to top)"),
+                ("FADER ALL CLEAR",         "stop every fader and reset all stack positions to the start"),
+                ("FADER 1 LOOP ON",         "set fader 1's stack to loop: fires cue 1 again after the last cue"),
+                ("FADER 1 LOOP OFF",        "disable looping on fader 1's stack (stop after last cue)"),
                 ("FADER 1 LABEL Main Show", "set a human-readable label on fader 1 (shown in LIST FADER)"),
                 ("FADER 1 LABEL",           "clear the label on fader 1"),
                 ("RELEASE 2",               "stop fader 2"),
@@ -8437,35 +8437,35 @@ class GUIEngine:
                 ("FADER 1 TIME 3",          "override fade time on fader 1 to 3s"),
                 ("FADER 1 TIME 3 DELAY 1",  "override fade + delay on fader 1"),
                 ("FADER 1 TIME OFF",        "remove fader 1 time override"),
-                ("FADER 1 TIMELOCK OFF",    "lock cuestack on fader 1 to its own times"),
-                ("FADER 1 TIMELOCK ON",     "re-enable fader time override for cuestack"),
-                ("CS 1 CLEAR",              "delete all cues from cuestack 1 — keeps the slot and name, ready to re-record"),
-                ("CS 1 bounce on",          "cS 1: ping-pong — reverse direction at last/first cue instead of looping"),
-                ("CS 1 bounce off",         "cS 1: restore normal forward loop (default)"),
-                ("FADER 1 bounce on",       "same as CS bounce on but addressed through the fader slot"),
-                ("FADER 1 bounce off",      "disable ping-pong on the cuestack assigned to fader 1"),
-                ("CS 1 WRAP ON",            "cS 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
-                ("CS 1 WRAP OFF",           "cS 1: restore normal LTP tracking across wrap-around (default)"),
-                ("CS 1 NOTE",               "view production note on cuestack 1 (blank if none set)"),
-                ("CS 1 NOTE Dark Moody",    "set a freeform production note on cuestack 1 (saved to ShowFile)"),
-                ("CS 1 CHASE ON BPM 120",   "auto-advance CS 1 through cues at 120 BPM (chase mode)"),
-                ("CS 1 CHASE OFF",          "disable chase mode — cuestack returns to manual GO"),
-                ("CS 1 CHASE BPM 90",       "change chase speed to 90 BPM while chase is running"),
-                ("CS 1 CHASE SPEED 2",      "link CS 1 chase tempo to speed Master 2"),
+                ("FADER 1 TIMELOCK OFF",    "lock stack on fader 1 to its own times"),
+                ("FADER 1 TIMELOCK ON",     "re-enable fader time override for stack"),
+                ("stk 1 CLEAR",              "delete all cues from stack 1 — keeps the slot and name, ready to re-record"),
+                ("stk 1 bounce on",          "cS 1: ping-pong — reverse direction at last/first cue instead of looping"),
+                ("stk 1 bounce off",         "cS 1: restore normal forward loop (default)"),
+                ("FADER 1 bounce on",       "same as stk bounce on but addressed through the fader slot"),
+                ("FADER 1 bounce off",      "disable ping-pong on the stack assigned to fader 1"),
+                ("stk 1 WRAP ON",            "stk 1: fire cue 1 clean after last cue — no LTP bleed across the loop"),
+                ("stk 1 WRAP OFF",           "stk 1: restore normal LTP tracking across wrap-around (default)"),
+                ("stk 1 NOTE",               "view production note on stack 1 (blank if none set)"),
+                ("stk 1 NOTE Dark Moody",    "set a freeform production note on stack 1 (saved to ShowFile)"),
+                ("stk 1 CHASE ON BPM 120",   "auto-advance stk 1 through cues at 120 BPM (chase mode)"),
+                ("stk 1 CHASE OFF",          "disable chase mode — stack returns to manual GO"),
+                ("stk 1 CHASE BPM 90",       "change chase speed to 90 BPM while chase is running"),
+                ("stk 1 CHASE SPEED 2",      "link stk 1 chase tempo to speed Master 2"),
                 ("PROG TIME 2",             "programmer time: all cues fade at 2s"),
                 ("PROG TIME OFF",           "disable programmer time override"),
             ]),
             ("faders & pages", [
                 ("FADER 1 GO / BACK / STOP","direct fader control"),
-                ("FADER 1 GOTO FIRST",      "jump fader 1 to the first cue in its cuestack and fire it"),
-                ("FADER 1 GOTO LAST",       "jump fader 1 to the last cue in its cuestack and fire it"),
+                ("FADER 1 GOTO FIRST",      "jump fader 1 to the first cue in its stack and fire it"),
+                ("FADER 1 GOTO LAST",       "jump fader 1 to the last cue in its stack and fire it"),
                 ("FADER 1 LEVEL 75",        "set fader 1 master level to 75% (GUI slider also works)"),
                 ("FADER 1 MODE FLASH",      "set trigger mode: live only while held"),
                 ("FADER 1 MODE MOMENT",     "button hold mode: fades in on press (using cue fade time), fades out on release using off time"),
                 ("FADER 1 mode toggle",     "set trigger mode: GO/BACK advance (default)"),
                 ("FADER 1 flash on",        "fire instantly (0s), works regardless of mode"),
                 ("FADER 1 flash off",       "release a flash — fully stops the fader"),
-                ("FADER 1 OUTPUT MOMENT",   "fader output mode: output only while level > 0; at zero the executor leaves the LTP stack"),
+                ("FADER 1 OUTPUT MOMENT",   "fader output mode: output only while level > 0; at zero the fader leaves the LTP stack"),
                 ("FADER 1 OUTPUT VFADE",    "fader output mode: fader position manually controls the crossfade into the current cue"),
                 ("FADER 1 OUTPUT NORMAL",   "fader output mode: normal LTP — cue output persists at any level"),
                 ("FADER 1 OFFTIME 2.0",     "release fade time in seconds for moment button mode (0 = snap off)"),
@@ -8477,10 +8477,10 @@ class GUIEngine:
                 ("FADER 1 SIZE RESET",      "restore normal FX amplitude (×1.0) for fader 1"),
                 ("FADER 1 SIZE 2.0",        "double FX amplitude on fader 1 (all owned FX layers)"),
                 ("PAGE 1 NAME Verses",    "name page 1"),
-                ("PAGE 1 ADD CS 3",       "add cuestack 3 to page 1"),
-                ("PAGE 1 REMOVE CS 3",    "remove cuestack 3 from page 1"),
+                ("PAGE 1 ADD stk 3",       "add stack 3 to page 1"),
+                ("PAGE 1 REMOVE stk 3",    "remove stack 3 from page 1"),
                 ("PAGE 1 DELETE",         "delete page 1"),
-                ("page list",             "list all pages and their cuestacks"),
+                ("page list",             "list all pages and their stacks"),
                 ("PAGES button",          "same page commands via a GUI table — no typing needed"),
             ]),
             ("attribute pools", [
@@ -8518,7 +8518,7 @@ class GUIEngine:
                 ("SAVE",                  "save entire show to studio_data/"),
                 ("BACKUP",                "save a timestamped snapshot to studio_saves/backup_YYYYMMDD_HHMMSS/"),
                 ("SAVE AS <name>",        "save a named snapshot to studio_saves/<name>/"),
-                ("LOAD SHOW <name>",      "restore a snapshot (cuestacks/presets reload live)"),
+                ("LOAD SHOW <name>",      "restore a snapshot (stacks/presets reload live)"),
                 ("LIST SHOWS",            "list all saved show snapshots"),
                 ("SHOW INFO",             "high-level overview: fixtures, cueLists, presets, active faders, master level"),
                 ("UNDO",                  "undo last programmer change (up to 20 steps)"),
@@ -8625,7 +8625,7 @@ class GUIEngine:
                 ("Ctrl/Cmd + Z",          "undo last programmer change (same as UNDO command)"),
                 ("MIDI button",           "open MIDI mapping editor"),
                 ("PATCH button",          "open patch editor"),
-                ("PAGES button",          "open pages editor (assign cuestacks to pages)"),
+                ("PAGES button",          "open pages editor (assign stacks to pages)"),
                 ("attr button",           "open the attribute pools (position/gobo/zoom/focus/beam)"),
                 ("mon button",            "open the programmer/output monitor popup (per-fixture RGB/dim/FX tables)"),
                 ("ai button",             "open the AI prompt pool (only shown when ANTHROPIC_API_KEY is set)"),
@@ -8752,14 +8752,14 @@ class GUIEngine:
                     dpg.add_text(f"    • {d}", color=_C_DIM, wrap=700)
                 dpg.add_spacer(height=8)
 
-    # ── Executor Pages popup ─────────────────────────────────────
-    # Pages group executor slots for navigation/display only — the
-    # ExecutorPool.pages dict and the PAGE <n> [NAME|ADD|REMOVE] commands
+    # ── Fader Pages popup ─────────────────────────────────────
+    # Pages group fader slots for navigation/display only — the
+    # FaderPool.pages dict and the PAGE <n> [NAME|ADD|REMOVE] commands
     # already existed, but only via the command line. This is the GUI
     # front-end for that same data, same pattern as the MIDI mapping popup.
 
     def _build_pages_popup(self):
-        """Floating pages editor — assign cuestacks to named pages."""
+        """Floating pages editor — assign stacks to named pages."""
         self._pages_current = 1   # currently viewed page number
 
         with dpg.window(tag="pages_window", label="pages",
@@ -8785,15 +8785,15 @@ class GUIEngine:
 
             dpg.add_separator()
 
-            # ── cuestack list for selected page ──────────────────
-            dpg.add_text("cuestacks on this page:", color=_C_DIM)
+            # ── stack list for selected page ──────────────────
+            dpg.add_text("stacks on this page:", color=_C_DIM)
             with dpg.child_window(tag="pg_cs_list", width=-1, height=210,
                                   border=True, no_scrollbar=False):
                 dpg.add_group(tag="pg_cs_rows")   # rows rebuilt by _refresh_pages_table
 
             dpg.add_separator()
 
-            # ── Add cuestack row ─────────────────────────────────
+            # ── Add stack row ─────────────────────────────────
             with dpg.group(horizontal=True):
                 dpg.add_text("add:", color=_C_DIM)
                 cs_items = self._cs_combo_items()
@@ -8806,40 +8806,40 @@ class GUIEngine:
         self._refresh_pages_table()
 
     def _cs_combo_items(self):
-        """Return list of 'ID — Name' strings for all cuestacks in the pool."""
-        if not self._cuestack_pool:
+        """Return list of 'ID — Name' strings for all stacks in the pool."""
+        if not self._stack_pool:
             return []
         items = []
-        for sid in sorted(self._cuestack_pool.stacks.keys()):
-            cs = self._cuestack_pool.stacks[sid]
-            items.append(f"{sid} — {cs.name}")
+        for sid in sorted(self._stack_pool.stacks.keys()):
+            stk = self._stack_pool.stacks[sid]
+            items.append(f"{sid} — {stk.name}")
         return items
 
     def _refresh_pages_table(self):
-        """Rebuild the cuestack list for the currently selected page."""
+        """Rebuild the stack list for the currently selected page."""
         try:
             dpg.delete_item("pg_cs_rows", children_only=True)
         except Exception:
             return
-        if not self._executor_pool:
+        if not self._fader_pool:
             return
 
         n    = self._pages_current
-        page = self._executor_pool.pages.get(n)
+        page = self._fader_pool.pages.get(n)
         if not page:
-            dpg.add_text("(page not created yet — add a cuestack to create it)",
+            dpg.add_text("(page not created yet — add a stack to create it)",
                          parent="pg_cs_rows", color=_C_DIM)
             return
 
-        cs_ids = page.get('cuestacks', [])
+        cs_ids = page.get('stacks', [])
         if not cs_ids:
-            dpg.add_text("— no cuestacks on this page —",
+            dpg.add_text("— no stacks on this page —",
                          parent="pg_cs_rows", color=_C_DIM)
             return
 
         for cs_id in cs_ids:
-            cs   = self._cuestack_pool.get(cs_id) if self._cuestack_pool else None
-            lbl  = f"{cs_id} — {cs.name}" if cs else f"{cs_id} — (not found)"
+            stk   = self._stack_pool.get(cs_id) if self._stack_pool else None
+            lbl  = f"{cs_id} — {stk.name}" if stk else f"{cs_id} — (not found)"
             with dpg.group(horizontal=True, parent="pg_cs_rows"):
                 dpg.add_button(label="×", width=24,
                                callback=lambda s, a, u: self._on_page_remove_cs(u),
@@ -8854,7 +8854,7 @@ class GUIEngine:
 
     def _on_page_sel_change(self):
         self._pages_current = int(dpg.get_value("pg_sel_num"))
-        page = self._executor_pool.pages.get(self._pages_current) if self._executor_pool else None
+        page = self._fader_pool.pages.get(self._pages_current) if self._fader_pool else None
         try:
             dpg.set_value("pg_name_input",
                           page['name'] if page else f"page {self._pages_current}")
@@ -8873,13 +8873,13 @@ class GUIEngine:
 
     def _on_page_new(self):
         # Find next unused page number
-        existing = set(self._executor_pool.all_pages()) if self._executor_pool else set()
+        existing = set(self._fader_pool.all_pages()) if self._fader_pool else set()
         n = 1
         while n in existing:
             n += 1
-        if self._executor_pool:
-            self._executor_pool.get_page(n)   # creates it
-            ShowFile.save_executor_pages(self._executor_pool)
+        if self._fader_pool:
+            self._fader_pool.get_page(n)   # creates it
+            ShowFile.save_fader_pages(self._fader_pool)
         self._pages_current = n
         try:
             dpg.set_value("pg_sel_num", n)
@@ -8906,7 +8906,7 @@ class GUIEngine:
             return
         n = self._pages_current
         if self._cmd:
-            result = self._cmd(f"PAGE {n} ADD CS {cs_id}")
+            result = self._cmd(f"PAGE {n} ADD stk {cs_id}")
             if result:
                 self._log(f"  {result}")
         self._refresh_pages_table()
@@ -8914,7 +8914,7 @@ class GUIEngine:
     def _on_page_remove_cs(self, cs_id):
         n = self._pages_current
         if self._cmd:
-            result = self._cmd(f"PAGE {n} REMOVE CS {cs_id}")
+            result = self._cmd(f"PAGE {n} REMOVE stk {cs_id}")
             if result:
                 self._log(f"  {result}")
         self._refresh_pages_table()
@@ -9387,7 +9387,7 @@ class GUIEngine:
         dpg.focus_item("cmd_input")
 
     _ERR_PREFIXES = ("Usage:", "Error:", "bad ", "not found", "unknown verb",
-                     "Unknown", "invalid", "no cuestack", "no active", "not set",
+                     "Unknown", "invalid", "no stack", "no active", "not set",
                      "AI error")
 
     def _log(self, line):
@@ -9838,14 +9838,14 @@ class GUIEngine:
     @staticmethod
     def _fpg_exec_for_slot(page, slot):
         """Map a fader-page slot (1.._FPG_SLOTS) on the given page to its
-        underlying executor id, MA-style: page 2 slot 1 = executor 16."""
+        underlying fader id, MA-style: page 2 slot 1 = fader 16."""
         return (int(page) - 1) * GUIEngine._FPG_SLOTS + int(slot)
 
     @staticmethod
-    def _fpg_slot_for_exec(page, exec_id):
+    def _fpg_slot_for_exec(page, fdr_id):
         """Inverse of _fpg_exec_for_slot — the slot (1.._FPG_SLOTS) that
-        would display exec_id on the given page, or None if it's off-page."""
-        slot = int(exec_id) - (int(page) - 1) * GUIEngine._FPG_SLOTS
+        would display fdr_id on the given page, or None if it's off-page."""
+        slot = int(fdr_id) - (int(page) - 1) * GUIEngine._FPG_SLOTS
         return slot if 1 <= slot <= GUIEngine._FPG_SLOTS else None
 
     def _build_fader_page_popup(self):
@@ -9874,7 +9874,7 @@ class GUIEngine:
                             width=self._FPG_SLOT_W, height=self._FPG_SLOT_H,
                             border=True, no_scrollbar=True, no_scroll_with_mouse=True):
 
-                        # row 1 — exec id + priority badge + output mode badge
+                        # row 1 — fdr id + priority badge + output mode badge
                         with dpg.group(horizontal=True):
                             dpg.add_text(f"{n}", color=_C_DIM)
                             dpg.add_button(
@@ -9886,7 +9886,7 @@ class GUIEngine:
                                 width=30, height=18,
                                 callback=self._on_fpg_out_cycle, user_data=n)
 
-                        # row 2 — cuestack name
+                        # row 2 — stack name
                         dpg.add_text("—", tag=f"fpg_name_{n}", color=_C_ACCENT,
                                      wrap=self._FPG_SLOT_W - 6)
 
@@ -9966,7 +9966,7 @@ class GUIEngine:
     def _fpg_page_changed(self):
         """Update the page label/title/range display and re-sync all slots
         after the page number changes — otherwise slots would keep showing
-        stale data from the previously-displayed bank of executors."""
+        stale data from the previously-displayed bank of faders."""
         try:
             dpg.set_value("fpg_page_lbl", f"{self._fpg_page}")
             dpg.configure_item("fader_page_window",
@@ -10011,15 +10011,15 @@ class GUIEngine:
                 pass
 
     def _fpg_refresh_all(self):
-        """Sync all fader page slot labels and fader positions from executor pool."""
-        if not self._executor_pool:
+        """Sync all fader page slot labels and fader positions from fader pool."""
+        if not self._fader_pool:
             return
         for n in range(1, self._FPG_SLOTS + 1):
             eid = self._fpg_exec_for_slot(self._fpg_page, n)
-            ex = self._executor_pool.executors.get(eid)
+            ex = self._fader_pool.faders.get(eid)
             try:
-                if ex and ex.cuestack:
-                    dpg.set_value(f"fpg_name_{n}", ex.cuestack.name)
+                if ex and ex.stack:
+                    dpg.set_value(f"fpg_name_{n}", ex.stack.name)
                 else:
                     dpg.set_value(f"fpg_name_{n}", "—")
                 dpg.set_value(f"fpg_fader_{n}", round((ex.level if ex else 1.0) * 255))
@@ -10028,9 +10028,9 @@ class GUIEngine:
 
     def _on_fpg_fader(self, _sender, value, user_data):
         n = int(user_data)
-        if self._executor_pool:
+        if self._fader_pool:
             eid = self._fpg_exec_for_slot(self._fpg_page, n)
-            ex = self._executor_pool.executors.get(eid)
+            ex = self._fader_pool.faders.get(eid)
             if ex:
                 ex.level = max(0.0, min(1.0, float(value) / 255.0))
                 _exec_fader_mode_hook(ex)
@@ -10038,7 +10038,7 @@ class GUIEngine:
     def _on_fpg_btn(self, _sender, _app_data, user_data):
         n, slot = user_data
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
-        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        ex = self._fader_pool.faders.get(eid) if self._fader_pool else None
         if not ex or not self._cmd:
             return
         fn = getattr(ex, f'btn_{slot}', 'GO')
@@ -10060,10 +10060,10 @@ class GUIEngine:
             pass
 
     def _on_fpg_pri_cycle(self, _sender, _app_data, user_data):
-        """Cycle priority for the executor in fader page slot user_data (nrm→hi→lo→nrm)."""
+        """Cycle priority for the fader in fader page slot user_data (nrm→hi→lo→nrm)."""
         n = int(user_data)
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
-        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        ex = self._fader_pool.faders.get(eid) if self._fader_pool else None
         if not ex or not self._cmd:
             return
         _cycle  = {0: 1, 1: -1, -1: 0}
@@ -10072,10 +10072,10 @@ class GUIEngine:
         self._cmd(f"PRIORITY {eid} {_labels[nxt]}")
 
     def _on_fpg_out_cycle(self, _sender, _app_data, user_data):
-        """Cycle output_mode for the executor in fader page slot user_data."""
+        """Cycle output_mode for the fader in fader page slot user_data."""
         n = int(user_data)
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
-        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        ex = self._fader_pool.faders.get(eid) if self._fader_pool else None
         if not ex or not self._cmd:
             return
         _cycle = {'normal': 'moment', 'moment': 'vfade', 'vfade': 'normal'}
@@ -10083,10 +10083,10 @@ class GUIEngine:
         self._cmd(f"FADER {eid} OUTPUT {nxt.upper()}")
 
     def _on_fpg_trig_cycle(self, _sender, _app_data, user_data):
-        """Cycle trigger_mode for the executor in fader page slot user_data."""
+        """Cycle trigger_mode for the fader in fader page slot user_data."""
         n = int(user_data)
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
-        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        ex = self._fader_pool.faders.get(eid) if self._fader_pool else None
         if not ex or not self._cmd:
             return
         _cycle = {'toggle': 'flash', 'flash': 'moment', 'moment': 'toggle'}
@@ -10104,19 +10104,19 @@ class GUIEngine:
         """Update fader page slot labels + mode badges (called from _tick)."""
         if not dpg.is_item_shown("fader_page_window"):
             return
-        if not self._executor_pool:
+        if not self._fader_pool:
             return
         for n in range(1, self._FPG_SLOTS + 1):
             eid = self._fpg_exec_for_slot(self._fpg_page, n)
-            ex  = self._executor_pool.executors.get(eid)
+            ex  = self._fader_pool.faders.get(eid)
             try:
                 # ── name ─────────────────────────────────────
                 dpg.set_value(f"fpg_name_{n}",
-                              ex.cuestack.name if (ex and ex.cuestack) else "—")
+                              ex.stack.name if (ex and ex.stack) else "—")
 
                 # ── cue list ─────────────────────────────────
-                if ex and ex.cuestack:
-                    _cs   = ex.cuestack
+                if ex and ex.stack:
+                    _cs   = ex.stack
                     _cur  = _cs.current
                     _items, _sel = [], None
                     for _cn in sorted(_cs.cues.keys()):
@@ -10192,7 +10192,7 @@ class GUIEngine:
                     dpg.bind_item_theme(f"fpg_trig_{n}", _tt)
 
                 # ── active slot highlight ─────────────────────
-                is_live = bool(ex and ex.is_active and ex.cuestack)
+                is_live = bool(ex and ex.is_active and ex.stack)
                 if is_live and self._active_slot_theme:
                     dpg.bind_item_theme(f"fpg_slot_{n}", self._active_slot_theme)
 
@@ -10401,7 +10401,7 @@ class GUIEngine:
     def _on_fx_rate(self, sender, value):
         now = time.monotonic()
         for layer in self._fx._layers.values():
-            if layer.fx_id >= 10000:  # skip executor (cue) FX — programmer sliders don't own them
+            if layer.fx_id >= 10000:  # skip fader (cue) FX — programmer sliders don't own them
                 continue
             layer.set_rate_smooth(value, now)
         self._fx_sliders_to_prog('bpm', value)
@@ -10542,12 +10542,12 @@ class GUIEngine:
 
     def _start_go_cue_learn(self):
         try:
-            cs_n  = int(dpg.get_value("midi_go_cs"))
+            stk_n  = int(dpg.get_value("midi_go_cs"))
             cue_n = float(dpg.get_value("midi_go_cue"))
         except Exception:
             return
-        name = f"GO CS {cs_n} CUE {int(cue_n)}"
-        cmd  = f"GO CS {cs_n} CUE {cue_n}"
+        name = f"GO stk {stk_n} CUE {int(cue_n)}"
+        cmd  = f"GO stk {stk_n} CUE {cue_n}"
         cb   = (lambda c=cmd: self._cmd(c)) if self._cmd else (lambda: None)
         GUIEngine.target_registry[name] = (cb, False, True)
         # Arm learn as a note targeting this dynamic entry
@@ -10559,7 +10559,7 @@ class GUIEngine:
 
     def _start_exec_flash_learn(self):
         """
-        Learn a note for 'Exec <n> Flash' — live only while the pad is held.
+        Learn a note for 'fdr <n> Flash' — live only while the pad is held.
         Unlike _start_go_cue_learn (GO-only, no release action), this needs
         an off_callback, so it delegates to the general _on_learn_captured
         handler (which already reads entry[3] as off_cb) instead of a
@@ -10583,21 +10583,21 @@ class GUIEngine:
 
     def _start_exec_gb_learn(self):
         """
-        Learn a note for 'Exec <n> GO' or 'Exec <n> BACK' — steps that
-        specific executor's cuestack forward/back on press. Unlike the
+        Learn a note for 'fdr <n> GO' or 'fdr <n> BACK' — steps that
+        specific fader's stack forward/back on press. Unlike the
         fixed "GO"/"BACK" targets in target_registry (which always act on
-        whichever executor is currently active via CUESTACK <n>), and unlike
+        whichever fader is currently active via STACK <n>), and unlike
         _start_go_cue_learn (which jumps straight to one cue number), this
-        drives an arbitrary executor's normal GO/BACK — the MIDI-side
-        equivalent of what /gma3/key/<page>/<exec>/go already does over OSC.
+        drives an arbitrary fader's normal GO/BACK — the MIDI-side
+        equivalent of what /gma3/key/<page>/<fdr>/go already does over OSC.
         """
         try:
             ex_n = int(dpg.get_value("midi_exec_gb_num"))
         except Exception:
             return
         verb = dpg.get_value("midi_exec_gb_type")  # 'go' or 'back'
-        name = f"exec {ex_n} {verb}"
-        cmd  = f"EXEC {ex_n} {verb.upper()}"
+        name = f"fdr {ex_n} {verb}"
+        cmd  = f"fdr {ex_n} {verb.upper()}"
         cb   = (lambda c=cmd: self._cmd(c)) if self._cmd else (lambda: None)
         GUIEngine.target_registry[name] = (cb, False, True)
         self._learn_target     = name
@@ -10607,7 +10607,7 @@ class GUIEngine:
         dpg.set_value("midi_exec_gb_status", f"waiting for note → {name}...")
 
     def _on_go_cue_captured(self, ch, number):
-        """MIDI-thread callback for GO CS+CUE note learn."""
+        """MIDI-thread callback for GO stk+CUE note learn."""
         name = self._learn_target
         self._learn_armed = False
         entry = GUIEngine.target_registry.get(name)
@@ -10906,15 +10906,15 @@ class GUIEngine:
                     dpg.add_text(ft, color=_C_DIM)
 
     def _playbacks_state_hash(self):
-        """Compact snapshot of running executor state — used to detect changes."""
-        if not self._executor_pool:
+        """Compact snapshot of running fader state — used to detect changes."""
+        if not self._fader_pool:
             return ()
         return tuple(
-            (eid, ex.priority, ex.cuestack.current if ex.cuestack else None,
+            (eid, ex.priority, ex.stack.current if ex.stack else None,
              ex.time_override_on, ex.time_override_fade, ex.is_active,
              getattr(ex, 'output_mode', 'normal'), getattr(ex, 'trigger_mode', 'toggle'))
-            for eid, ex in sorted(self._executor_pool.executors.items())
-            if ex.is_active and ex.cuestack
+            for eid, ex in sorted(self._fader_pool.faders.items())
+            if ex.is_active and ex.stack
         )
 
     @staticmethod
@@ -10922,7 +10922,7 @@ class GUIEngine:
         """Truncate text with an ellipsis so its rendered width stays <= max_w px.
         Used to keep the active-playbacks row's trailing action buttons from
         being pushed off the edge of the (fixed-width) left column by a long
-        cuestack/cue name."""
+        stack/cue name."""
         try:
             if dpg.get_text_size(text)[0] <= max_w:
                 return text
@@ -10933,21 +10933,21 @@ class GUIEngine:
             return text
 
     def _rebuild_playbacks(self):
-        """Rebuild the running-cuestacks list — only shows actively playing executors."""
+        """Rebuild the running-stacks list — only shows actively playing faders."""
         try:
             dpg.delete_item("playbacks_list", children_only=True)
         except Exception:
             return
 
         active = []
-        if self._executor_pool:
-            running_eids = {eid for eid, ex in self._executor_pool.executors.items()
-                            if ex.is_active and ex.cuestack}
-            ordered = [eid for eid in reversed(self._executor_pool._fire_order)
+        if self._fader_pool:
+            running_eids = {eid for eid, ex in self._fader_pool.faders.items()
+                            if ex.is_active and ex.stack}
+            ordered = [eid for eid in reversed(self._fader_pool._fire_order)
                        if eid in running_eids]
             ordered += sorted(running_eids - set(ordered))
             for eid in ordered:
-                active.append(self._executor_pool.executors[eid])
+                active.append(self._fader_pool.faders[eid])
 
         if not active:
             dpg.add_text("— none running", tag="playbacks_empty",
@@ -10969,26 +10969,26 @@ class GUIEngine:
         _cue_w  = _label_budget - _name_w
 
         for i, ex in enumerate(active):
-            cs  = ex.cuestack
-            cur = cs.current
+            stk  = ex.stack
+            cur = stk.current
             if cur is not None:
-                cue = cs.cues.get(cur)
+                cue = stk.cues.get(cur)
                 cue_label = f"▶ {cur:.0f}: {cue.name}" if cue else f"▶ {cur:.0f}"
             else:
                 cue_label = "▶ —"
-            pri_label = Executor.PRIORITY_LABELS.get(ex.priority, 'nrm')
+            pri_label = Fader.PRIORITY_LABELS.get(ex.priority, 'nrm')
             _mode_tag = {'moment': ' ◉', 'vfade': ' ⇕'}.get(
                 getattr(ex, 'output_mode', 'normal'), '')
             _trig_tag = {'flash': ' ⚡', 'moment': ' ◌'}.get(
                 getattr(ex, 'trigger_mode', 'toggle'), '')
-            _full_name = f"[{ex.exec_id}] {cs.name}{_mode_tag}{_trig_tag}"
+            _full_name = f"[{ex.fdr_id}] {stk.name}{_mode_tag}{_trig_tag}"
             _fit_name  = self._fit_text(_full_name, _name_w)
             _fit_cue   = self._fit_text(cue_label, _cue_w)
             if i > 0:
                 dpg.add_separator(parent="playbacks_list")
             with dpg.group(horizontal=True, parent="playbacks_list"):
-                _name_tag = f"pb_name_{ex.exec_id}"
-                _cue_tag  = f"pb_cue_{ex.exec_id}"
+                _name_tag = f"pb_name_{ex.fdr_id}"
+                _cue_tag  = f"pb_cue_{ex.fdr_id}"
                 dpg.add_text(_fit_name, tag=_name_tag, color=_C_TEXT)
                 if _fit_name != _full_name:
                     with dpg.tooltip(_name_tag):
@@ -11002,57 +11002,57 @@ class GUIEngine:
                     t_label  = f"t{ex.time_override_fade:.1f}s"
                     dpg.add_button(label=t_label, width=52, height=20,
                                    callback=self._on_exec_time_toggle,
-                                   user_data=ex.exec_id)
-                    dpg.configure_item(dpg.last_item(), enabled=cs.allow_exec_time)
-                    if not cs.allow_exec_time:
+                                   user_data=ex.fdr_id)
+                    dpg.configure_item(dpg.last_item(), enabled=stk.allow_exec_time)
+                    if not stk.allow_exec_time:
                         dpg.add_text("🔒", color=_C_DIM)
                 else:
                     dpg.add_button(label="time", width=44, height=20,
                                    callback=self._on_exec_time_toggle,
-                                   user_data=ex.exec_id)
+                                   user_data=ex.fdr_id)
                 dpg.add_button(label=pri_label, width=40, height=20,
                                callback=self._on_priority_cycle,
-                               user_data=ex.exec_id)
+                               user_data=ex.fdr_id)
                 for _slot, _fn in (('a', ex.btn_a), ('b', ex.btn_b), ('c', ex.btn_c)):
-                    _tag = f"ebtn_{_slot}_{ex.exec_id}"
+                    _tag = f"ebtn_{_slot}_{ex.fdr_id}"
                     dpg.add_button(label=_fn.lower(), tag=_tag,
                                    width=40, height=20,
                                    callback=self._on_exec_slot_btn,
-                                   user_data=(ex.exec_id, _slot))
+                                   user_data=(ex.fdr_id, _slot))
             # fader level row
             dpg.add_slider_int(
-                tag=f"exec_fader_{ex.exec_id}",
+                tag=f"exec_fader_{ex.fdr_id}",
                 default_value=int(ex.level * 255),
                 min_value=0, max_value=255,
                 width=-1, height=16,
                 format="%d",
                 callback=self._on_exec_fader,
-                user_data=ex.exec_id,
+                user_data=ex.fdr_id,
                 parent="playbacks_list")
             # Fade progress bar (thin, amber) — shows crossfade progress live
             dpg.add_progress_bar(
-                tag=f"exec_fade_{ex.exec_id}",
+                tag=f"exec_fade_{ex.fdr_id}",
                 default_value=0.0,
                 width=-1, height=5,
                 overlay="",
                 parent="playbacks_list")
             try:
-                dpg.bind_item_theme(f"exec_fade_{ex.exec_id}",
+                dpg.bind_item_theme(f"exec_fade_{ex.fdr_id}",
                                     self._fade_bar_theme)
             except Exception:
                 pass
 
     def _on_exec_time_toggle(self, sender, app_data, user_data):  # noqa: ARG002
-        """Toggle executor time override on/off from playbacks panel."""
-        if self._executor_pool:
-            ex = self._executor_pool.executors.get(int(user_data))
+        """Toggle fader time override on/off from playbacks panel."""
+        if self._fader_pool:
+            ex = self._fader_pool.faders.get(int(user_data))
             if ex:
                 ex.time_override_on = not ex.time_override_on
         self._last_playbacks_hash = None
 
     def _on_priority_cycle(self, sender, app_data, user_data):
-        if self._executor_pool:
-            ex = self._executor_pool.executors.get(int(user_data))
+        if self._fader_pool:
+            ex = self._fader_pool.faders.get(int(user_data))
             if ex:
                 # NRM → HI → LO → NRM
                 cycle = {0: 1, 1: -1, -1: 0}
@@ -11065,7 +11065,7 @@ class GUIEngine:
 
     def _on_exec_slot_btn(self, sender, app_data, user_data):
         eid, slot = user_data
-        ex = self._executor_pool.executors.get(eid) if self._executor_pool else None
+        ex = self._fader_pool.faders.get(eid) if self._fader_pool else None
         if not ex or not self._cmd:
             return
         fn = getattr(ex, f'btn_{slot}', 'GO')
@@ -11073,23 +11073,23 @@ class GUIEngine:
             return  # hold behavior — tick loop handles via is_item_active()
         self._cmd(f"FADER {eid} {fn}")
 
-    def _on_stop_executor(self, sender, app_data, user_data):
-        exec_id = int(user_data)
-        if self._executor_pool:
-            ex = self._executor_pool.executors.get(exec_id)
+    def _on_stop_fader(self, sender, app_data, user_data):
+        fdr_id = int(user_data)
+        if self._fader_pool:
+            ex = self._fader_pool.faders.get(fdr_id)
             if ex:
                 ex.stop()
         self._last_playbacks_hash = None
 
-    def _on_stop_all_executors(self):
-        if self._executor_pool:
-            for ex in list(self._executor_pool.executors.values()):
+    def _on_stop_all_faders(self):
+        if self._fader_pool:
+            for ex in list(self._fader_pool.faders.values()):
                 if ex.is_active:
                     ex.stop()
         self._last_playbacks_hash = None   # force rebuild next tick
 
     def _on_cs_combo_select(self, _sender, value, _user_data):
-        """Switch active cuestack from the left-column combo."""
+        """Switch active stack from the left-column combo."""
         if not value or value == "—":
             return
         try:
@@ -11097,11 +11097,11 @@ class GUIEngine:
         except (ValueError, IndexError):
             return
         if self._cmd:
-            self._cmd(f"CUESTACK {n}")
+            self._cmd(f"STACK {n}")
 
     def _on_exec_fader(self, _sender, value, user_data):
-        if self._executor_pool:
-            ex = self._executor_pool.executors.get(int(user_data))
+        if self._fader_pool:
+            ex = self._fader_pool.faders.get(int(user_data))
             if ex:
                 ex.level = max(0.0, min(1.0, float(value) / 255.0))
                 _exec_fader_mode_hook(ex)
@@ -11185,13 +11185,13 @@ class GUIEngine:
         }
 
     def _cue_timing_target(self):
-        """Return (CueStack, Cue) for the currently active cue, or (None, None)."""
-        active_n = self._active_executor[0] if self._active_executor else 1
-        cs = self._cuestack_pool.get(active_n) if self._cuestack_pool else None
-        if not cs or cs.current is None:
+        """Return (Stack, Cue) for the currently active cue, or (None, None)."""
+        active_n = self._active_fader[0] if self._active_fader else 1
+        stk = self._stack_pool.get(active_n) if self._stack_pool else None
+        if not stk or stk.current is None:
             return None, None
-        cue = cs.cues.get(cs.current)
-        return cs, cue
+        cue = stk.cues.get(stk.current)
+        return stk, cue
 
     def _on_cue_fade_edit(self, _sender, value, _user_data):
         _, cue = self._cue_timing_target()
@@ -11238,14 +11238,14 @@ class GUIEngine:
             # _fader_dim is restored from state for MIDI soft-takeover,
             # but NOT applied to programmer_layer on boot — fixtures start
             # at whatever their cue/default says, not the last fader position.
-            # Auto-reload all executors that have a saved cue position.
+            # Auto-reload all faders that have a saved cue position.
             # Fires with instant (0s) fade so output is live on first frame.
             try:
                 if self._cmd:
                     reloaded = 0
-                    for ex in executor_pool.executors.values():
-                        cs = ex.cuestack
-                        if cs and cs.current is not None:
+                    for ex in fader_pool.faders.values():
+                        stk = ex.stack
+                        if stk and stk.current is not None:
                             prev = (ex.time_override_on,
                                     ex.time_override_fade,
                                     ex.time_override_delay)
@@ -11261,7 +11261,7 @@ class GUIEngine:
                                  ex.time_override_fade,
                                  ex.time_override_delay) = prev
                     if reloaded:
-                        self._log(f"↺  auto-reload — {reloaded} cuestack(s) live")
+                        self._log(f"↺  auto-reload — {reloaded} stack(s) live")
             except Exception as _e:
                 self._log(f"auto-reload error: {_e}")
 
@@ -11460,7 +11460,7 @@ class GUIEngine:
         except Exception:
             pass
 
-        # Active playbacks — rebuild list when executor state changes
+        # Active playbacks — rebuild list when fader state changes
         ph = self._playbacks_state_hash()
         if ph != self._last_playbacks_hash:
             self._last_playbacks_hash = ph
@@ -11469,9 +11469,9 @@ class GUIEngine:
             except Exception:
                 pass
 
-        # Sync executor fader sliders and fade progress bars
-        if self._executor_pool:
-            for eid, ex in self._executor_pool.executors.items():
+        # Sync fader fader sliders and fade progress bars
+        if self._fader_pool:
+            for eid, ex in self._fader_pool.faders.items():
                 if not ex.is_active:
                     continue
                 tag = f"exec_fader_{eid}"
@@ -11495,47 +11495,47 @@ class GUIEngine:
                 except Exception:
                     pass
 
-        # Auto-follow: fire GO on executors whose follow timer has elapsed
-        if self._executor_pool and self._cmd:
+        # Auto-follow: fire GO on faders whose follow timer has elapsed
+        if self._fader_pool and self._cmd:
             _now = time.monotonic()
-            for ex in self._executor_pool.executors.values():
+            for ex in self._fader_pool.faders.values():
                 fa = getattr(ex, '_follow_at', None)
                 if fa and _now >= fa:
                     ex._follow_at = None
                     try:
-                        self._cmd(f"FADER {ex.exec_id} GO")
+                        self._cmd(f"FADER {ex.fdr_id} GO")
                     except Exception:
                         pass
 
-        # Auto-chase: fire GO on executors whose cuestack is in chase mode
-        if self._executor_pool and self._cmd:
+        # Auto-chase: fire GO on faders whose stack is in chase mode
+        if self._fader_pool and self._cmd:
             _now_ch = time.monotonic()
-            for ex in self._executor_pool.executors.values():
-                cs = ex.cuestack
-                if not (cs and cs.chase_enabled and cs.cues):
+            for ex in self._fader_pool.faders.values():
+                stk = ex.stack
+                if not (stk and stk.chase_enabled and stk.cues):
                     ex._chase_next_at = None
                     continue
                 # Resolve BPM: speed master > inline
                 _sm = None
-                if cs.chase_speed_id is not None and self._speed_pool:
-                    _sm = self._speed_pool.get(cs.chase_speed_id)
-                bpm = (_sm.bpm if _sm else None) or cs.chase_bpm or 120.0
+                if stk.chase_speed_id is not None and self._speed_pool:
+                    _sm = self._speed_pool.get(stk.chase_speed_id)
+                bpm = (_sm.bpm if _sm else None) or stk.chase_bpm or 120.0
                 beat_s = 60.0 / bpm
                 if ex._chase_next_at is None:
                     ex._chase_next_at = _now_ch + beat_s
                 elif _now_ch >= ex._chase_next_at:
                     ex._chase_next_at = _now_ch + beat_s
                     try:
-                        self._cmd(f"FADER {ex.exec_id} GO")
+                        self._cmd(f"FADER {ex.fdr_id} GO")
                     except Exception:
                         pass
 
         # FLASH button hold detection — poll is_item_active on any ebtn_* slot
-        # whose configured function is FLASH (any assigned executor).
-        if self._executor_pool and self._cmd:
+        # whose configured function is FLASH (any assigned fader).
+        if self._fader_pool and self._cmd:
             active_eids = {
-                eid for eid, ex in self._executor_pool.executors.items()
-                if ex.cuestack
+                eid for eid, ex in self._fader_pool.faders.items()
+                if ex.stack
             }
             for eid in list(self._flash_held):
                 if eid not in active_eids:
@@ -11545,7 +11545,7 @@ class GUIEngine:
                         except Exception:
                             pass
             for eid in active_eids:
-                ex = self._executor_pool.executors[eid]
+                ex = self._fader_pool.faders[eid]
                 # Find which slots are configured as FLASH — check both playbacks panel and fader page
                 flash_tags = []
                 _fpg_slot = self._fpg_slot_for_exec(self._fpg_page, eid)
@@ -11590,15 +11590,15 @@ class GUIEngine:
                     except Exception:
                         pass
 
-        # Active stack — refresh left column when executor changes
-        active_n = self._active_executor[0] if self._active_executor else 1
-        active_cs   = self._cuestack_pool.get(active_n) if self._cuestack_pool else None
-        current_name = active_cs.name if active_cs else f"cuestack {active_n}"
-        # Build cuestack combo items from pool
-        if self._cuestack_pool:
+        # Active stack — refresh left column when fader changes
+        active_n = self._active_fader[0] if self._active_fader else 1
+        active_cs   = self._stack_pool.get(active_n) if self._stack_pool else None
+        current_name = active_cs.name if active_cs else f"stack {active_n}"
+        # Build stack combo items from pool
+        if self._stack_pool:
             cs_items = ["—"] + [
-                f"{sid}: {self._cuestack_pool.stacks[sid].name}"
-                for sid in sorted(self._cuestack_pool.stacks)
+                f"{sid}: {self._stack_pool.stacks[sid].name}"
+                for sid in sorted(self._stack_pool.stacks)
             ]
         else:
             cs_items = ["—"]
@@ -11616,11 +11616,11 @@ class GUIEngine:
             for n, c in active_cs.cues.items()
         ) if active_cs else ()
         wrap_state = getattr(active_cs, 'wrap', False) if active_cs else False
-        if (active_n != self._displayed_executor
+        if (active_n != self._displayed_fader
                 or current_name != self._displayed_cs_name
                 or notes_hash != getattr(self, '_displayed_notes_hash', None)
                 or wrap_state != getattr(self, '_displayed_wrap', None)):
-            self._displayed_executor    = active_n
+            self._displayed_fader    = active_n
             self._displayed_cs_name     = current_name
             self._displayed_notes_hash  = notes_hash
             self._displayed_wrap        = wrap_state
@@ -11977,7 +11977,7 @@ class GUIEngine:
         if self._osc_fb_counter >= 20:
             self._osc_fb_counter = 0
             if self._osc and self._out and self._patch:
-                self._osc.broadcast_state(self._out, self._executor_pool, self._patch)
+                self._osc.broadcast_state(self._out, self._fader_pool, self._patch)
 
         # Clear save status after delay
         _now_as = time.monotonic()
@@ -12040,12 +12040,12 @@ class GUIEngine:
 # you don't re-record cues or re-wire MIDI on every startup.
 #
 # Saves:
-#   cuestacks  — cue data, names, fade/delay times
+#   stacks  — cue data, names, fade/delay times
 #   MIDI CC    — mapping by target name (not callback ref)
 #   MIDI Note  — same
 #   FX params  — rate/size/spread knob positions
 #   Groups     — fixture ID lists
-#   state.json — master_level, active_executor, executor assignments + cue positions
+#   state.json — master_level, active_fader, fader assignments + cue positions
 #
 # Does NOT save:
 #   sACN/OSC   — set in code
@@ -12098,7 +12098,7 @@ class ShowFile:
     FX_SCALE   = 2       # bump when size/spread scale changes
 
     # ── Per-category file paths ──────────────────────────────
-    CUESTACKS = os.path.join(DATA_DIR, "cuestacks.json")
+    STACKS = os.path.join(DATA_DIR, "stacks.json")
     GROUPS    = os.path.join(DATA_DIR, "groups.json")
     COLORS    = os.path.join(DATA_DIR, "colors.json")
     DIMS      = os.path.join(DATA_DIR, "dims.json")
@@ -12120,8 +12120,8 @@ class ShowFile:
     CONTROL   = os.path.join(DATA_DIR, "control_pool.json")
     GDTF_DIR  = os.path.join(DATA_DIR, "gdtf")
     STATE     = os.path.join(DATA_DIR, "state.json")
-    EXEC_PAGES   = os.path.join(DATA_DIR, "executor_pages.json")
-    EXECUTORS    = os.path.join(DATA_DIR, "executors.json")
+    FADER_PAGES   = os.path.join(DATA_DIR, "fader_pages.json")
+    FADERS    = os.path.join(DATA_DIR, "faders.json")
     CHANGELOG    = os.path.join(DATA_DIR, "changelog.json")
     AI_PROMPTS   = os.path.join(DATA_DIR, "ai_prompts.json")
     DEFAULTS     = os.path.join(DATA_DIR, "defaults.json")
@@ -12153,9 +12153,9 @@ class ShowFile:
                 ShowFile._migrate_fx_ld(ld)
 
     @staticmethod
-    def save_cuestacks(cuestack_pool):
-        doc = {"version": ShowFile.VERSION, "fx_scale": ShowFile.FX_SCALE, "cuestacks": {}}
-        for sid, stack in cuestack_pool.stacks.items():
+    def save_stacks(stack_pool):
+        doc = {"version": ShowFile.VERSION, "fx_scale": ShowFile.FX_SCALE, "stacks": {}}
+        for sid, stack in stack_pool.stacks.items():
             cues_out = {}
             for num in stack._sorted_cue_numbers():
                 cue = stack.cues[num]
@@ -12192,10 +12192,10 @@ class ShowFile:
                 entry_cs["chase_bpm"] = stack.chase_bpm
             if getattr(stack, 'chase_speed_id', None) is not None:
                 entry_cs["chase_speed_id"] = stack.chase_speed_id
-            doc["cuestacks"][str(sid)] = entry_cs
-        _write_file(ShowFile.CUESTACKS, doc)
-        total = sum(len(s.cues) for s in cuestack_pool.stacks.values())
-        print(f"  Saved cuestacks → {len(cuestack_pool.stacks)} stack(s), {total} cue(s)")
+            doc["stacks"][str(sid)] = entry_cs
+        _write_file(ShowFile.STACKS, doc)
+        total = sum(len(s.cues) for s in stack_pool.stacks.values())
+        print(f"  Saved stacks → {len(stack_pool.stacks)} stack(s), {total} cue(s)")
 
     @staticmethod
     def save_groups(group_pool):
@@ -12209,40 +12209,40 @@ class ShowFile:
         print(f"  Saved groups    → {len(group_pool.groups)}")
 
     @staticmethod
-    def save_executor_pages(executor_pool):
+    def save_fader_pages(fader_pool):
         doc = {"version": ShowFile.VERSION, "pages": {}}
-        for n, page in executor_pool.pages.items():
+        for n, page in fader_pool.pages.items():
             doc["pages"][str(n)] = {
                 "name":       page.get("name", f"page {n}"),
-                "cuestacks":  list(page.get("cuestacks", [])),
+                "stacks":  list(page.get("stacks", [])),
             }
-        _write_file(ShowFile.EXEC_PAGES, doc)
-        print(f"  Saved exec pages → {len(executor_pool.pages)}")
+        _write_file(ShowFile.FADER_PAGES, doc)
+        print(f"  Saved fdr pages → {len(fader_pool.pages)}")
 
     @staticmethod
-    def load_executor_pages(executor_pool):
-        doc = _read_file(ShowFile.EXEC_PAGES)
+    def load_fader_pages(fader_pool):
+        doc = _read_file(ShowFile.FADER_PAGES)
         if not doc:
             return False
         for n_str, pdata in doc.get("pages", {}).items():
             n = int(n_str)
-            # "slots" was the old key (executor IDs); "cuestacks" is the current key
-            cuestacks = pdata.get("cuestacks", pdata.get("slots", []))
-            executor_pool.pages[n] = {
+            # "slots" was the old key (fader IDs); "stacks" is the current key
+            stacks = pdata.get("stacks", pdata.get("slots", []))
+            fader_pool.pages[n] = {
                 "name":      pdata.get("name", f"page {n}"),
-                "cuestacks": list(cuestacks),
+                "stacks": list(stacks),
             }
-        print(f"  Loaded exec pages — {len(executor_pool.pages)}")
+        print(f"  Loaded fdr pages — {len(fader_pool.pages)}")
         return True
 
     @staticmethod
-    def save_executors(executor_pool):
-        """Persist executor slot assignments (cuestack, level, priority, trigger_mode)."""
-        doc = {"version": ShowFile.VERSION, "executors": {}}
-        for eid, ex in executor_pool.executors.items():
-            cs_id = ex.cuestack.stack_id if ex.cuestack else None
-            doc["executors"][str(eid)] = {
-                "cuestack_id":  cs_id,
+    def save_faders(fader_pool):
+        """Persist fader slot assignments (stack, level, priority, trigger_mode)."""
+        doc = {"version": ShowFile.VERSION, "faders": {}}
+        for eid, ex in fader_pool.faders.items():
+            cs_id = ex.stack.stack_id if ex.stack else None
+            doc["faders"][str(eid)] = {
+                "stack_id":  cs_id,
                 "level":        ex.level,
                 "priority":     ex.priority,
                 "trigger_mode": ex.trigger_mode,
@@ -12255,24 +12255,24 @@ class ShowFile:
                 "size_factor":  ex.size_factor,
                 "label":        ex.label,
             }
-        _write_file(ShowFile.EXECUTORS, doc)
-        print(f"  Saved executors  → {len(doc['executors'])} slot(s)")
+        _write_file(ShowFile.FADERS, doc)
+        print(f"  Saved faders  → {len(doc['faders'])} slot(s)")
 
     @staticmethod
-    def load_executors(executor_pool, cuestack_pool):
-        """Re-wire executor→cuestack assignments and settings from disk."""
-        doc = _read_file(ShowFile.EXECUTORS)
+    def load_faders(fader_pool, stack_pool):
+        """Re-wire fader→stack assignments and settings from disk."""
+        doc = _read_file(ShowFile.FADERS)
         if not doc:
             return False
         count = 0
-        for eid_str, edata in doc.get("executors", {}).items():
+        for eid_str, edata in doc.get("faders", {}).items():
             eid  = int(eid_str)
-            ex   = executor_pool.get(eid)
-            cs_id = edata.get("cuestack_id")
+            ex   = fader_pool.get(eid)
+            cs_id = edata.get("stack_id")
             if cs_id is not None:
-                cs = cuestack_pool.get(int(cs_id))
-                if cs:
-                    executor_pool.assign(eid, cs)
+                stk = stack_pool.get(int(cs_id))
+                if stk:
+                    fader_pool.assign(eid, stk)
                     count += 1
             ex.level        = float(edata.get("level",  1.0))
             ex.priority     = int(edata.get("priority", 0))
@@ -12288,7 +12288,7 @@ class ShowFile:
             _sf             = float(edata.get("size_factor", 1.0))
             ex.size_factor  = max(0.0, min(4.0, _sf))
             ex.label        = edata.get("label", "")
-        print(f"  Loaded executors — {count} assignment(s)")
+        print(f"  Loaded faders — {count} assignment(s)")
         return True
 
     @staticmethod
@@ -12350,14 +12350,14 @@ class ShowFile:
         _write_file(ShowFile.FX, doc)
 
     @staticmethod
-    def save_state(output_state, executor_pool, active_executor,
+    def save_state(output_state, fader_pool, active_fader,
                    prog_time=None, fader_dim=0.0):
-        """Save live session state: master level, active executor, exec→cuestack assignments."""
+        """Save live session state: master level, active fader, fdr→stack assignments."""
         execs = {}
-        for eid, ex in executor_pool.executors.items():
+        for eid, ex in fader_pool.faders.items():
             execs[str(eid)] = {
-                "stack_id":  ex.cuestack.stack_id if ex.cuestack else None,
-                "current":   ex.cuestack.current  if ex.cuestack else None,
+                "stack_id":  ex.stack.stack_id if ex.stack else None,
+                "current":   ex.stack.current  if ex.stack else None,
                 "priority":  ex.priority,
                 "level":     ex.level,
                 "time_on":   ex.time_override_on,
@@ -12367,35 +12367,35 @@ class ShowFile:
         doc = {
             "version":        ShowFile.VERSION,
             "master_level":   output_state.master_level,
-            "active_executor": active_executor[0] if active_executor else 1,
-            "executors":      execs,
+            "active_fader": active_fader[0] if active_fader else 1,
+            "faders":      execs,
             "prog_time":      prog_time or {"on": False, "fade": 0.0, "delay": 0.0},
             "fader_dim":      float(fader_dim),
         }
         _write_file(ShowFile.STATE, doc)
 
     @staticmethod
-    def load_state(output_state, executor_pool, cuestack_pool, active_executor,
+    def load_state(output_state, fader_pool, stack_pool, active_fader,
                    prog_time=None, fader_dim=None):
-        """Restore master level, active executor, and exec→cuestack assignments."""
+        """Restore master level, active fader, and fdr→stack assignments."""
         doc = _read_file(ShowFile.STATE)
         if not doc:
             return False
         output_state.master_level = float(doc.get("master_level", 1.0))
-        if active_executor is not None:
-            active_executor[0] = int(doc.get("active_executor", 1))
-        for eid_str, edata in doc.get("executors", {}).items():
+        if active_fader is not None:
+            active_fader[0] = int(doc.get("active_fader", 1))
+        for eid_str, edata in doc.get("faders", {}).items():
             eid = int(eid_str)
             sid = edata.get("stack_id")
             cur = edata.get("current")
             if sid is None:
                 continue
-            cs = cuestack_pool.get(sid)
-            if cs:
-                executor_pool.assign(eid, cs)
+            stk = stack_pool.get(sid)
+            if stk:
+                fader_pool.assign(eid, stk)
                 if cur is not None:
-                    cs.current = float(cur)
-            ex = executor_pool.get(eid)
+                    stk.current = float(cur)
+            ex = fader_pool.get(eid)
             ex.priority            = int(edata.get("priority", 0))
             ex.level               = float(edata.get("level", 1.0))
             ex.time_override_on    = bool(edata.get("time_on",    False))
@@ -12409,20 +12409,20 @@ class ShowFile:
         if fader_dim is not None and "fader_dim" in doc:
             fader_dim[0] = float(doc["fader_dim"])
         print(f"  Loaded state    — master={output_state.master_level:.0%} "
-              f"active_exec={active_executor[0] if active_executor else '?'}")
+              f"active_exec={active_fader[0] if active_fader else '?'}")
         return True
 
     # ── Load ────────────────────────────────────────────────
 
     @staticmethod
-    def load_cuestacks(cuestack_pool, cue_pool):
-        doc = _read_file(ShowFile.CUESTACKS)
+    def load_stacks(stack_pool, cue_pool):
+        doc = _read_file(ShowFile.STACKS)
         if not doc:
             return False
         needs_migration = doc.get("fx_scale", 1) < ShowFile.FX_SCALE
-        for sid_str, sdata in doc.get("cuestacks", {}).items():
+        for sid_str, sdata in doc.get("stacks", {}).items():
             sid   = int(sid_str)
-            stack = CueStack(sid, sdata["name"])
+            stack = Stack(sid, sdata["name"])
             stack.allow_exec_time = bool(sdata.get("allow_exec_time", True))
             stack.wrap            = bool(sdata.get("wrap", False))
             stack.bounce          = bool(sdata.get("bounce", False))
@@ -12447,11 +12447,11 @@ class ShowFile:
                 stack.cues[num] = cue
                 if num == int(num):   # decimal cues have no panel button
                     cue_pool.store(int(num), cue)
-            cuestack_pool.store(sid, stack)
-        total = sum(len(s.cues) for s in cuestack_pool.stacks.values())
+            stack_pool.store(sid, stack)
+        total = sum(len(s.cues) for s in stack_pool.stacks.values())
         if needs_migration:
             print(f"  Migrated FX scale (0-255/0-1 → 0-100) in {total} cue(s)")
-        print(f"  Loaded cuestacks — {len(cuestack_pool.stacks)} stack(s), {total} cue(s)")
+        print(f"  Loaded stacks — {len(stack_pool.stacks)} stack(s), {total} cue(s)")
         return True
 
     @staticmethod
@@ -12916,7 +12916,7 @@ class ShowFile:
         return doc if isinstance(doc, dict) else {}
 
     @staticmethod
-    def migrate_legacy(cuestack_pool, cue_pool, group_pool, color_pool, dim_pool, fx_params):
+    def migrate_legacy(stack_pool, cue_pool, group_pool, color_pool, dim_pool, fx_params):
         """Read old studio_show.json and write to new per-file format, then rename it."""
         if not os.path.exists(_LEGACY_FILE):
             return False
@@ -12928,11 +12928,11 @@ class ShowFile:
 
         print("  Migrating studio_show.json → studio_data/ ...")
 
-        # Cuestacks
-        if old.get("cuestacks"):
-            for sid_str, sdata in old["cuestacks"].items():
+        # Stacks
+        if old.get("stacks"):
+            for sid_str, sdata in old["stacks"].items():
                 sid   = int(sid_str)
-                stack = CueStack(sid, sdata["name"])
+                stack = Stack(sid, sdata["name"])
                 for num_str, cdata in sdata["cues"].items():
                     num      = float(num_str)
                     cue      = Cue(num, cdata["name"],
@@ -12944,8 +12944,8 @@ class ShowFile:
                     stack.cues[num] = cue
                     if num == int(num):
                         cue_pool.store(int(num), cue)
-                cuestack_pool.store(sid, stack)
-            ShowFile.save_cuestacks(cuestack_pool)
+                stack_pool.store(sid, stack)
+            ShowFile.save_stacks(stack_pool)
 
         # Groups
         for gid_str, gdata in old.get("groups", {}).items():
@@ -13000,7 +13000,7 @@ class ShowFile:
 
 # ============================================================
 # STUDIO CONSOLE — Live Session
-# cuestack 1 / Axiom 25 MkII mapped
+# stack 1 / Axiom 25 MkII mapped
 # ============================================================
 
 # ----------------------------------------------------------
@@ -13036,8 +13036,8 @@ dim_pool     = DimmerPool()
 output_state = OutputState(patch)
 output_state.link_programmer(prog)
 _blackout_saved_level = [1.0]   # saved master level before BLACKOUT; shared mutable ref
-executor_pool = ExecutorPool()
-output_state.link_executor_pool(executor_pool)
+fader_pool = FaderPool()
+output_state.link_fader_pool(fader_pool)
 fade_engine  = FadeEngine()
 form_pool    = FormPool()   # built-ins pre-seeded; custom forms loaded below
 rate_pool         = RatePool()
@@ -13048,12 +13048,12 @@ fx_engine    = FXEngine(output_state, form_pool=form_pool,
                         rate_pool=rate_pool, size_pool=size_pool,
                         spread_pool=spread_pool, dim_pool=dim_pool,
                         speed_master_pool=speed_master_pool)
-# Wire fx_engine + form_pool into executor_pool so new executors inherit them
-executor_pool.default_fx_engine  = fx_engine
-executor_pool.default_form_pool  = form_pool
-executor_pool.default_color_pool = color_pool
-executor_pool.default_dim_pool   = dim_pool
-executor_pool.default_group_pool = group_pool
+# Wire fx_engine + form_pool into fader_pool so new faders inherit them
+fader_pool.default_fx_engine  = fx_engine
+fader_pool.default_form_pool  = form_pool
+fader_pool.default_color_pool = color_pool
+fader_pool.default_dim_pool   = dim_pool
+fader_pool.default_group_pool = group_pool
 # STUDIO_DRY_RUN=1 disables real sACN output (no socket, nothing sent to the
 # tubes) while still running the full FX/cue/output pipeline — used for
 # unattended/automated testing. STUDIO_HEADLESS=1 additionally skips the
@@ -13124,13 +13124,13 @@ _fx_params = {
 }
 
 # ----------------------------------------------------------
-# Pools — Cues and Cuestacks (executors)
+# Pools — Cues and Stacks (faders)
 # ----------------------------------------------------------
 
 cue_pool       = CuePool()
-cuestack_pool  = CueStackPool()
+stack_pool  = StackPool()
 fx_pool        = FXPool()
-active_executor = [1]   # list so closures can rebind it
+active_fader = [1]   # list so closures can rebind it
 _tap_times: list = []   # monotonic timestamps for tap-tempo; shared between GUI and TAP command
 
 # programmer time override — when on, overrides cue fade/delay for manually fired cues
@@ -13148,7 +13148,7 @@ focus_pool    = AttributePool("focus",    ["focus"])
 beam_pool     = AttributePool("beam",     ["iris", "shutter1", "strobe"])
 control_pool  = AttributePool("control",  ["control", "macro", "prism", "frost", "animation"])
 
-# Wire attribute pools into executor_pool now that they exist
+# Wire attribute pools into fader_pool now that they exist
 _attr_pools = {
     "position": position_pool,
     "gobo":     gobo_pool,
@@ -13157,8 +13157,8 @@ _attr_pools = {
     "beam":     beam_pool,
     "control":  control_pool,
 }
-executor_pool.default_attr_pools = _attr_pools
-executor_pool.default_fx_pool    = fx_pool
+fader_pool.default_attr_pools = _attr_pools
+fader_pool.default_fx_pool    = fx_pool
 
 macro_pool       = {}    # {slot_int: {"name": str, "commands": [str, ...]}}
 _macro_recording = {"slot": None, "cmds": []}
@@ -13175,18 +13175,18 @@ ShowFile.load_speed_masters(speed_master_pool)
 ShowFile.load_groups(group_pool)
 ShowFile.load_colors(color_pool)
 ShowFile.load_dims(dim_pool)
-_cs_loaded = ShowFile.load_cuestacks(cuestack_pool, cue_pool)
+_cs_loaded = ShowFile.load_stacks(stack_pool, cue_pool)
 ShowFile.load_position_pool(position_pool)
 ShowFile.load_gobo_pool(gobo_pool)
 ShowFile.load_zoom_pool(zoom_pool)
 ShowFile.load_focus_pool(focus_pool)
 ShowFile.load_beam_pool(beam_pool)
 ShowFile.load_control_pool(control_pool)
-ShowFile.load_executor_pages(executor_pool)
-ShowFile.load_executors(executor_pool, cuestack_pool)
+ShowFile.load_fader_pages(fader_pool)
+ShowFile.load_faders(fader_pool, stack_pool)
 ShowFile.load_osc_targets(osc)
 ShowFile.load_macros(macro_pool)
-ShowFile.load_state(output_state, executor_pool, cuestack_pool, active_executor,
+ShowFile.load_state(output_state, fader_pool, stack_pool, active_fader,
                     prog_time=_prog_time, fader_dim=_fader_dim)
 
 # ── Fixture defaults ────────────────────────────────────────────────────
@@ -13212,7 +13212,7 @@ _apply_fixture_defaults()
 # Migrate old single-file if new files don't exist yet
 if not _cs_loaded:
     _migrated = ShowFile.migrate_legacy(
-        cuestack_pool, cue_pool, group_pool, color_pool, dim_pool, _fx_params)
+        stack_pool, cue_pool, group_pool, color_pool, dim_pool, _fx_params)
     if not _migrated:
         # ── First-run factory defaults ─────────────────────────────────
         # Helper to set all fixtures to a colour quickly
@@ -13274,8 +13274,8 @@ if not _cs_loaded:
 
         ShowFile.save_fx_pool(fx_pool)
 
-        # ── cuestack 1: color show ────────────────────────────────────
-        cs1 = CueStack(1, "color Show")
+        # ── stack 1: color show ────────────────────────────────────
+        cs1 = Stack(1, "color Show")
 
         _set_all(255, 0, 0)
         cs1.record_cue(1, prog, name="Red", fade_time=2.0)
@@ -13297,8 +13297,8 @@ if not _cs_loaded:
         cs1.record_cue(5, prog, name="Off", fade_time=2.0)
         prog.execute("CLEAR")
 
-        # ── cuestack 2: Dynamic ───────────────────────────────────────
-        cs2 = CueStack(2, "Dynamic")
+        # ── stack 2: Dynamic ───────────────────────────────────────
+        cs2 = Stack(2, "Dynamic")
 
         _set_all(255, 255, 255)
         cs2.record_cue(1, prog, name="White Full", fade_time=1.5)
@@ -13320,8 +13320,8 @@ if not _cs_loaded:
         cs2.record_cue(5, prog, name="Fade Out", fade_time=3.0)
         prog.execute("CLEAR")
 
-        # ── cuestack 3: Warm Tones ────────────────────────────────────
-        cs3 = CueStack(3, "Warm")
+        # ── stack 3: Warm Tones ────────────────────────────────────
+        cs3 = Stack(3, "Warm")
 
         _set_all(255, 30, 0)
         cs3.record_cue(1, prog, name="Hot Red", fade_time=2.0)
@@ -13345,32 +13345,32 @@ if not _cs_loaded:
 
         # ── Store everything ─────────────────────────────────────────
         for _cs in (cs1, cs2, cs3):
-            cuestack_pool.store(_cs.stack_id, _cs)
+            stack_pool.store(_cs.stack_id, _cs)
             for _cnum, _cue in _cs.cues.items():
                 if _cnum == int(_cnum):
                     cue_pool.store(int(_cnum), _cue)
             _cs.print_stack()
 
-        ShowFile.save_cuestacks(cuestack_pool)
+        ShowFile.save_stacks(stack_pool)
 
-cs1 = cuestack_pool.get(1) or CueStack(1, "cuestack 1")
-cuestack_pool.store(1, cs1)
+cs1 = stack_pool.get(1) or Stack(1, "stack 1")
+stack_pool.store(1, cs1)
 
-# Wire every loaded cuestack into an executor slot (1:1 by default)
-for _slot, _stack in cuestack_pool.stacks.items():
-    executor_pool.assign(_slot, _stack)
+# Wire every loaded stack into an fader slot (1:1 by default)
+for _slot, _stack in stack_pool.stacks.items():
+    fader_pool.assign(_slot, _stack)
 
 # CLEAR rebinds prog.data — re-link so programmer_layer points
 # to the fresh empty dict, not the old one with stale values.
 output_state.link_programmer(prog)
 
 def _active_stack():
-    """Returns the cuestack for the current active executor."""
-    return cuestack_pool.get(active_executor[0])
+    """Returns the stack for the current active fader."""
+    return stack_pool.get(active_fader[0])
 
-def _active_executor():
-    """Returns the Executor object for the current active executor."""
-    return executor_pool.get(active_executor[0])
+def _active_fader():
+    """Returns the Fader object for the current active fader."""
+    return fader_pool.get(active_fader[0])
 
 # ----------------------------------------------------------
 # FX helpers — called by cue fire and manual pads
@@ -13440,7 +13440,7 @@ def _osc_cmd(_, *args):  # _ = OSC address, unused here
     for ma3_word, our_word in translations.items():
         lower = lower.replace(ma3_word, our_word)
     try:
-        # Use run_command so GO/BACK/EXEC etc. work; prog.execute only handles
+        # Use run_command so GO/BACK/fdr etc. work; prog.execute only handles
         # selection and AT commands.
         result = run_command(lower.upper())
         if result:
@@ -13450,30 +13450,30 @@ def _osc_cmd(_, *args):  # _ = OSC address, unused here
 
 def _osc_fader(address, *args):
     """
-    /gma3/fader/PAGE/EXEC  float(0.0-1.0)
-    fader on page PAGE, executor EXEC.
-    page 1 Exec 1 stays mapped to the grandmaster dim (legacy behavior,
-    kept for existing OSC templates). Any other page/exec routes straight
-    to that executor's own level fader — same field the GUI executor
+    /gma3/fader/PAGE/fdr  float(0.0-1.0)
+    fader on page PAGE, fader fdr.
+    page 1 fdr 1 stays mapped to the grandmaster dim (legacy behavior,
+    kept for existing OSC templates). Any other page/fdr routes straight
+    to that fader's own level fader — same field the GUI fader
     sliders write via _on_exec_fader — so a surface like TouchOSC can
-    drive every executor, not just the first one.
+    drive every fader, not just the first one.
     """
     if not args:
         return
     val = float(args[0])
-    # Parse page/exec from address: /gma3/fader/1/1
+    # Parse page/fdr from address: /gma3/fader/1/1
     parts = address.strip('/').split('/')
     page = int(parts[2]) if len(parts) > 2 else 1
-    exec_num = int(parts[3]) if len(parts) > 3 else 1
-    print(f"\n  OSC fader P{page}/E{exec_num} → {val:.0%}")
-    if page == 1 and exec_num == 1:
+    fdr_num = int(parts[3]) if len(parts) > 3 else 1
+    print(f"\n  OSC fader P{page}/E{fdr_num} → {val:.0%}")
+    if page == 1 and fdr_num == 1:
         set_all_dim(val)
     else:
-        executor_pool.get(exec_num).level = max(0.0, min(1.0, val))
+        fader_pool.get(fdr_num).level = max(0.0, min(1.0, val))
 
 def _osc_key(address, *args):
     """
-    /gma3/key/PAGE/EXEC/TYPE  int(0/1)
+    /gma3/key/PAGE/fdr/TYPE  int(0/1)
     Key press on a fader.  1=press, 0=release.
     page 1 fader 1 Go/Back stay mapped to the active fader (legacy
     behavior, kept for existing OSC templates). Any other page/fader fires
@@ -13489,11 +13489,11 @@ def _osc_key(address, *args):
     pressed = int(args[0]) == 1
     parts = address.strip('/').split('/')
     page     = int(parts[2]) if len(parts) > 2 else 1
-    exec_num = int(parts[3]) if len(parts) > 3 else 1
+    fdr_num = int(parts[3]) if len(parts) > 3 else 1
     key_type = parts[4] if len(parts) > 4 else "go"
-    print(f"\n  OSC key P{page}/E{exec_num}/{key_type} {'▼' if pressed else '▲'}")
+    print(f"\n  OSC key P{page}/E{fdr_num}/{key_type} {'▼' if pressed else '▲'}")
     if key_type.lower() == 'flash':
-        run_command(f"FADER {exec_num} FLASH {'ON' if pressed else 'OFF'}")
+        run_command(f"FADER {fdr_num} FLASH {'ON' if pressed else 'OFF'}")
         return
     if not pressed:
         return
@@ -13501,15 +13501,15 @@ def _osc_key(address, *args):
     is_back = key_type.lower() in ('back', 'go-')
     if not (is_go or is_back):
         return
-    if page == 1 and exec_num == 1:
+    if page == 1 and fdr_num == 1:
         cue_go() if is_go else cue_back()
     else:
-        run_command(f"FADER {exec_num} {'GO' if is_go else 'BACK'}")
+        run_command(f"FADER {fdr_num} {'GO' if is_go else 'BACK'}")
 
 # Register MA3-style OSC handlers
 osc.map("/gma3/cmd",         _osc_cmd)
-osc.map("/gma3/fader/*/*",   _osc_fader)  # /gma3/fader/page/exec
-osc.map("/gma3/key/*/*/*",   _osc_key)    # /gma3/key/page/exec/type
+osc.map("/gma3/fader/*/*",   _osc_fader)  # /gma3/fader/page/fdr
+osc.map("/gma3/key/*/*/*",   _osc_key)    # /gma3/key/page/fdr/type
 # Catch-all: print anything else (helps discover what Chataigne is sending)
 osc.map("/*", lambda addr, *a: print(f"  OSC (unmapped): {addr}  {list(a)}"),
          default_handler=True)
@@ -13569,38 +13569,38 @@ def _make_set_speed_master(slot_id):
 
 def cue_go():
     _stop_prog_fx_preview()
-    ex = _active_executor()
-    executor_pool.bump_priority(ex.exec_id)
+    ex = _active_fader()
+    fader_pool.bump_priority(ex.fdr_id)
     ex.go(patch, fade_engine)
-    cs = ex.cuestack
-    if cs:
-        _on_cue_fire(cs.current)
+    stk = ex.stack
+    if stk:
+        _on_cue_fire(stk.current)
 
 def cue_back():
     _stop_prog_fx_preview()
-    ex = _active_executor()
-    executor_pool.bump_priority(ex.exec_id)
+    ex = _active_fader()
+    fader_pool.bump_priority(ex.fdr_id)
     ex.back(patch, fade_engine)
-    cs = ex.cuestack
-    if cs:
-        _on_cue_fire(cs.current)
+    stk = ex.stack
+    if stk:
+        _on_cue_fire(stk.current)
 
 def cue_reload():
     """Re-fire the current cue from scratch: resets FX, re-applies fade."""
     _stop_prog_fx_preview()
-    ex = _active_executor()
-    cs = ex.cuestack
-    if not cs or cs.current is None:
+    ex = _active_fader()
+    stk = ex.stack
+    if not stk or stk.current is None:
         return "no active cue to reload"
-    executor_pool.bump_priority(ex.exec_id)
+    fader_pool.bump_priority(ex.fdr_id)
     result = ex.reload(patch, fade_engine)
-    _on_cue_fire(cs.current)
+    _on_cue_fire(stk.current)
     return result
 
 def goto_cue(num):
     _stop_prog_fx_preview()
-    ex = _active_executor()
-    executor_pool.bump_priority(ex.exec_id)
+    ex = _active_fader()
+    fader_pool.bump_priority(ex.fdr_id)
     result = ex.goto(num, patch, fade_engine)
     if result and 'not found' not in result:
         _on_cue_fire(float(num))
@@ -13714,8 +13714,8 @@ ai = AIEngine(
     output_state  = output_state,
     fx_engine     = fx_engine,
     fade_engine   = fade_engine,
-    cuestack_pool = cuestack_pool,
-    executor_pool = executor_pool,
+    stack_pool = stack_pool,
+    fader_pool = fader_pool,
     # cmd_fn and log_fn wired after run_command / GUIEngine are defined below
 )
 
@@ -13750,7 +13750,7 @@ GUIEngine.target_registry = {
 # ── Save helpers — one call per category ──────────────────
 def save_show():
     ShowFile.save_patch(patch)
-    ShowFile.save_cuestacks(cuestack_pool)
+    ShowFile.save_stacks(stack_pool)
     ShowFile.save_groups(group_pool)
     ShowFile.save_colors(color_pool)
     ShowFile.save_dims(dim_pool)
@@ -13768,10 +13768,10 @@ def save_show():
     ShowFile.save_focus_pool(focus_pool)
     ShowFile.save_beam_pool(beam_pool)
     ShowFile.save_control_pool(control_pool)
-    ShowFile.save_executor_pages(executor_pool)
-    ShowFile.save_executors(executor_pool)
+    ShowFile.save_fader_pages(fader_pool)
+    ShowFile.save_faders(fader_pool)
     ShowFile.save_osc_targets(osc)
-    ShowFile.save_state(output_state, executor_pool, active_executor,
+    ShowFile.save_state(output_state, fader_pool, active_fader,
                         prog_time=_prog_time, fader_dim=_fader_dim[0])
 
 
@@ -13817,8 +13817,8 @@ def load_show_from(name):
         if fname.endswith('.json'):
             _sh.copy2(os.path.join(src, fname), os.path.join(DATA_DIR, fname))
     # Reload pools from newly-copied files (each loader reads from DATA_DIR itself)
-    cuestack_pool.stacks.clear()
-    ShowFile.load_cuestacks(cuestack_pool, cue_pool)
+    stack_pool.stacks.clear()
+    ShowFile.load_stacks(stack_pool, cue_pool)
     group_pool.groups.clear()
     ShowFile.load_groups(group_pool)
     color_pool.presets.clear()
@@ -13849,10 +13849,10 @@ def load_show_from(name):
     ShowFile.load_focus_pool(focus_pool)
     ShowFile.load_beam_pool(beam_pool)
     ShowFile.load_control_pool(control_pool)
-    ShowFile.load_executor_pages(executor_pool)
-    ShowFile.load_executors(executor_pool, cuestack_pool)
-    ShowFile.load_state(output_state, executor_pool, cuestack_pool,
-                        active_executor, prog_time=_prog_time, fader_dim=_fader_dim)
+    ShowFile.load_fader_pages(fader_pool)
+    ShowFile.load_faders(fader_pool, stack_pool)
+    ShowFile.load_state(output_state, fader_pool, stack_pool,
+                        active_fader, prog_time=_prog_time, fader_dim=_fader_dim)
     # OSC targets and global FX rate/size/spread/fade defaults are saved every
     # SAVE (ShowFile.save_osc_targets / save_fx) and loaded at startup, but were
     # missing here — unlike patch/MIDI (which need a real restart to re-init
@@ -14038,21 +14038,21 @@ def import_presets(path):
 # ── MIDI restore (must happen after target_registry is built) ──
 _midi_doc = _read_file(ShowFile.MIDI)
 if _midi_doc:
-    # Pre-generate callbacks for any dynamic "GO CS N CUE M" / "Exec N Flash"
+    # Pre-generate callbacks for any dynamic "GO stk N CUE M" / "fdr N Flash"
     # targets saved in midi.json — these aren't in the static target_registry
-    # dict (executor/cuestack numbers aren't known ahead of time), so they're
+    # dict (fader/stack numbers aren't known ahead of time), so they're
     # regenerated by name pattern on load, same as when they were first learned.
     import re as _re_midi
     for _entry in _midi_doc.get("midi_note", []):
         _name = _entry.get("target", "")
         if _name not in GUIEngine.target_registry:
-            _m = _re_midi.match(r'^GO CS (\d+) CUE (\d+(?:\.\d+)?)$', _name)
+            _m = _re_midi.match(r'^GO stk (\d+) CUE (\d+(?:\.\d+)?)$', _name)
             if _m:
                 _cs, _cue = int(_m.group(1)), float(_m.group(2))
-                def _make_go(c=f"GO CS {_cs} CUE {_cue}"): return lambda: run_command(c)
+                def _make_go(c=f"GO stk {_cs} CUE {_cue}"): return lambda: run_command(c)
                 GUIEngine.target_registry[_name] = (_make_go(), False, True)
                 continue
-            _mf = _re_midi.match(r'^Exec (\d+) Flash$', _name)
+            _mf = _re_midi.match(r'^fdr (\d+) Flash$', _name)
             if _mf:
                 _ex_n = int(_mf.group(1))
                 def _make_flash(on_c=f"FADER {_ex_n} flash on", off_c=f"FADER {_ex_n} flash off"):
@@ -14147,18 +14147,18 @@ def _apply_timing_edit(cue, raw_str):
 
 def _preset_live_push(preset_type, preset_id):
     """
-    After updating a preset, push the new values into any executor currently
+    After updating a preset, push the new values into any fader currently
     playing a cue that references that preset.
     preset_type: 'color', 'dim', 'fx', or an attr name ('position', 'gobo', etc.)
     preset_id:   int preset slot number
     """
-    for ex in executor_pool.executors.values():
-        if not ex.is_active or not ex.cuestack:
+    for ex in fader_pool.faders.values():
+        if not ex.is_active or not ex.stack:
             continue
-        cue_num = ex.cuestack.current
+        cue_num = ex.stack.current
         if cue_num is None:
             continue
-        cue = ex.cuestack.cues.get(cue_num)
+        cue = ex.stack.cues.get(cue_num)
         if not cue:
             continue
 
@@ -14235,34 +14235,34 @@ def run_command(cmd_str):
         if not is_macro_stop:
             _macro_recording["cmds"].append(raw)
 
-    # ── Executor selection ────────────────────────────────────
-    # CUESTACK N  — make executor N the active one
-    if t0 in ('CUESTACK', 'CS') and len(tokens) > 1:
+    # ── Fader selection ────────────────────────────────────
+    # STACK N  — make fader N the active one
+    if t0 in ('STACK', 'STK') and len(tokens) > 1:
         if tokens[1] == 'MERGE':
             if 'INTO' not in tokens:
-                return "usage: cuestack merge <src> into <dst>"
+                return "usage: stack merge <src> into <dst>"
             into_idx = tokens.index('INTO')
             try:
                 src_n = int(tokens[2])
                 dst_n = int(tokens[into_idx + 1])
             except (IndexError, ValueError):
-                return "usage: cuestack merge <src> into <dst>"
-            src_cs = cuestack_pool.get(src_n)
-            dst_cs = cuestack_pool.get(dst_n)
-            if not src_cs:
-                return f"CUESTACK MERGE: source CS {src_n} not found"
-            if not dst_cs:
-                return f"CUESTACK MERGE: destination CS {dst_n} not found"
+                return "usage: stack merge <src> into <dst>"
+            src_stk = stack_pool.get(src_n)
+            dst_stk = stack_pool.get(dst_n)
+            if not src_stk:
+                return f"STACK MERGE: source stk {src_n} not found"
+            if not dst_stk:
+                return f"STACK MERGE: destination stk {dst_n} not found"
             if src_n == dst_n:
-                return "CUESTACK MERGE: source and destination must be different"
-            src_sorted = src_cs._sorted_cue_numbers()
+                return "STACK MERGE: source and destination must be different"
+            src_sorted = src_stk._sorted_cue_numbers()
             if not src_sorted:
-                return f"CUESTACK MERGE: source CS {src_n} is empty"
-            dst_sorted = dst_cs._sorted_cue_numbers()
+                return f"STACK MERGE: source stk {src_n} is empty"
+            dst_sorted = dst_stk._sorted_cue_numbers()
             base = (max(dst_sorted) + 1) if dst_sorted else 0.0
             merged = 0
             for src_num in src_sorted:
-                src_cue = src_cs.cues[src_num]
+                src_cue = src_stk.cues[src_num]
                 new_num = base + src_num
                 nc = Cue(
                     cue_number  = new_num,
@@ -14276,74 +14276,74 @@ def run_command(cmd_str):
                 nc.note       = src_cue.note
                 nc.fx_outfade = src_cue.fx_outfade
                 nc.data       = copy.deepcopy(src_cue.data)
-                dst_cs.cues[new_num] = nc
+                dst_stk.cues[new_num] = nc
                 merged += 1
             save_show()
-            return (f"merged cs {src_n} '{src_cs.name}' into cs {dst_n} '{dst_cs.name}' "
+            return (f"merged stk {src_n} '{src_stk.name}' into stk {dst_n} '{dst_stk.name}' "
                     f"— {merged} cue(s) appended (renumbered from {base:.0f})")
-        # All remaining subcommands require tokens[1] to be a cuestack number
+        # All remaining subcommands require tokens[1] to be a stack number
         try:
             n = int(tokens[1])
         except ValueError:
-            return f"CUESTACK: bad number '{tokens[1]}'"
-        # CS n INFO/STATUS — detailed cuestack status
+            return f"STACK: bad number '{tokens[1]}'"
+        # stk n INFO/STATUS — detailed stack status
         if len(tokens) >= 3 and tokens[2] in ('INFO', 'STATUS', 'SHOW'):
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
-            # Which faders are running this cuestack?
-            faders = [str(eid) for eid, ex in executor_pool.executors.items()
-                      if ex.cuestack and ex.cuestack.stack_id == n]
-            sorted_nums = cs._sorted_cue_numbers()
-            lines = [f"cuestack {n}: {cs.name}",
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
+            # Which faders are running this stack?
+            faders = [str(eid) for eid, ex in fader_pool.faders.items()
+                      if ex.stack and ex.stack.stack_id == n]
+            sorted_nums = stk._sorted_cue_numbers()
+            lines = [f"stack {n}: {stk.name}",
                      f"  cues      : {len(sorted_nums)}",
-                     f"  loop/wrap : {'on' if getattr(cs, 'wrap', False) else 'off'}",
-                     f"  chase     : {'on  ' + str(round(getattr(cs,'chase_bpm',120.0),1)) + ' bpm' if getattr(cs,'chase_enabled',False) else 'off'}",
+                     f"  loop/wrap : {'on' if getattr(stk, 'wrap', False) else 'off'}",
+                     f"  chase     : {'on  ' + str(round(getattr(stk,'chase_bpm',120.0),1)) + ' bpm' if getattr(stk,'chase_enabled',False) else 'off'}",
                      f"  faders    : {', '.join(faders) or '(none)'}"]
-            if cs.current is not None:
-                cue = cs.cues.get(cs.current)
+            if stk.current is not None:
+                cue = stk.cues.get(stk.current)
                 cue_name = cue.name if cue else "?"
-                lines.append(f"  current   : cue {cs.current:.0f} — {cue_name}")
+                lines.append(f"  current   : cue {stk.current:.0f} — {cue_name}")
             else:
                 lines.append("  current   : (not started)")
             if sorted_nums:
                 lines.append("  cue list  :")
                 for num in sorted_nums[:10]:
-                    c = cs.cues[num]
-                    cur_m = " ◀" if num == cs.current else ""
+                    c = stk.cues[num]
+                    cur_m = " ◀" if num == stk.current else ""
                     note_s = f"  [{c.note}]" if getattr(c, 'note', '') else ""
                     lines.append(f"    [{num:.0f}] {c.name}  fade:{c.fade_time}s{note_s}{cur_m}")
                 if len(sorted_nums) > 10:
                     lines.append(f"    … ({len(sorted_nums) - 10} more cues)")
             return "\n".join(lines)
-        # CS n REVERSE — reverse the cue order (renumbers from 1)
+        # stk n REVERSE — reverse the cue order (renumbers from 1)
         if len(tokens) >= 3 and tokens[2].upper() == 'REVERSE':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
-            sorted_nums = cs._sorted_cue_numbers()
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
+            sorted_nums = stk._sorted_cue_numbers()
             if not sorted_nums:
-                return f"cuestack {n} is empty"
-            rev_cues = [cs.cues[num] for num in reversed(sorted_nums)]
-            cs.cues.clear()
-            cs.current = None
+                return f"stack {n} is empty"
+            rev_cues = [stk.cues[num] for num in reversed(sorted_nums)]
+            stk.cues.clear()
+            stk.current = None
             for new_num, cue in enumerate(rev_cues, start=1):
                 cue.cue_number = float(new_num)
-                cs.cues[float(new_num)] = cue
+                stk.cues[float(new_num)] = cue
             save_show()
-            return f"CS {n} '{cs.name}': reversed — {len(rev_cues)} cues renumbered 1–{len(rev_cues)}"
-        # CS <n> EXTRACT <cue_num> [INTO <slot>] — copy one cue into a fresh cuestack
+            return f"stk {n} '{stk.name}': reversed — {len(rev_cues)} cues renumbered 1–{len(rev_cues)}"
+        # stk <n> EXTRACT <cue_num> [INTO <slot>] — copy one cue into a fresh stack
         if len(tokens) >= 4 and tokens[2].upper() == 'EXTRACT':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
             try:
                 cue_num = float(tokens[3])
             except ValueError:
-                return f"CS EXTRACT: bad cue number '{tokens[3]}'"
-            cue = cs.cues.get(cue_num)
+                return f"stk EXTRACT: bad cue number '{tokens[3]}'"
+            cue = stk.cues.get(cue_num)
             if not cue:
-                return f"CS EXTRACT: cue {cue_num:.0f} not found in cuestack {n}"
+                return f"stk EXTRACT: cue {cue_num:.0f} not found in stack {n}"
             # Determine destination slot
             into_slot = None
             if 'INTO' in tokens:
@@ -14351,15 +14351,15 @@ def run_command(cmd_str):
                 try:
                     into_slot = int(tokens[into_idx + 1])
                 except (IndexError, ValueError):
-                    return "CS EXTRACT: bad slot after INTO"
+                    return "stk EXTRACT: bad slot after INTO"
             if into_slot is None:
                 # Auto-pick lowest unused slot
-                used = set(cuestack_pool.stacks.keys())
+                used = set(stack_pool.stacks.keys())
                 into_slot = next(s for s in range(1, 9999) if s not in used)
-            if cuestack_pool.get(into_slot):
-                return (f"CS EXTRACT: slot {into_slot} already occupied — "
-                        f"use  CS {n} EXTRACT {cue_num:.0f} INTO <slot>")
-            new_cs = cuestack_pool.create(into_slot, f"{cs.name} — cue {cue_num:.0f}")
+            if stack_pool.get(into_slot):
+                return (f"stk EXTRACT: slot {into_slot} already occupied — "
+                        f"use  stk {n} EXTRACT {cue_num:.0f} INTO <slot>")
+            new_cs = stack_pool.create(into_slot, f"{stk.name} — cue {cue_num:.0f}")
             nc = Cue(cue_number=1.0, name=cue.name, fade_time=cue.fade_time,
                      delay_time=cue.delay_time, fade_times=copy.deepcopy(cue.fade_times),
                      delay_times=copy.deepcopy(cue.delay_times), follow_time=cue.follow_time)
@@ -14367,62 +14367,62 @@ def run_command(cmd_str):
             nc.fx_outfade = getattr(cue, 'fx_outfade', 0.0)
             nc.data = copy.deepcopy(cue.data)
             new_cs.cues[1.0] = nc
-            new_cs.wrap = getattr(cs, 'wrap', False)
-            new_cs.note = getattr(cs, 'note', '')
-            executor_pool.assign(into_slot, new_cs)
+            new_cs.wrap = getattr(stk, 'wrap', False)
+            new_cs.note = getattr(stk, 'note', '')
+            fader_pool.assign(into_slot, new_cs)
             save_show()
-            return (f"extracted: cs {n} cue {cue_num:.0f} '{cue.name}' "
-                    f"→ new cuestack {into_slot} on fader {into_slot}")
+            return (f"extracted: stk {n} cue {cue_num:.0f} '{cue.name}' "
+                    f"→ new stack {into_slot} on fader {into_slot}")
 
-        # CS n RENUMBER STEP <s> — renumber cues at multiples of s (10→10,20,30…)
+        # stk n RENUMBER STEP <s> — renumber cues at multiples of s (10→10,20,30…)
         if len(tokens) >= 4 and tokens[2].upper() == 'RENUMBER' and tokens[3].upper() == 'STEP':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
-            sorted_nums = cs._sorted_cue_numbers()
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
+            sorted_nums = stk._sorted_cue_numbers()
             if not sorted_nums:
-                return f"cuestack {n} is empty"
+                return f"stack {n} is empty"
             try:
                 step = int(tokens[4])
             except (IndexError, ValueError):
-                return "CS RENUMBER STEP: provide a step value (e.g. CS 1 RENUMBER STEP 10)"
+                return "stk RENUMBER STEP: provide a step value (e.g. stk 1 RENUMBER STEP 10)"
             if step < 1:
-                return "CS RENUMBER STEP: step must be at least 1"
-            ordered = [cs.cues[num] for num in sorted_nums]
-            old_current = cs.current
-            cs.cues.clear()
+                return "stk RENUMBER STEP: step must be at least 1"
+            ordered = [stk.cues[num] for num in sorted_nums]
+            old_current = stk.current
+            stk.cues.clear()
             new_current = None
             for idx, cue in enumerate(ordered, start=1):
                 new_num = float(idx * step)
                 if old_current is not None and cue.cue_number == old_current:
                     new_current = new_num
                 cue.cue_number = new_num
-                cs.cues[new_num] = cue
-            cs.current = new_current
+                stk.cues[new_num] = cue
+            stk.current = new_current
             save_show()
-            return (f"CS {n} '{cs.name}': renumbered {len(ordered)} cues "
+            return (f"stk {n} '{stk.name}': renumbered {len(ordered)} cues "
                     f"at step {step} ({step:.0f}–{len(ordered)*step:.0f})")
 
-        # CS n DUPLICATE [INTO <slot>] — deep-copy entire cuestack to a new slot
+        # stk n DUPLICATE [INTO <slot>] — deep-copy entire stack to a new slot
         if len(tokens) >= 3 and tokens[2].upper() in ('DUPLICATE', 'DUP', 'CLONE'):
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
             into_slot = None
             if 'INTO' in tokens:
                 into_idx = tokens.index('INTO')
                 try:
                     into_slot = int(tokens[into_idx + 1])
                 except (IndexError, ValueError):
-                    return "CS DUPLICATE: bad slot after INTO"
+                    return "stk DUPLICATE: bad slot after INTO"
             if into_slot is None:
-                used = set(cuestack_pool.stacks.keys())
+                used = set(stack_pool.stacks.keys())
                 into_slot = next(s for s in range(1, 9999) if s not in used)
-            if cuestack_pool.get(into_slot):
-                return (f"CS DUPLICATE: slot {into_slot} already occupied — "
-                        f"use  CS {n} DUPLICATE INTO <slot>")
-            new_cs = CueStack(into_slot, f"{cs.name} (copy)")
-            for cue_num, cue in cs.cues.items():
+            if stack_pool.get(into_slot):
+                return (f"stk DUPLICATE: slot {into_slot} already occupied — "
+                        f"use  stk {n} DUPLICATE INTO <slot>")
+            new_cs = Stack(into_slot, f"{stk.name} (copy)")
+            for cue_num, cue in stk.cues.items():
                 nc = Cue(cue_number=cue.cue_number, name=cue.name,
                          fade_time=cue.fade_time, delay_time=cue.delay_time,
                          fade_times=copy.deepcopy(cue.fade_times),
@@ -14432,259 +14432,259 @@ def run_command(cmd_str):
                 nc.fx_outfade = getattr(cue, 'fx_outfade', 0.0)
                 nc.data = copy.deepcopy(cue.data)
                 new_cs.cues[cue_num] = nc
-            new_cs.wrap = getattr(cs, 'wrap', False)
-            new_cs.note = getattr(cs, 'note', '')
-            cuestack_pool.store(into_slot, new_cs)
-            executor_pool.assign(into_slot, new_cs)
+            new_cs.wrap = getattr(stk, 'wrap', False)
+            new_cs.note = getattr(stk, 'note', '')
+            stack_pool.store(into_slot, new_cs)
+            fader_pool.assign(into_slot, new_cs)
             save_show()
-            return (f"duplicated cs {n} '{cs.name}' → cs {into_slot} '{new_cs.name}' "
+            return (f"duplicated stk {n} '{stk.name}' → stk {into_slot} '{new_cs.name}' "
                     f"({len(new_cs.cues)} cue(s))")
 
-        # CS n COMPRESS — renumber cues to 1, 2, 3, … (collapse gaps)
+        # stk n COMPRESS — renumber cues to 1, 2, 3, … (collapse gaps)
         if len(tokens) >= 3 and tokens[2].upper() == 'COMPRESS':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
-            sorted_nums = cs._sorted_cue_numbers()
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
+            sorted_nums = stk._sorted_cue_numbers()
             if not sorted_nums:
-                return f"cuestack {n} is empty"
-            ordered = [cs.cues[num] for num in sorted_nums]
-            old_current = cs.current
-            cs.cues.clear()
+                return f"stack {n} is empty"
+            ordered = [stk.cues[num] for num in sorted_nums]
+            old_current = stk.current
+            stk.cues.clear()
             new_current = None
             for new_num, cue in enumerate(ordered, start=1):
                 if old_current is not None and cue.cue_number == old_current:
                     new_current = float(new_num)
                 cue.cue_number = float(new_num)
-                cs.cues[float(new_num)] = cue
-            cs.current = new_current
+                stk.cues[float(new_num)] = cue
+            stk.current = new_current
             save_show()
-            return (f"CS {n} '{cs.name}': compressed — "
+            return (f"stk {n} '{stk.name}': compressed — "
                     f"{len(ordered)} cues renumbered 1–{len(ordered)}")
-        # CS n CLEAR — delete all cues from cuestack n (keeps the slot and name)
+        # stk n CLEAR — delete all cues from stack n (keeps the slot and name)
         if len(tokens) >= 3 and tokens[2].upper() == 'CLEAR':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
-            count = len(cs.cues)
-            cs.cues.clear()
-            cs.current = None
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
+            count = len(stk.cues)
+            stk.cues.clear()
+            stk.current = None
             save_show()
-            return f"CS {n} '{cs.name}': {count} cue(s) cleared (cuestack kept)"
+            return f"stk {n} '{stk.name}': {count} cue(s) cleared (stack kept)"
 
-        # CS n NOTE [text] — view or set a production note on this cuestack
+        # stk n NOTE [text] — view or set a production note on this stack
         if len(tokens) >= 3 and tokens[2].upper() == 'NOTE':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
             if len(tokens) == 3:
-                note_val = getattr(cs, 'note', '')
+                note_val = getattr(stk, 'note', '')
                 if note_val:
-                    return f"CS {n} '{cs.name}' note: {note_val}"
-                return f"CS {n} '{cs.name}' has no note — set with: CS {n} NOTE <text>"
+                    return f"stk {n} '{stk.name}' note: {note_val}"
+                return f"stk {n} '{stk.name}' has no note — set with: stk {n} NOTE <text>"
             note_text = _name_after(raw, 3)
-            cs.note = note_text
+            stk.note = note_text
             save_show()
-            return f"CS {n} '{cs.name}' note set: {note_text}"
+            return f"stk {n} '{stk.name}' note set: {note_text}"
 
-        # CS n bounce on/OFF — ping-pong playback (reverse direction at each end)
+        # stk n bounce on/OFF — ping-pong playback (reverse direction at each end)
         if len(tokens) >= 4 and tokens[2].upper() == 'BOUNCE':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
             state = tokens[3].upper()
             if state == 'ON':
-                cs.bounce = True
-                cs._bounce_dir = 1
+                stk.bounce = True
+                stk._bounce_dir = 1
                 save_show()
-                return f"CS {n} '{cs.name}': bounce on — reverses at last/first cue (ping-pong)"
+                return f"stk {n} '{stk.name}': bounce on — reverses at last/first cue (ping-pong)"
             elif state == 'OFF':
-                cs.bounce = False
-                cs._bounce_dir = 1
+                stk.bounce = False
+                stk._bounce_dir = 1
                 save_show()
-                return f"CS {n} '{cs.name}': bounce off — normal forward loop"
+                return f"stk {n} '{stk.name}': bounce off — normal forward loop"
             return "BOUNCE: use ON or OFF"
-        # CS n WRAP ON/OFF — clean restart at top after last cue
+        # stk n WRAP ON/OFF — clean restart at top after last cue
         if len(tokens) >= 4 and tokens[2].upper() == 'WRAP':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
             state = tokens[3].upper()
             if state == 'ON':
-                cs.wrap = True
+                stk.wrap = True
                 save_show()
-                return f"CS {n} '{cs.name}': WRAP ON — cue 1 fires clean after last cue"
+                return f"stk {n} '{stk.name}': WRAP ON — cue 1 fires clean after last cue"
             elif state == 'OFF':
-                cs.wrap = False
+                stk.wrap = False
                 save_show()
-                return f"CS {n} '{cs.name}': WRAP OFF — LTP tracking across loop"
+                return f"stk {n} '{stk.name}': WRAP OFF — LTP tracking across loop"
             return "WRAP: use ON or OFF"
 
-        # CS n CHASE ON [BPM x] / CS n CHASE OFF / CS n CHASE BPM x / CS n CHASE SPEED k
+        # stk n CHASE ON [BPM x] / stk n CHASE OFF / stk n CHASE BPM x / stk n CHASE SPEED k
         if len(tokens) >= 4 and tokens[2].upper() == 'CHASE':
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
             sub = tokens[3].upper()
             if sub == 'ON':
                 if len(tokens) >= 6 and tokens[4].upper() == 'BPM':
                     try:
-                        cs.chase_bpm = max(1.0, min(600.0, float(tokens[5])))
+                        stk.chase_bpm = max(1.0, min(600.0, float(tokens[5])))
                     except ValueError:
                         return f"CHASE ON: bad BPM '{tokens[5]}'"
-                cs.chase_enabled = True
+                stk.chase_enabled = True
                 save_show()
-                bpm_s = f"{cs.chase_bpm:.1f} BPM"
-                return f"CS {n} '{cs.name}': chase ON — auto-GO every {60000/cs.chase_bpm:.0f}ms ({bpm_s})"
+                bpm_s = f"{stk.chase_bpm:.1f} BPM"
+                return f"stk {n} '{stk.name}': chase ON — auto-GO every {60000/stk.chase_bpm:.0f}ms ({bpm_s})"
             elif sub == 'OFF':
-                cs.chase_enabled = False
-                # Clear chase timer on any executor holding this cuestack
-                for ex in executor_pool.executors.values():
-                    if ex.cuestack is cs:
+                stk.chase_enabled = False
+                # Clear chase timer on any fader holding this stack
+                for ex in fader_pool.faders.values():
+                    if ex.stack is stk:
                         ex._chase_next_at = None
                 save_show()
-                return f"CS {n} '{cs.name}': chase OFF"
+                return f"stk {n} '{stk.name}': chase OFF"
             elif sub == 'BPM' and len(tokens) >= 5:
                 try:
-                    cs.chase_bpm = max(1.0, min(600.0, float(tokens[4])))
+                    stk.chase_bpm = max(1.0, min(600.0, float(tokens[4])))
                 except ValueError:
                     return f"CHASE BPM: bad value '{tokens[4]}'"
                 save_show()
-                return f"CS {n} '{cs.name}': chase BPM → {cs.chase_bpm:.1f}"
+                return f"stk {n} '{stk.name}': chase BPM → {stk.chase_bpm:.1f}"
             elif sub == 'SPEED' and len(tokens) >= 5:
                 try:
                     sid = int(tokens[4])
                 except ValueError:
                     return f"CHASE SPEED: bad slot '{tokens[4]}'"
-                cs.chase_speed_id = sid if sid > 0 else None
+                stk.chase_speed_id = sid if sid > 0 else None
                 save_show()
-                return (f"CS {n} '{cs.name}': chase linked to speed Master {sid}"
-                        if sid > 0 else f"CS {n} '{cs.name}': chase speed link cleared")
+                return (f"stk {n} '{stk.name}': chase linked to speed Master {sid}"
+                        if sid > 0 else f"stk {n} '{stk.name}': chase speed link cleared")
             else:
-                bpm_s = f"{cs.chase_bpm:.1f} BPM"
-                state = "ON" if cs.chase_enabled else "OFF"
-                return (f"CS {n} '{cs.name}': chase {state} ({bpm_s})\n"
-                        f"  CS {n} CHASE ON [BPM x]  |  CHASE OFF  |  CHASE BPM x  |  CHASE SPEED k")
+                bpm_s = f"{stk.chase_bpm:.1f} BPM"
+                state = "ON" if stk.chase_enabled else "OFF"
+                return (f"stk {n} '{stk.name}': chase {state} ({bpm_s})\n"
+                        f"  stk {n} CHASE ON [BPM x]  |  CHASE OFF  |  CHASE BPM x  |  CHASE SPEED k")
 
-        if t0 == 'CS':
-            return f"usage: cs <n> bounce on|off | wrap on|off | chase on|off|bpm|speed"
-        if cuestack_pool.get(n):
-            active_executor[0] = n
-            cs = cuestack_pool.get(n)
-            return f"active fader → cuestack {n}: {cs.name}"
-        return f"cuestack {n} is empty  (use: record cuestack {n} <name>)"
+        if t0 == 'STK':
+            return f"usage: stk <n> bounce on|off | wrap on|off | chase on|off|bpm|speed"
+        if stack_pool.get(n):
+            active_fader[0] = n
+            stk = stack_pool.get(n)
+            return f"active fader → stack {n}: {stk.name}"
+        return f"stack {n} is empty  (use: record stack {n} <name>)"
 
-    # RECORD CUESTACK N [name]  — create a new empty cuestack in slot N
-    if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] == 'CUESTACK':
+    # RECORD STACK N [name]  — create a new empty stack in slot N
+    if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] == 'STACK':
         try:
             n = int(tokens[2])
         except ValueError:
-            return f"RECORD CUESTACK: bad number '{tokens[2]}'"
-        name = _name_after(raw, 3) or f"cuestack {n}"
-        cs = cuestack_pool.create(n, name)
-        executor_pool.assign(n, cs)
-        active_executor[0] = n
+            return f"RECORD STACK: bad number '{tokens[2]}'"
+        name = _name_after(raw, 3) or f"stack {n}"
+        stk = stack_pool.create(n, name)
+        fader_pool.assign(n, stk)
+        active_fader[0] = n
         save_show()
-        return f"created: cuestack {n} '{name}'  (now active on fader {n})"
+        return f"created: stack {n} '{name}'  (now active on fader {n})"
 
     # ── Navigation ───────────────────────────────────────────
-    # ── ASSIGN CS <n> TO FADER <n> ────────────────────────────
-    # Wire a cuestack into a fader slot. EXEC accepted as alias.
-    _assign_kw = next((kw for kw in ('FADER', 'EXEC') if kw in tokens), None)
-    if t0 == 'ASSIGN' and 'CS' in tokens and 'TO' in tokens and _assign_kw:
+    # ── ASSIGN stk <n> TO FADER <n> ────────────────────────────
+    # Wire a stack into a fader slot. fdr accepted as alias.
+    _assign_kw = next((kw for kw in ('FADER', 'FDR') if kw in tokens), None)
+    if t0 == 'ASSIGN' and 'STK' in tokens and 'TO' in tokens and _assign_kw:
         try:
-            cs_idx   = tokens.index('CS')
-            exec_idx = tokens.index(_assign_kw)
-            cs_n     = int(tokens[cs_idx   + 1])
-            ex_n     = int(tokens[exec_idx + 1])
+            stk_idx   = tokens.index('STK')
+            fdr_idx = tokens.index(_assign_kw)
+            stk_n     = int(tokens[stk_idx   + 1])
+            ex_n     = int(tokens[fdr_idx + 1])
         except (ValueError, IndexError):
-            return "usage: assign cs <n> to fader <n>"
-        stack = cuestack_pool.get(cs_n)
+            return "usage: assign stk <n> to fader <n>"
+        stack = stack_pool.get(stk_n)
         if not stack:
-            return f"cuestack {cs_n} not found"
-        executor_pool.assign(ex_n, stack)
+            return f"stack {stk_n} not found"
+        fader_pool.assign(ex_n, stack)
         save_show()
-        return f"CS {cs_n} assigned to fader {ex_n}  (saved)"
+        return f"stk {stk_n} assigned to fader {ex_n}  (saved)"
 
-    # ── FADER SWAP <n> <m> — swap cuestacks between two faders ──
+    # ── FADER SWAP <n> <m> — swap stacks between two faders ──
     if t0 == 'FADER' and len(tokens) >= 4 and tokens[1] == 'SWAP':
         try:
             fa, fb = int(tokens[2]), int(tokens[3])
         except ValueError:
             return "usage: fader swap <n> <m>"
-        ex_a = executor_pool.get(fa)
-        ex_b = executor_pool.get(fb)
-        ex_a.cuestack, ex_b.cuestack = ex_b.cuestack, ex_a.cuestack
+        ex_a = fader_pool.get(fa)
+        ex_b = fader_pool.get(fb)
+        ex_a.stack, ex_b.stack = ex_b.stack, ex_a.stack
         save_show()
-        name_a = ex_a.cuestack.name if ex_a.cuestack else "(empty)"
-        name_b = ex_b.cuestack.name if ex_b.cuestack else "(empty)"
+        name_a = ex_a.stack.name if ex_a.stack else "(empty)"
+        name_b = ex_b.stack.name if ex_b.stack else "(empty)"
         return f"swapped fader {fa} ↔ fader {fb}  ({name_a} / {name_b})"
 
     # ── FADER ALL CLEAR — stop and reset every fader at once ──────
-    if t0 in ('FADER', 'EXEC') and len(tokens) >= 3 and tokens[1] == 'ALL' and tokens[2].upper() == 'CLEAR':
+    if t0 in ('FADER', 'FDR') and len(tokens) >= 3 and tokens[1] == 'ALL' and tokens[2].upper() == 'CLEAR':
         cleared = 0
-        for ex in executor_pool.executors.values():
+        for ex in fader_pool.faders.values():
             ex.stop()
-            if ex.cuestack:
-                ex.cuestack.current = None
+            if ex.stack:
+                ex.stack.current = None
             cleared += 1
         return f"all {cleared} fader(s) cleared"
 
-    # ── EXEC <n> GO / BACK / STOP ────────────────────────────
-    if t0 in ('FADER', 'EXEC') and len(tokens) >= 2:
+    # ── fdr <n> GO / BACK / STOP ────────────────────────────
+    if t0 in ('FADER', 'FDR') and len(tokens) >= 2:
         try:
             ex_n = int(tokens[1])
         except ValueError:
             return f"FADER: bad fader number '{tokens[1]}'"
-        ex  = executor_pool.get(ex_n)
+        ex  = fader_pool.get(ex_n)
         verb = tokens[2].upper() if len(tokens) > 2 else 'GO'
         if verb == 'GO':
-            executor_pool.bump_priority(ex_n)
+            fader_pool.bump_priority(ex_n)
             msg = ex.go(patch, fade_engine)
-            if ex.cuestack:
-                _on_cue_fire(ex.cuestack.current)
+            if ex.stack:
+                _on_cue_fire(ex.stack.current)
             return msg or f"fader {ex_n} GO"
         elif verb == 'BACK':
-            executor_pool.bump_priority(ex_n)
+            fader_pool.bump_priority(ex_n)
             msg = ex.back(patch, fade_engine)
-            if ex.cuestack:
-                _on_cue_fire(ex.cuestack.current)
+            if ex.stack:
+                _on_cue_fire(ex.stack.current)
             return msg or f"fader {ex_n} BACK"
         elif verb == 'STOP':
             ex.stop()
             return f"fader {ex_n} stopped"
         elif verb == 'CLEAR':
-            # FADER <n> CLEAR  — stop fader and reset cuestack position to "not started"
+            # FADER <n> CLEAR  — stop fader and reset stack position to "not started"
             ex.stop()
-            if ex.cuestack:
-                ex.cuestack.current = None
-                cs_name = ex.cuestack.name
+            if ex.stack:
+                ex.stack.current = None
+                cs_name = ex.stack.name
                 return f"fader {ex_n} cleared — '{cs_name}' reset to start"
-            return f"fader {ex_n} stopped (no cuestack)"
+            return f"fader {ex_n} stopped (no stack)"
         elif verb == 'GOTO' and len(tokens) > 3:
-            cs = ex.cuestack
+            stk = ex.stack
             # GOTO FIRST / LAST — jump to first or last cue
             dest_kw = tokens[3].upper() if len(tokens) > 3 else ''
             if dest_kw == 'FIRST':
-                if not cs or not cs.cues:
+                if not stk or not stk.cues:
                     return f"fader {ex_n}: no cues"
-                num = cs._sorted_cue_numbers()[0]
+                num = stk._sorted_cue_numbers()[0]
             elif dest_kw == 'LAST':
-                if not cs or not cs.cues:
+                if not stk or not stk.cues:
                     return f"fader {ex_n}: no cues"
-                num = cs._sorted_cue_numbers()[-1]
+                num = stk._sorted_cue_numbers()[-1]
             else:
                 try:
                     num = float(tokens[3])
                 except ValueError:
                     return f"FADER GOTO: bad cue number '{tokens[3]}'"
-            executor_pool.bump_priority(ex_n)
+            fader_pool.bump_priority(ex_n)
             msg = ex.goto(num, patch, fade_engine)
             if not msg or 'not found' not in msg:
                 _on_cue_fire(num)
             return msg or f"fader {ex_n} GOTO {num}"
         elif verb == 'TIME':
-            # EXEC <n> TIME <fade> [DELAY <delay>]  |  EXEC <n> TIME OFF
+            # fdr <n> TIME <fade> [DELAY <delay>]  |  fdr <n> TIME OFF
             if len(tokens) > 3 and tokens[3] == 'OFF':
                 ex.time_override_on   = False
                 ex.time_override_fade  = None
@@ -14707,31 +14707,31 @@ def run_command(cmd_str):
             delay_str = f"  delay {delay_t}s" if delay_t else ""
             return f"fader {ex_n} time override → {fade_t}s{delay_str}"
         elif verb == 'TIMELOCK':
-            # exec <n> timelock ON/OFF  — whether this executor's cuestack accepts overrides
+            # fdr <n> timelock ON/OFF  — whether this fader's stack accepts overrides
             if len(tokens) < 4:
-                return "usage: exec <n> timelock on | off"
+                return "usage: fdr <n> timelock on | off"
             state = tokens[3]
-            cs = ex.cuestack
-            if not cs:
-                return f"fader {ex_n} has no cuestack"
+            stk = ex.stack
+            if not stk:
+                return f"fader {ex_n} has no stack"
             if state == 'ON':
-                cs.allow_exec_time = True
-                return f"fader {ex_n}: time override enabled for '{cs.name}'"
+                stk.allow_exec_time = True
+                return f"fader {ex_n}: time override enabled for '{stk.name}'"
             elif state == 'OFF':
-                cs.allow_exec_time = False
-                return f"fader {ex_n}: time override locked out for '{cs.name}'"
+                stk.allow_exec_time = False
+                return f"fader {ex_n}: time override locked out for '{stk.name}'"
             return "TIMELOCK: use ON or OFF"
         elif verb == 'FLASH':
-            # exec <n> flash on | off  — instant on-while-held, for trigger_mode='flash'.
+            # fdr <n> flash on | off  — instant on-while-held, for trigger_mode='flash'.
             # Independent of trigger_mode itself so GUI/MIDI press/release can call
             # this directly regardless of how the mode was set.
             if len(tokens) < 4 or tokens[3] not in ('ON', 'OFF'):
-                return "usage: exec <n> flash on | off"
+                return "usage: fdr <n> flash on | off"
             if tokens[3] == 'ON':
-                executor_pool.bump_priority(ex_n)
+                fader_pool.bump_priority(ex_n)
                 msg = ex.flash_on(patch, fade_engine)
-                if ex.cuestack:
-                    _on_cue_fire(ex.cuestack.current)
+                if ex.stack:
+                    _on_cue_fire(ex.stack.current)
                 return msg or f"fader {ex_n} flash on"
             else:
                 ex.flash_off()
@@ -14740,16 +14740,16 @@ def run_command(cmd_str):
             if len(tokens) < 4 or tokens[3] not in ('ON', 'OFF'):
                 return "usage: fader <n> moment on | off"
             if tokens[3] == 'ON':
-                executor_pool.bump_priority(ex_n)
+                fader_pool.bump_priority(ex_n)
                 msg = ex.moment_on(patch, fade_engine)
-                if ex.cuestack:
-                    _on_cue_fire(ex.cuestack.current)
+                if ex.stack:
+                    _on_cue_fire(ex.stack.current)
                 return msg or f"fader {ex_n} moment on"
             else:
                 ex.moment_off(fade_engine)
                 return f"fader {ex_n} moment off"
         elif verb == 'MODE':
-            # exec <n> mode toggle | flash | moment — how GUI/MIDI should trigger this executor.
+            # fdr <n> mode toggle | flash | moment — how GUI/MIDI should trigger this fader.
             # 'toggle' = GO/BACK advance normally. 'flash' = live only while held.
             # 'moment' = fires with cue times on press, fades out on release.
             if len(tokens) < 4 or tokens[3] not in ('TOGGLE', 'FLASH', 'MOMENT'):
@@ -14776,7 +14776,7 @@ def run_command(cmd_str):
             save_show()
             return f"fader {ex_n} output → {ex.output_mode}"
         elif verb == 'BTN':
-            # EXEC <n> BTN A|B|C GO|BACK|STOP|FLASH — assign action button function
+            # fdr <n> BTN A|B|C GO|BACK|STOP|FLASH — assign action button function
             if len(tokens) < 4:
                 return (f"fader {ex_n} buttons: A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}\n"
                         f"  usage: FADER {ex_n} BTN A|B|C GO|BACK|STOP|FLASH|RATE+|RATE-")
@@ -14790,7 +14790,7 @@ def run_command(cmd_str):
             save_show()
             return f"fader {ex_n} button {slot} → {fn}"
         elif verb == 'LEVEL':
-            # EXEC <n> LEVEL <0-100>  — set master fader (0 = blackout, 100 = full)
+            # fdr <n> LEVEL <0-100>  — set master fader (0 = blackout, 100 = full)
             if len(tokens) < 4:
                 return f"fader {ex_n} level: {ex.level * 100:.0f}%  (usage: FADER {ex_n} LEVEL 0–100)"
             try:
@@ -14802,7 +14802,7 @@ def run_command(cmd_str):
             save_show()
             return f"fader {ex_n} level → {ex.level * 100:.0f}%"
         elif verb in ('RATE+', 'RATE-'):
-            # EXEC <n> RATE+ / RATE- — nudge playback speed by ×1.25 / ÷1.25
+            # fdr <n> RATE+ / RATE- — nudge playback speed by ×1.25 / ÷1.25
             step = 1.25 if verb == 'RATE+' else (1.0 / 1.25)
             ex.rate_factor = max(0.1, min(8.0, ex.rate_factor * step))
             save_show()
@@ -14848,144 +14848,144 @@ def run_command(cmd_str):
             return (f"fader {ex_n} label → '{label_text}'"
                     if label_text else f"fader {ex_n} label cleared")
         elif verb in ('UNASSIGN', 'DETACH'):
-            prev_cs = ex.cuestack
+            prev_cs = ex.stack
             if not prev_cs:
-                return f"fader {ex_n} has no cuestack assigned"
+                return f"fader {ex_n} has no stack assigned"
             ex.stop()
-            ex.cuestack = None
+            ex.stack = None
             save_show()
             return f"fader {ex_n}: unassigned (was '{prev_cs.name}')"
-        elif verb == 'ASSIGN' and len(tokens) >= 5 and tokens[3].upper() == 'CS':
+        elif verb == 'ASSIGN' and len(tokens) >= 5 and tokens[3].upper() == 'STK':
             try:
-                cs_n = int(tokens[4])
+                stk_n = int(tokens[4])
             except ValueError:
-                return f"FADER ASSIGN: bad cuestack number '{tokens[4]}'"
-            stack = cuestack_pool.get(cs_n)
+                return f"FADER ASSIGN: bad stack number '{tokens[4]}'"
+            stack = stack_pool.get(stk_n)
             if not stack:
-                return f"FADER ASSIGN: cuestack {cs_n} not found"
-            executor_pool.assign(ex_n, stack)
+                return f"FADER ASSIGN: stack {stk_n} not found"
+            fader_pool.assign(ex_n, stack)
             save_show()
-            return f"CS {cs_n} '{stack.name}' assigned to fader {ex_n}"
+            return f"stk {stk_n} '{stack.name}' assigned to fader {ex_n}"
         elif verb == 'BOUNCE' and len(tokens) >= 4:
-            cs = ex.cuestack
-            if not cs:
-                return f"fader {ex_n} has no cuestack assigned"
+            stk = ex.stack
+            if not stk:
+                return f"fader {ex_n} has no stack assigned"
             state = tokens[3].upper()
             if state == 'ON':
-                cs.bounce = True
-                cs._bounce_dir = 1
+                stk.bounce = True
+                stk._bounce_dir = 1
                 save_show()
-                return f"fader {ex_n} bounce on — CS '{cs.name}' ping-pongs at each end"
+                return f"fader {ex_n} bounce on — stk '{stk.name}' ping-pongs at each end"
             elif state == 'OFF':
-                cs.bounce = False
-                cs._bounce_dir = 1
+                stk.bounce = False
+                stk._bounce_dir = 1
                 save_show()
-                return f"fader {ex_n} bounce off — CS '{cs.name}' normal forward loop"
+                return f"fader {ex_n} bounce off — stk '{stk.name}' normal forward loop"
             return "FADER BOUNCE: use ON or OFF"
         elif verb == 'LOOP' and len(tokens) >= 4:
-            cs = ex.cuestack
-            if not cs:
-                return f"fader {ex_n} has no cuestack assigned"
+            stk = ex.stack
+            if not stk:
+                return f"fader {ex_n} has no stack assigned"
             state = tokens[3].upper()
             if state == 'ON':
-                cs.wrap = True
+                stk.wrap = True
                 save_show()
-                return f"fader {ex_n} loop ON — CS '{cs.name}' wraps after last cue"
+                return f"fader {ex_n} loop ON — stk '{stk.name}' wraps after last cue"
             elif state == 'OFF':
-                cs.wrap = False
+                stk.wrap = False
                 save_show()
-                return f"fader {ex_n} loop OFF — CS '{cs.name}' stops after last cue"
+                return f"fader {ex_n} loop OFF — stk '{stk.name}' stops after last cue"
             return "FADER LOOP: use ON or OFF"
         elif verb in ('INFO', 'STATUS', 'SHOW'):
-            cs = ex.cuestack
+            stk = ex.stack
             lbl_s = f"  Label     : {ex.label}" if ex.label else ""
             lines = [f"fader {ex_n}:"]
             if lbl_s:
                 lines.append(lbl_s)
             lines.append(f"  Level     : {ex.level * 100:.0f}%")
-            lines.append(f"  Priority  : {Executor.PRIORITY_LABELS[ex.priority]}")
+            lines.append(f"  Priority  : {Fader.PRIORITY_LABELS[ex.priority]}")
             lines.append(f"  Trigger   : {ex.trigger_mode}")
             lines.append(f"  Output    : {ex.output_mode}")
             lines.append(f"  Off time  : {getattr(ex, 'off_time', 0.0):.1f}s")
             lines.append(f"  rate      : ×{ex.rate_factor:.2f}")
             lines.append(f"  FX size   : ×{ex.size_factor:.2f}")
             lines.append(f"  Buttons   : A={ex.btn_a}  B={ex.btn_b}  C={ex.btn_c}")
-            if cs:
-                lines.append(f"  cuestack  : [{cs.stack_id}] {cs.name}")
+            if stk:
+                lines.append(f"  stack  : [{stk.stack_id}] {stk.name}")
                 lines.append(f"  State     : {'ACTIVE' if ex.is_active else 'idle'}")
-                if cs.current is not None:
-                    cue = cs.cues.get(cs.current)
+                if stk.current is not None:
+                    cue = stk.cues.get(stk.current)
                     cue_name = cue.name if cue else "?"
-                    lines.append(f"  Current   : cue {cs.current:.0f} — {cue_name}")
-                sorted_nums = cs._sorted_cue_numbers()
+                    lines.append(f"  Current   : cue {stk.current:.0f} — {cue_name}")
+                sorted_nums = stk._sorted_cue_numbers()
                 lines.append(f"  Cues      : {len(sorted_nums)} total")
                 if ex.time_override_on:
                     lines.append(f"  Time OV   : {ex.time_override_fade}s fade"
                                  + (f"  delay {ex.time_override_delay}s"
                                     if ex.time_override_delay else ""))
             else:
-                lines.append("  cuestack  : (unassigned)")
+                lines.append("  stack  : (unassigned)")
             return "\n".join(lines)
         else:
             return f"FADER {ex_n}: unknown verb '{verb}'"
 
-    # ── page <n> name ... / ADD CS <m> / REMOVE CS <m> / DELETE / LIST ─
+    # ── page <n> name ... / ADD stk <m> / REMOVE stk <m> / DELETE / LIST ─
     if t0 == 'PAGE':
         if len(tokens) >= 2 and tokens[1] == 'LIST':
-            if not executor_pool.pages:
+            if not fader_pool.pages:
                 return "pages: (none)"
             lines = ["Pages:"]
-            for n in executor_pool.all_pages():
-                p = executor_pool.get_page(n)
-                cs_ids = p.get('cuestacks', [])
+            for n in fader_pool.all_pages():
+                p = fader_pool.get_page(n)
+                cs_ids = p.get('stacks', [])
                 cs_names = []
                 for cid in cs_ids:
-                    cs = cuestack_pool.get(cid)
-                    cs_names.append(f"{cid}:{cs.name}" if cs else str(cid))
+                    stk = stack_pool.get(cid)
+                    cs_names.append(f"{cid}:{stk.name}" if stk else str(cid))
                 lines.append(f"  [{n}] {p['name']} — {', '.join(cs_names) or '(empty)'}")
             return "\n".join(lines)
 
         if len(tokens) < 2:
-            return "usage: page <n> name <name> | page <n> add cs <m> | page <n> remove cs <m> | page <n> delete | page list"
+            return "usage: page <n> name <name> | page <n> add stk <m> | page <n> remove stk <m> | page <n> delete | page list"
         try:
             page_n = int(tokens[1])
         except ValueError:
             return f"PAGE: bad page number '{tokens[1]}'"
 
         if len(tokens) == 2:
-            p = executor_pool.get_page(page_n)
-            cs_ids = p.get('cuestacks', [])
+            p = fader_pool.get_page(page_n)
+            cs_ids = p.get('stacks', [])
             cs_names = []
             for cid in cs_ids:
-                cs = cuestack_pool.get(cid)
-                cs_names.append(f"{cid}:{cs.name}" if cs else str(cid))
+                stk = stack_pool.get(cid)
+                cs_names.append(f"{cid}:{stk.name}" if stk else str(cid))
             return f"[{page_n}] {p['name']} — {', '.join(cs_names) or '(empty)'}"
 
         sub2 = tokens[2]
         if sub2 == 'NAME':
             name = " ".join(raw.split()[3:]) if len(tokens) > 3 else f"page {page_n}"
-            executor_pool.set_page_name(page_n, name)
-            ShowFile.save_executor_pages(executor_pool)
+            fader_pool.set_page_name(page_n, name)
+            ShowFile.save_fader_pages(fader_pool)
             return f"page {page_n} → '{name}'"
         if sub2 == 'DELETE':
-            executor_pool.delete_page(page_n)
-            ShowFile.save_executor_pages(executor_pool)
+            fader_pool.delete_page(page_n)
+            ShowFile.save_fader_pages(fader_pool)
             return f"page {page_n} deleted"
-        if sub2 in ('ADD', 'REMOVE') and len(tokens) >= 4 and tokens[3] == 'CS':
+        if sub2 in ('ADD', 'REMOVE') and len(tokens) >= 4 and tokens[3] == 'STK':
             try:
                 target_cs = int(tokens[4]) if len(tokens) > 4 else int(tokens[3])
             except (ValueError, IndexError):
-                return f"PAGE: bad cuestack number"
-            cs = cuestack_pool.get(target_cs)
+                return f"PAGE: bad stack number"
+            stk = stack_pool.get(target_cs)
             if sub2 == 'ADD':
-                executor_pool.add_to_page(page_n, target_cs)
-                ShowFile.save_executor_pages(executor_pool)
-                return f"CS {target_cs} ({cs.name if cs else '?'}) added to page {page_n}"
+                fader_pool.add_to_page(page_n, target_cs)
+                ShowFile.save_fader_pages(fader_pool)
+                return f"stk {target_cs} ({stk.name if stk else '?'}) added to page {page_n}"
             else:
-                executor_pool.remove_from_page(page_n, target_cs)
-                ShowFile.save_executor_pages(executor_pool)
-                return f"CS {target_cs} removed from page {page_n}"
-        return "usage: page <n> name <name> | page <n> add cs <m> | page <n> remove cs <m> | page <n> delete | page list"
+                fader_pool.remove_from_page(page_n, target_cs)
+                ShowFile.save_fader_pages(fader_pool)
+                return f"stk {target_cs} removed from page {page_n}"
+        return "usage: page <n> name <name> | page <n> add stk <m> | page <n> remove stk <m> | page <n> delete | page list"
 
     # ── PROG TIME — programmer time override ──────────────────
     if t0 == 'PROG' and len(tokens) >= 2 and tokens[1] == 'TIME':
@@ -15017,15 +15017,15 @@ def run_command(cmd_str):
         prog.live_fades.clear()
         return f"prog fades cleared ({n} active)"
 
-    # ── EXECUTOR <n> — switch active executor ─────────────────
-    if t0 in ('FADER_SELECT', 'EXECUTOR') and len(tokens) == 2:
+    # ── FADER <n> — switch active fader ─────────────────
+    if t0 in ('FADER_SELECT', 'FADER') and len(tokens) == 2:
         try:
             n = int(tokens[1])
         except ValueError:
             return f"FADER: bad fader number '{tokens[1]}'"
-        active_executor[0] = n
-        ex = executor_pool.get(n)
-        cs_name = ex.cuestack.name if ex.cuestack else "(no cuestack)"
+        active_fader[0] = n
+        ex = fader_pool.get(n)
+        cs_name = ex.stack.name if ex.stack else "(no stack)"
         return f"active fader → {n}  [{cs_name}]"
 
     # GO FADE <t> [DELAY <d>] — one-shot fade override for next GO only
@@ -15047,21 +15047,21 @@ def run_command(cmd_str):
         _prog_time['delay'] = go_delay_t
         cue_go()
         _prog_time.update(_prev_pt)
-        cs = _active_stack()
-        cur = cs.current if cs else None
+        stk = _active_stack()
+        cur = stk.current if stk else None
         delay_s = f" delay {go_delay_t}s" if go_delay_t else ""
         return f"GO → cue {cur}  (fade {go_fade_t}s{delay_s})"
 
     if t0 == 'GO' and len(tokens) == 1:
         cue_go()
-        cs = _active_stack()
-        cur = cs.current if cs else None
+        stk = _active_stack()
+        cur = stk.current if stk else None
         return f"GO → cue {cur}" if cur else "GO (no cue)"
 
     if t0 == 'BACK' and len(tokens) == 1:
         cue_back()
-        cs = _active_stack()
-        cur = cs.current if cs else None
+        stk = _active_stack()
+        cur = stk.current if stk else None
         return f"BACK → cue {cur}" if cur else "BACK (no cue)"
 
     if t0 == 'GOTO' and len(tokens) > 1:
@@ -15077,34 +15077,34 @@ def run_command(cmd_str):
 
     if t0 == 'DELETE' and len(tokens) >= 2 and tokens[1] == 'CUE':
         if len(tokens) < 3:
-            return "usage: delete cue <n>  [cs <stack_n>]"
+            return "usage: delete cue <n>  [stk <stack_n>]"
         try:
             cue_num = float(tokens[2])
         except ValueError:
             return f"delete cue: bad cue number '{tokens[2]}'"
-        if 'CS' in tokens:
-            cs_idx = tokens.index('CS')
+        if 'STK' in tokens:
+            stk_idx = tokens.index('STK')
             try:
-                cs_n = int(tokens[cs_idx + 1])
+                stk_n = int(tokens[stk_idx + 1])
             except (ValueError, IndexError):
-                return "usage: delete cue <n> cs <stack_n>"
-            cs = cuestack_pool.get(cs_n)
-            if not cs:
-                return f"cuestack {cs_n} not found"
+                return "usage: delete cue <n> stk <stack_n>"
+            stk = stack_pool.get(stk_n)
+            if not stk:
+                return f"stack {stk_n} not found"
         else:
-            active_n = active_executor[0] if active_executor else 1
-            cs = cuestack_pool.get(active_n)
-            if not cs:
-                return "no active cuestack"
-        if cue_num not in cs.cues:
-            return f"cue {cue_num} not found in {cs.name}"
-        cs.delete_cue(cue_num)
+            active_n = active_fader[0] if active_fader else 1
+            stk = stack_pool.get(active_n)
+            if not stk:
+                return "no active stack"
+        if cue_num not in stk.cues:
+            return f"cue {cue_num} not found in {stk.name}"
+        stk.delete_cue(cue_num)
         if cue_num == int(cue_num):
             cue_pool.delete(int(cue_num))
         save_show()
-        return f"deleted cue {cue_num} from {cs.name}"
+        return f"deleted cue {cue_num} from {stk.name}"
 
-    # ── DELETE GROUP / COLOR / DIM / FX / FORM / CUESTACK ────
+    # ── DELETE GROUP / COLOR / DIM / FX / FORM / STACK ────
     if t0 == 'DELETE' and len(tokens) >= 3:
         sub = tokens[1]
         try:
@@ -15143,17 +15143,17 @@ def run_command(cmd_str):
             form_pool.delete(n)
             save_show()
             return f"deleted form {n}"
-        if sub in ('CUESTACK', 'CS'):
-            if not cuestack_pool.get(n):
-                return f"cuestack {n} is empty"
-            cs_name = cuestack_pool.get(n).name
-            # Stop any executor currently running this cuestack
-            for ex in list(executor_pool.executors.values()):
-                if ex.cuestack and ex.cuestack.stack_id == n:
+        if sub in ('STACK', 'STK'):
+            if not stack_pool.get(n):
+                return f"stack {n} is empty"
+            cs_name = stack_pool.get(n).name
+            # Stop any fader currently running this stack
+            for ex in list(fader_pool.faders.values()):
+                if ex.stack and ex.stack.stack_id == n:
                     ex.stop()
-            cuestack_pool.delete(n)
+            stack_pool.delete(n)
             save_show()
-            return f"deleted cuestack {n}: {cs_name}"
+            return f"deleted stack {n}: {cs_name}"
         if sub == 'RATE':
             if not rate_pool.get(n): return f"rate {n} is empty"
             rate_pool.delete(n); save_show(); return f"deleted rate preset {n}"
@@ -15174,9 +15174,9 @@ def run_command(cmd_str):
             return f"deleted {sub.title()} preset {n}"
 
     # ── Shared record/update-cue helper ──────────────────────
-    def _record_cue_into(cs, cue_num, suffix_tokens, raw_str, merge=False):
+    def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
         """
-        Apply preset tokens then record (or merge-update) a cue into cs.
+        Apply preset tokens then record (or merge-update) a cue into stk.
         suffix_tokens: everything after CUE <num> (already upper-cased).
         raw_str: original mixed-case command (for quoted name search).
         merge=True  → UPDATE mode: merges programmer into existing cue.
@@ -15202,7 +15202,7 @@ def run_command(cmd_str):
             if name_parts:
                 name = " ".join(name_parts)
             else:
-                existing = cs.get_cue(cue_num)
+                existing = stk.get_cue(cue_num)
                 name = existing.name if existing else f"cue {cue_num:.0f}"
 
         # Timing extraction helper — tries multiple keyword aliases in order
@@ -15292,7 +15292,7 @@ def run_command(cmd_str):
 
         if not _prog_has_dmx:
             # programmer has no DMX data — allow timing/name update on any existing cue.
-            existing = cs.get_cue(cue_num)
+            existing = stk.get_cue(cue_num)
             if existing:
                 _apply_timing_edit(existing, raw_str)
                 if name:
@@ -15306,7 +15306,7 @@ def run_command(cmd_str):
 
         if merge:
             # UPDATE mode: merge programmer into existing cue (or create if missing)
-            cue = cs.get_cue(cue_num)
+            cue = stk.get_cue(cue_num)
             if not cue:
                 return f"UPDATE CUE: cue {cue_num} not found — create it first with RECORD CUE"
             cue.update(prog)
@@ -15317,18 +15317,18 @@ def run_command(cmd_str):
                 cue_pool.store(int(cue_num), cue)
             save_show()
 
-            # Auto-reload if this cue is the currently running cue on any executor
+            # Auto-reload if this cue is the currently running cue on any fader
             _reloaded = []
-            for _ex in executor_pool.executors.values():
-                if _ex.cuestack is cs and _ex.cuestack.current == cue_num and _ex.is_active:
-                    executor_pool.bump_priority(_ex.exec_id)
+            for _ex in fader_pool.faders.values():
+                if _ex.stack is stk and _ex.stack.current == cue_num and _ex.is_active:
+                    fader_pool.bump_priority(_ex.fdr_id)
                     _ex.reload(patch, fade_engine)
                     _on_cue_fire(cue_num)
-                    _reloaded.append(_ex.exec_id)
-            _reload_note = f"  (live-reloaded exec {_reloaded})" if _reloaded else ""
-            return f"updated: {cue}  (merged into {cs.name}){_reload_note}"
+                    _reloaded.append(_ex.fdr_id)
+            _reload_note = f"  (live-reloaded fdr {_reloaded})" if _reloaded else ""
+            return f"updated: {cue}  (merged into {stk.name}){_reload_note}"
 
-        cue = cs.record_cue(cue_num, prog, name=name, fade_time=fade)
+        cue = stk.record_cue(cue_num, prog, name=name, fade_time=fade)
         cue.delay_time  = delay
         cue.follow_time = follow
         cue.fade_times  = fade_times
@@ -15336,33 +15336,33 @@ def run_command(cmd_str):
         if cue_num == int(cue_num):
             cue_pool.store(int(cue_num), cue)
         save_show()
-        return f"recorded: {cue}  into {cs.name}  (auto-saved)"
+        return f"recorded: {cue}  into {stk.name}  (auto-saved)"
 
-    # ── record cs [n] cue <m> [presets...] ──────────────────
-    # e.g.  RECORD CS CUE 4 RED
-    #        RECORD CS 2 CUE 4 RED FULL
-    if t0 == 'RECORD' and 'CS' in tokens and 'CUE' in tokens:
-        cs_idx  = tokens.index('CS')
+    # ── record stk [n] cue <m> [presets...] ──────────────────
+    # e.g.  RECORD stk CUE 4 RED
+    #        RECORD stk 2 CUE 4 RED FULL
+    if t0 == 'RECORD' and 'STK' in tokens and 'CUE' in tokens:
+        stk_idx  = tokens.index('STK')
         cue_idx = tokens.index('CUE')
 
-        # Optional cuestack number after CS
-        cs_n = None
-        if cue_idx > cs_idx + 1:
+        # Optional stack number after stk
+        stk_n = None
+        if cue_idx > stk_idx + 1:
             try:
-                cs_n = int(tokens[cs_idx + 1])
+                stk_n = int(tokens[stk_idx + 1])
             except ValueError:
                 pass
 
         try:
             cue_num = float(tokens[cue_idx + 1])
         except (IndexError, ValueError):
-            return "usage: record cs [n] cue <num> [preset-names / group n color n dim n fade t]"
+            return "usage: record stk [n] cue <num> [preset-names / group n color n dim n fade t]"
 
-        cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
-        if not cs:
-            return f"cuestack {cs_n} not found" if cs_n else "no active cuestack"
+        stk = stack_pool.get(stk_n) if stk_n is not None else _active_stack()
+        if not stk:
+            return f"stack {stk_n} not found" if stk_n else "no active stack"
 
-        return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw)
+        return _record_cue_into(stk, cue_num, tokens[cue_idx + 2:], raw)
 
     # ── RECORD CUE <n> ["name"] [GROUP g] [COLOR c] [DIM d] [fade t]
     if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] == 'CUE':
@@ -15370,110 +15370,110 @@ def run_command(cmd_str):
             cue_num = float(tokens[2])
         except ValueError:
             return f"RECORD: bad cue number '{tokens[2]}'"
-        cs = _active_stack()
-        if not cs:
-            return "RECORD CUE: no active cuestack — use RECORD CUESTACK 1 first"
-        return _record_cue_into(cs, cue_num, tokens[3:], raw)
+        stk = _active_stack()
+        if not stk:
+            return "RECORD CUE: no active stack — use RECORD STACK 1 first"
+        return _record_cue_into(stk, cue_num, tokens[3:], raw)
 
-    # ── UPDATE CUE / UPDATE CS CUE — merge programmer into existing cue ──
+    # ── UPDATE CUE / UPDATE stk CUE — merge programmer into existing cue ──
     # UPDATE CUE <n> [presets] [FADE <t>]
-    # update cs [n] cue <m> [presets] [FADE <t>]
+    # update stk [n] cue <m> [presets] [FADE <t>]
     # Only merges what is in the programmer — untouched fixtures keep their data.
     if t0 in ('UPDATE', 'UPD'):
-        if 'CS' in tokens and 'CUE' in tokens:
-            cs_idx  = tokens.index('CS')
+        if 'STK' in tokens and 'CUE' in tokens:
+            stk_idx  = tokens.index('STK')
             cue_idx = tokens.index('CUE')
-            cs_n    = None
-            if cue_idx > cs_idx + 1:
+            stk_n    = None
+            if cue_idx > stk_idx + 1:
                 try:
-                    cs_n = int(tokens[cs_idx + 1])
+                    stk_n = int(tokens[stk_idx + 1])
                 except ValueError:
                     pass
             try:
                 cue_num = float(tokens[cue_idx + 1])
             except (IndexError, ValueError):
-                return "usage: update cs [n] cue <num> [presets / fade t]"
-            cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
-            if not cs:
-                return f"cuestack {cs_n} not found" if cs_n else "no active cuestack"
-            return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw, merge=True)
+                return "usage: update stk [n] cue <num> [presets / fade t]"
+            stk = stack_pool.get(stk_n) if stk_n is not None else _active_stack()
+            if not stk:
+                return f"stack {stk_n} not found" if stk_n else "no active stack"
+            return _record_cue_into(stk, cue_num, tokens[cue_idx + 2:], raw, merge=True)
         if 'CUE' in tokens:
             cue_idx = tokens.index('CUE')
             try:
                 cue_num = float(tokens[cue_idx + 1])
             except (IndexError, ValueError):
                 return "usage: update cue <num> [presets / fade t]"
-            cs = _active_stack()
-            if not cs:
-                return "UPDATE CUE: no active cuestack"
-            return _record_cue_into(cs, cue_num, tokens[cue_idx + 2:], raw, merge=True)
+            stk = _active_stack()
+            if not stk:
+                return "UPDATE CUE: no active stack"
+            return _record_cue_into(stk, cue_num, tokens[cue_idx + 2:], raw, merge=True)
 
-    # ── GO CS <n>  /  BACK CS <n> ────────────────────────────
-    # Advance/step the specified executor without specifying a cue number.
-    # e.g.  GO CS 2   (same as EXEC 2 GO, without changing active_executor)
-    if t0 in ('GO', 'BACK') and 'CS' in tokens and 'CUE' not in tokens:
-        cs_idx = tokens.index('CS')
+    # ── GO stk <n>  /  BACK stk <n> ────────────────────────────
+    # Advance/step the specified fader without specifying a cue number.
+    # e.g.  GO stk 2   (same as fdr 2 GO, without changing active_fader)
+    if t0 in ('GO', 'BACK') and 'STK' in tokens and 'CUE' not in tokens:
+        stk_idx = tokens.index('STK')
         try:
-            cs_n = int(tokens[cs_idx + 1])
+            stk_n = int(tokens[stk_idx + 1])
         except (IndexError, ValueError):
-            cs_n = active_executor[0]
+            stk_n = active_fader[0]
         ex = None
-        for _e in executor_pool.executors.values():
-            if _e.cuestack and _e.cuestack.stack_id == cs_n:
+        for _e in fader_pool.faders.values():
+            if _e.stack and _e.stack.stack_id == stk_n:
                 ex = _e
                 break
         if not ex:
-            ex = executor_pool.get(cs_n)
-        executor_pool.bump_priority(ex.exec_id)
+            ex = fader_pool.get(stk_n)
+        fader_pool.bump_priority(ex.fdr_id)
         if t0 == 'GO':
             msg = ex.go(patch, fade_engine)
         else:
             msg = ex.back(patch, fade_engine)
-        if ex.cuestack:
-            _on_cue_fire(ex.cuestack.current)
+        if ex.stack:
+            _on_cue_fire(ex.stack.current)
         direction = "GO" if t0 == 'GO' else "BACK"
-        cur = ex.cuestack.current if ex.cuestack else None
-        return msg or f"{direction} CS {cs_n} → cue {cur}"
+        cur = ex.stack.current if ex.stack else None
+        return msg or f"{direction} stk {stk_n} → cue {cur}"
 
-    # ── go cs [n] cue <m> ────────────────────────────────────
-    # e.g.  GO CS 2 CUE 4
-    #        GO CS CUE 1       (active cuestack)
-    if t0 == 'GO' and 'CS' in tokens and 'CUE' in tokens:
-        cs_idx  = tokens.index('CS')
+    # ── go stk [n] cue <m> ────────────────────────────────────
+    # e.g.  GO stk 2 CUE 4
+    #        GO stk CUE 1       (active stack)
+    if t0 == 'GO' and 'STK' in tokens and 'CUE' in tokens:
+        stk_idx  = tokens.index('STK')
         cue_idx = tokens.index('CUE')
 
-        cs_n = None
-        if cue_idx > cs_idx + 1:
+        stk_n = None
+        if cue_idx > stk_idx + 1:
             try:
-                cs_n = int(tokens[cs_idx + 1])
+                stk_n = int(tokens[stk_idx + 1])
             except ValueError:
                 pass
 
         try:
             cue_num = float(tokens[cue_idx + 1])
         except (IndexError, ValueError):
-            return "usage: go cs [n] cue <num>"
+            return "usage: go stk [n] cue <num>"
 
-        # Find executor for this cuestack (match by stack_id, fallback to slot)
-        if cs_n is not None:
+        # Find fader for this stack (match by stack_id, fallback to slot)
+        if stk_n is not None:
             ex = None
-            for e in executor_pool.executors.values():
-                if e.cuestack and e.cuestack.stack_id == cs_n:
+            for e in fader_pool.faders.values():
+                if e.stack and e.stack.stack_id == stk_n:
                     ex = e
                     break
             if not ex:
-                ex = executor_pool.get(cs_n)
-                cs = cuestack_pool.get(cs_n)
-                if cs:
-                    ex.assign(cs)
+                ex = fader_pool.get(stk_n)
+                stk = stack_pool.get(stk_n)
+                if stk:
+                    ex.assign(stk)
         else:
-            ex = _active_executor()
+            ex = _active_fader()
 
-        executor_pool.bump_priority(ex.exec_id)
+        fader_pool.bump_priority(ex.fdr_id)
         msg = ex.goto(cue_num, patch, fade_engine)
-        if ex.cuestack and (not msg or 'not found' not in msg):
-            _on_cue_fire(ex.cuestack.current)
-        return msg or f"GO CS {cs_n or active_executor[0]} CUE {cue_num}"
+        if ex.stack and (not msg or 'not found' not in msg):
+            _on_cue_fire(ex.stack.current)
+        return msg or f"GO stk {stk_n or active_fader[0]} CUE {cue_num}"
 
     # ── FORM commands ─────────────────────────────────────────
     # FORM LIST
@@ -15615,7 +15615,7 @@ def run_command(cmd_str):
         _fx_params['rate_bpm'] = val
         now = time.monotonic()
         for layer in fx_engine._layers.values():
-            if layer.fx_id >= 10000:  # skip executor (cue) FX
+            if layer.fx_id >= 10000:  # skip fader (cue) FX
                 continue
             layer.set_rate_smooth(val, now)
         for fvals in prog.data.values():
@@ -15669,7 +15669,7 @@ def run_command(cmd_str):
         val = max(0.0, min(100.0, val))
         _fx_params['size'] = val
         for layer in fx_engine._layers.values():
-            if layer.fx_id >= 10000:  # skip executor (cue) FX
+            if layer.fx_id >= 10000:  # skip fader (cue) FX
                 continue
             layer.size = val
         for fvals in prog.data.values():
@@ -15691,7 +15691,7 @@ def run_command(cmd_str):
         val = max(0.0, min(100.0, val))
         _fx_params['spread'] = val
         for layer in fx_engine._layers.values():
-            if layer.fx_id >= 10000:  # skip executor (cue) FX
+            if layer.fx_id >= 10000:  # skip fader (cue) FX
                 continue
             layer.spread = val
         for fvals in prog.data.values():
@@ -15770,7 +15770,7 @@ def run_command(cmd_str):
             return f"form → {form.name}  (pending — next FX command will use this form)"
 
         if sub == 'CLEAR':
-            # FX CLEAR            → clear all FX (programmer + all running executors)
+            # FX CLEAR            → clear all FX (programmer + all running faders)
             # FX CLEAR <channel>  → clear only that channel in programmer
             # Both scope to selection when fixtures are selected.
             _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
@@ -15801,16 +15801,16 @@ def run_command(cmd_str):
                 _prog_fx_rebuild()
                 return f"FX cleared for {len(_sel_fids)} selected fixture(s) (programmer)"
 
-            # No selection — global clear (programmer + all running executors)
+            # No selection — global clear (programmer + all running faders)
             _prog_fx_stop()
             for vals in prog.data.values():
                 vals.pop('fx', None)
             _cleared_exec = 0
-            for _ex in executor_pool.executors.values():
+            for _ex in fader_pool.faders.values():
                 if _ex._fx_ids:
                     _ex._clear_fx()
                     _cleared_exec += 1
-            _exec_note = f"  + {_cleared_exec} executor(s)" if _cleared_exec else ""
+            _exec_note = f"  + {_cleared_exec} fader(s)" if _cleared_exec else ""
             return f"FX cleared (programmer{_exec_note})"
 
         if sub == 'LIST':
@@ -15832,15 +15832,15 @@ def run_command(cmd_str):
                                      f"BPM={ld.get('bpm',60)} size={ld.get('size',200)}{dist_s}")
             else:
                 lines.append("programmer FX: (none)")
-            # Active executor FX
+            # Active fader FX
             exec_fx_lines = []
-            for eid, ex in sorted(executor_pool.executors.items()):
+            for eid, ex in sorted(fader_pool.faders.items()):
                 if ex.is_active and ex._fx_ids and ex.fx_engine:
                     for fxid in ex._fx_ids:
                         layer = ex.fx_engine._layers.get(fxid)
                         if layer:
                             exec_fx_lines.append(
-                                f"  Exec {eid}: {layer.waveform} {layer.channel} "
+                                f"  fdr {eid}: {layer.waveform} {layer.channel} "
                                 f"BPM={layer.rate_bpm:.0f} size={layer.size:.0f}")
             if exec_fx_lines:
                 lines.append("Active fader FX:")
@@ -16178,7 +16178,7 @@ def run_command(cmd_str):
                     group.members.append(dst_entry)
 
             # Cues — copy master key and all sub-fixture keys
-            for stack in cuestack_pool.stacks.values():
+            for stack in stack_pool.stacks.values():
                 for cue in stack.cues.values():
                     if src_str in cue.data:
                         cue.data[dst_str] = dict(cue.data[src_str])
@@ -16194,15 +16194,15 @@ def run_command(cmd_str):
     # ── SNAPSHOT ─────────────────────────────────────────────
     # SNAPSHOT <cue_num> [name] — record current live output (cue + programmer merged)
     # as a new cue. Unlike RECORD CUE which only records programmer data, SNAPSHOT
-    # captures the full merged look (useful when multiple executors are running).
+    # captures the full merged look (useful when multiple faders are running).
     if t0 == 'SNAPSHOT' and len(tokens) >= 2:
         try:
             cue_num = float(tokens[1])
         except ValueError:
             return f"SNAPSHOT: bad cue number '{tokens[1]}'"
-        cs = _active_stack()
-        if not cs:
-            return "SNAPSHOT: no active cuestack"
+        stk = _active_stack()
+        if not stk:
+            return "SNAPSHOT: no active stack"
         cue_name = _name_after(raw, 2) or f"snapshot {cue_num}"
 
         cue_merged = output_state._merged_cue_layer()
@@ -16233,7 +16233,7 @@ def run_command(cmd_str):
 
         cue = Cue(cue_num, cue_name)
         cue.data = snapshot_data
-        cs.cues[float(cue_num)] = cue
+        stk.cues[float(cue_num)] = cue
         save_show()
         fixture_count = len({k.split('.')[0] for k in snapshot_data})
         return f"snapshot → cue {cue_num}: {cue_name}  ({fixture_count} fixtures, show saved)"
@@ -16525,15 +16525,15 @@ def run_command(cmd_str):
     # ── Save ─────────────────────────────────────────────────
     # ── SHOW INFO — high-level overview of the current show ──────────────────
     if t0 == 'SHOW' and len(tokens) >= 2 and tokens[1] in ('INFO', 'STATUS', 'STATS'):
-        total_cues   = sum(len(cs.cues) for cs in cuestack_pool.stacks.values())
-        active_faders = sum(1 for ex in executor_pool.executors.values() if ex.is_active)
-        assigned_faders = sum(1 for ex in executor_pool.executors.values() if ex.cuestack)
+        total_cues   = sum(len(stk.cues) for stk in stack_pool.stacks.values())
+        active_faders = sum(1 for ex in fader_pool.faders.values() if ex.is_active)
+        assigned_faders = sum(1 for ex in fader_pool.faders.values() if ex.stack)
         prog_fids = len(set(k.split('.')[0] for k in prog.data if prog.data.get(k)))
         lines = [
             "show overview:",
             f"  fixtures     : {len(patch.fixtures)} patched",
             f"  programmer   : {prog_fids} fixture(s) touched",
-            f"  cuestacks    : {len(cuestack_pool.stacks)} stacks  /  {total_cues} cues total",
+            f"  stacks    : {len(stack_pool.stacks)} stacks  /  {total_cues} cues total",
             f"  faders       : {active_faders} active  /  {assigned_faders} assigned",
             f"  fx presets   : {len(fx_pool.presets)}",
             f"  color presets: {len(color_pool.presets)}",
@@ -16560,24 +16560,24 @@ def run_command(cmd_str):
         save_show()
         return "show saved."
 
-    # LOAD CUE <n> [cs <stack_n>]  — copy cue data into programmer for editing
+    # LOAD CUE <n> [stk <stack_n>]  — copy cue data into programmer for editing
     if t0 == 'LOAD' and len(tokens) >= 3 and tokens[1] == 'CUE':
         try:
             cue_num = float(tokens[2])
         except ValueError:
             return f"LOAD CUE: bad cue number '{tokens[2]}'"
-        cs = None
-        if 'CS' in tokens:
-            cs_idx = tokens.index('CS')
-            try: cs = cuestack_pool.get(int(tokens[cs_idx + 1]))
+        stk = None
+        if 'STK' in tokens:
+            stk_idx = tokens.index('STK')
+            try: stk = stack_pool.get(int(tokens[stk_idx + 1]))
             except (IndexError, ValueError): pass
-        if cs is None:
-            cs = _active_stack()
-        if not cs:
-            return "LOAD CUE: no active cuestack"
-        cue = cs.cues.get(cue_num)
+        if stk is None:
+            stk = _active_stack()
+        if not stk:
+            return "LOAD CUE: no active stack"
+        cue = stk.cues.get(cue_num)
         if not cue:
-            return f"LOAD CUE: cue {cue_num:.0f} not found in {cs.name}"
+            return f"LOAD CUE: cue {cue_num:.0f} not found in {stk.name}"
         prog._push_undo()
         for fid, vals in cue.data.items():
             if fid not in prog.data:
@@ -16940,14 +16940,14 @@ def run_command(cmd_str):
         prog_active = any(v for v in prog.data.values() if v)
         lines.append("  programmer: " + ("dirty" if prog_active else "clear"))
         # Active faders
-        active_exs = [ex for ex in executor_pool.executors.values()
-                      if ex.is_active and ex.cuestack] if executor_pool else []
+        active_exs = [ex for ex in fader_pool.faders.values()
+                      if ex.is_active and ex.stack] if fader_pool else []
         if active_exs:
             lines.append(f"  active faders ({len(active_exs)}):")
             for ex in active_exs:
-                cs = ex.cuestack
-                cur = f"cue {cs.current:.0f}" if cs.current is not None else "—"
-                lines.append(f"    [{ex.exec_id}] {cs.name[:14]}  {cur}  "
+                stk = ex.stack
+                cur = f"cue {stk.current:.0f}" if stk.current is not None else "—"
+                lines.append(f"    [{ex.fdr_id}] {stk.name[:14]}  {cur}  "
                              f"lv={ex.level*100:.0f}%")
         else:
             lines.append("  active faders: none")
@@ -16957,17 +16957,17 @@ def run_command(cmd_str):
         return "\n".join(lines)
 
     # ── Stack info ───────────────────────────────────────────
-    # CUES / STACK / LIST (bare) — show active cuestack contents
+    # CUES / STACK / LIST (bare) — show active stack contents
     # NOTE: LIST with a sub-command (LIST DIM, LIST COLOR, etc.) is handled
     # below; only bare LIST falls through here.
     if t0 in ('CUES', 'STACK') or (t0 == 'LIST' and len(tokens) == 1):
-        cs = _active_stack()
-        if not cs:
-            return "no active cuestack"
-        lines = [f"cuestack {cs.stack_id} — {cs.name}  [fader {active_executor[0]}]"]
-        for n in cs._sorted_cue_numbers():
-            c      = cs.cues[n]
-            cur    = " ◀" if n == cs.current else ""
+        stk = _active_stack()
+        if not stk:
+            return "no active stack"
+        lines = [f"stack {stk.stack_id} — {stk.name}  [fader {active_fader[0]}]"]
+        for n in stk._sorted_cue_numbers():
+            c      = stk.cues[n]
+            cur    = " ◀" if n == stk.current else ""
             delay  = f"  delay:{c.delay_time}s" if getattr(c, 'delay_time', 0.0) > 0 else ""
             follow = f"  follow:{c.follow_time:.1f}s" if getattr(c, 'follow_time', 0.0) > 0 else ""
             note   = f"  [{c.note}]" if getattr(c, 'note', '') else ""
@@ -17358,33 +17358,33 @@ def run_command(cmd_str):
                     for ld in p.layers)
                 lines.append(f"  [{pid}] {p.name}  {waveforms or '(empty)'}")
             return "\n".join(lines) if len(lines) > 1 else "fx pool is empty"
-        if sub in ('CUESTACKS', 'STACKS', 'CS'):
-            lines = ["cuestacks:"]
-            for sid in sorted(cuestack_pool.stacks):
-                cs = cuestack_pool.stacks[sid]
-                cue_count = len(cs.cues)
-                cur = f"  ◀ on cue {cs.current:.0f}" if cs.current is not None else ""
-                lines.append(f"  [{sid}] {cs.name}  ({cue_count} cues){cur}")
-            return "\n".join(lines) if len(lines) > 1 else "no cuestacks recorded"
-        # LIST CUES [CS <n>] — cue list for active or specified cuestack
+        if sub in ('STACKS', 'STACKS', 'STK'):
+            lines = ["stacks:"]
+            for sid in sorted(stack_pool.stacks):
+                stk = stack_pool.stacks[sid]
+                cue_count = len(stk.cues)
+                cur = f"  ◀ on cue {stk.current:.0f}" if stk.current is not None else ""
+                lines.append(f"  [{sid}] {stk.name}  ({cue_count} cues){cur}")
+            return "\n".join(lines) if len(lines) > 1 else "no stacks recorded"
+        # LIST CUES [stk <n>] — cue list for active or specified stack
         if sub in ('CUES', 'CUE'):
-            cs_n = None
-            if 'CS' in tokens:
-                ci = tokens.index('CS')
+            stk_n = None
+            if 'STK' in tokens:
+                ci = tokens.index('STK')
                 try:
-                    cs_n = int(tokens[ci + 1])
+                    stk_n = int(tokens[ci + 1])
                 except (IndexError, ValueError):
                     pass
-            cs = cuestack_pool.get(cs_n) if cs_n is not None else _active_stack()
-            if not cs:
-                label = f"cuestack {cs_n}" if cs_n else "active cuestack"
+            stk = stack_pool.get(stk_n) if stk_n is not None else _active_stack()
+            if not stk:
+                label = f"stack {stk_n}" if stk_n else "active stack"
                 return f"LIST CUES: {label} not found"
-            if not cs.cues:
-                return f"CS {cs.stack_id} '{cs.name}': no cues"
-            lines = [f"cs {cs.stack_id} '{cs.name}' ({len(cs.cues)} cues):"]
-            for num in cs._sorted_cue_numbers():
-                cue = cs.cues[num]
-                cur_m = " ◀" if num == cs.current else ""
+            if not stk.cues:
+                return f"stk {stk.stack_id} '{stk.name}': no cues"
+            lines = [f"stk {stk.stack_id} '{stk.name}' ({len(stk.cues)} cues):"]
+            for num in stk._sorted_cue_numbers():
+                cue = stk.cues[num]
+                cur_m = " ◀" if num == stk.current else ""
                 note_s = f"  [{cue.note}]" if getattr(cue, 'note', '') else ""
                 lines.append(f"  [{num:.0f}] {cue.name}  fade:{cue.fade_time}s{note_s}{cur_m}")
             return "\n".join(lines)
@@ -17405,19 +17405,19 @@ def run_command(cmd_str):
                 p = pool.presets[pid]
                 lines.append(f"  {p}")
             return "\n".join(lines)
-        if sub in ('FADER', 'FADERS', 'EXEC', 'EXECUTORS', 'EXECUTOR'):
-            if not executor_pool.executors:
+        if sub in ('FADER', 'FADERS', 'FDR'):
+            if not fader_pool.faders:
                 return "no faders configured"
             lines = ["Faders:"]
-            for eid in sorted(executor_pool.executors):
-                ex = executor_pool.executors[eid]
-                cs = ex.cuestack
+            for eid in sorted(fader_pool.faders):
+                ex = fader_pool.faders[eid]
+                stk = ex.stack
                 lbl_s = f"  [{ex.label}]" if ex.label else ""
-                if cs:
-                    cur_s = (f"  cue {cs.current:.0f}" if cs.current is not None else "  not started")
+                if stk:
+                    cur_s = (f"  cue {stk.current:.0f}" if stk.current is not None else "  not started")
                     active_s = "  ACTIVE" if ex.is_active else "  idle"
                     mode_s = f"  mode={ex.trigger_mode}"
-                    lines.append(f"  [{eid}]{lbl_s} → CS {cs.stack_id}: {cs.name}{cur_s}{active_s}{mode_s}")
+                    lines.append(f"  [{eid}]{lbl_s} → stk {stk.stack_id}: {stk.name}{cur_s}{active_s}{mode_s}")
                 else:
                     lines.append(f"  [{eid}]{lbl_s} → (unassigned)")
             return "\n".join(lines)
@@ -17467,26 +17467,26 @@ def run_command(cmd_str):
             return run_command("MACRO LIST")
         if sub in ('NOTES', 'NOTE'):
             lines = []
-            for sid in sorted(cuestack_pool.stacks):
-                cs = cuestack_pool.stacks[sid]
-                cs_note = getattr(cs, 'note', '')
-                cue_notes = [(num, cs.cues[num].note)
-                             for num in cs._sorted_cue_numbers()
-                             if getattr(cs.cues[num], 'note', '')]
+            for sid in sorted(stack_pool.stacks):
+                stk = stack_pool.stacks[sid]
+                cs_note = getattr(stk, 'note', '')
+                cue_notes = [(num, stk.cues[num].note)
+                             for num in stk._sorted_cue_numbers()
+                             if getattr(stk.cues[num], 'note', '')]
                 if cs_note or cue_notes:
-                    lines.append(f"CS {sid} '{cs.name}':" + (f"  {cs_note}" if cs_note else ""))
+                    lines.append(f"stk {sid} '{stk.name}':" + (f"  {cs_note}" if cs_note else ""))
                     for num, nt in cue_notes:
                         lines.append(f"    cue {num:.0f}: {nt}")
             if not lines:
-                return "no notes set on any cuestack or cue"
+                return "no notes set on any stack or cue"
             return "\n".join(lines)
         if sub == 'REFS':
             # Delegate to the LIST REFS handler below
             pass
         else:
             return (f"LIST: unknown sub-command '{tokens[1]}' — "
-                    "use COLOR, DIM, GROUP, FX, CUESTACKS, RATE, SIZEP, SPREADP, FORM, "
-                    "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, EXEC, MIDI, OSC, PATCH, PARK, SHOWS, NOTES, REFS")
+                    "use COLOR, DIM, GROUP, FX, STACKS, RATE, SIZEP, SPREADP, FORM, "
+                    "POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, fdr, MIDI, OSC, PATCH, PARK, SHOWS, NOTES, REFS")
 
     # ── FIXTURE INFO <n> — detailed per-fixture status ──────────────────────────
     # FIXTURE SWAP <a> <b> — exchange programmer values between two fixtures
@@ -17584,9 +17584,9 @@ def run_command(cmd_str):
                 lines.append(f"    {v}")
         return "\n".join(lines)
 
-    # ── Clear — programmer only, never touches cuestacks ────────
-    # ── RELEASE — stop executor(s) ───────────────────────────
-    # ── PRIORITY — set executor merge priority ────────────────
+    # ── Clear — programmer only, never touches stacks ────────
+    # ── RELEASE — stop fader(s) ───────────────────────────
+    # ── PRIORITY — set fader merge priority ────────────────
     if t0 == 'PRIORITY' and len(tokens) >= 3:
         try:
             n = int(tokens[1])
@@ -17596,24 +17596,24 @@ def run_command(cmd_str):
         lvl_map = {'HIGH': 1, 'HI': 1, 'LOW': -1, 'LO': -1, 'NORMAL': 0, 'NRM': 0}
         if lvl_str not in lvl_map:
             return f"unknown priority '{lvl_str}' — use HIGH, LOW or NORMAL"
-        ex = executor_pool.get(n)
+        ex = fader_pool.get(n)
         ex.priority = lvl_map[lvl_str]
-        lbl = Executor.PRIORITY_LABELS[ex.priority]
+        lbl = Fader.PRIORITY_LABELS[ex.priority]
         return f"fader {n} priority → {lbl}"
 
     if t0 == 'RELEASE':
         if len(tokens) == 1 or (len(tokens) == 2 and tokens[1] == 'ALL'):
             stopped = []
-            for ex in executor_pool.executors.values():
+            for ex in fader_pool.faders.values():
                 if ex.is_active:
                     ex.stop()
-                    stopped.append(ex.exec_id)
+                    stopped.append(ex.fdr_id)
             return f"released {len(stopped)} fader(s): {stopped}" if stopped else "no active faders"
         try:
             n = int(tokens[1])
         except (ValueError, IndexError):
             return "usage: release <n>  or  release all"
-        ex = executor_pool.get(n)
+        ex = fader_pool.get(n)
         if ex.is_active:
             ex.stop()
             return f"released fader {n}"
@@ -17621,7 +17621,7 @@ def run_command(cmd_str):
 
     # ── CUE timing editor (no programmer required) ─────────────
     # CUE <n> FADE/INFADE/OUTFADE <t> [DELAY <t>] [CFADE <t>] [DFADE <t>]
-    # CS <n> CUE <m> FADE <t> [...]
+    # stk <n> CUE <m> FADE <t> [...]
     # RECORD CUE <n> FADE <t>  also works when programmer is empty (updates existing cue)
     _TIMING_KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY', 'FOLLOW',
                   'CFADE', 'CINFADE', 'DFADE', 'DINFADE', 'CDELAY', 'DDELAY'}
@@ -17634,12 +17634,12 @@ def run_command(cmd_str):
             cue_num = float(tokens[1])
         except ValueError:
             return f"CUE NOTE: bad cue number '{tokens[1]}'"
-        cs = _active_stack()
-        if not cs:
-            return "CUE NOTE: no active cuestack"
-        cue = cs.cues.get(cue_num)
+        stk = _active_stack()
+        if not stk:
+            return "CUE NOTE: no active stack"
+        cue = stk.cues.get(cue_num)
         if not cue:
-            return f"cue {cue_num} not found in active cuestack"
+            return f"cue {cue_num} not found in active stack"
         note_text = raw.split(None, 3)[3].strip() if len(tokens) > 3 else ""
         cue.note = note_text
         save_show()
@@ -17650,12 +17650,12 @@ def run_command(cmd_str):
             cue_num = float(tokens[1])
         except ValueError:
             return f"CUE: bad cue number '{tokens[1]}'"
-        cs = _active_stack()
-        if not cs:
-            return "CUE: no active cuestack"
-        cue = cs.cues.get(cue_num)
+        stk = _active_stack()
+        if not stk:
+            return "CUE: no active stack"
+        cue = stk.cues.get(cue_num)
         if not cue:
-            return f"cue {cue_num} not found in active cuestack"
+            return f"cue {cue_num} not found in active stack"
         note_str   = f"  [{cue.note}]" if getattr(cue, 'note', '') else ""
         follow_str = f"  Follow:{cue.follow_time:.1f}s" if getattr(cue, 'follow_time', 0.0) > 0 else ""
         lines = [f"cue {cue_num}: {cue.name}  |  Fade:{cue.fade_time}s  Delay:{cue.delay_time}s{follow_str}{note_str}"]
@@ -17695,60 +17695,60 @@ def run_command(cmd_str):
             cue_num = float(tokens[1])
         except ValueError:
             return f"CUE: bad cue number '{tokens[1]}'"
-        cs = _active_stack()
-        if not cs:
-            return "CUE: no active cuestack"
-        cue = cs.cues.get(float(cue_num))
+        stk = _active_stack()
+        if not stk:
+            return "CUE: no active stack"
+        cue = stk.cues.get(float(cue_num))
         if not cue:
-            return f"cue {cue_num} not found in active cuestack"
+            return f"cue {cue_num} not found in active stack"
         _apply_timing_edit(cue, raw)
         save_show()
         return f"updated: {cue}"
 
-    if _has_timing and t0 in ('CS', 'CUESTACK') and 'CUE' in tokens:
+    if _has_timing and t0 in ('STK', 'STACK') and 'CUE' in tokens:
         cue_idx = tokens.index('CUE')
         try:
-            cs_n    = int(tokens[1])
+            stk_n    = int(tokens[1])
             cue_num = float(tokens[cue_idx + 1])
         except (ValueError, IndexError):
-            return "usage: cs <n> cue <m> fade <t> [delay <t>] [cfade <t>] [dfade <t>]"
-        cs = cuestack_pool.get(cs_n)
-        if not cs:
-            return f"cuestack {cs_n} not found"
-        cue = cs.cues.get(float(cue_num))
+            return "usage: stk <n> cue <m> fade <t> [delay <t>] [cfade <t>] [dfade <t>]"
+        stk = stack_pool.get(stk_n)
+        if not stk:
+            return f"stack {stk_n} not found"
+        cue = stk.cues.get(float(cue_num))
         if not cue:
-            return f"cue {cue_num} not found in cuestack {cs_n}"
+            return f"cue {cue_num} not found in stack {stk_n}"
         _apply_timing_edit(cue, raw)
         save_show()
         return f"updated: {cue}"
 
-    # CUE <n> SHIFT <offset> — move a cue to a new number within the active cuestack
+    # CUE <n> SHIFT <offset> — move a cue to a new number within the active stack
     if t0 == 'CUE' and len(tokens) >= 4 and tokens[2].upper() == 'SHIFT':
         try:
             cue_num = float(tokens[1])
             offset  = float(tokens[3])
         except ValueError:
             return "usage: cue <n> shift <offset>"
-        cs = _active_stack()
-        if not cs:
-            return "CUE SHIFT: no active cuestack"
-        cue = cs.cues.get(cue_num)
+        stk = _active_stack()
+        if not stk:
+            return "CUE SHIFT: no active stack"
+        cue = stk.cues.get(cue_num)
         if not cue:
             return f"CUE SHIFT: cue {cue_num:.0f} not found"
         new_num = round(cue_num + offset, 6)
-        if new_num in cs.cues:
+        if new_num in stk.cues:
             return f"CUE SHIFT: position {new_num:.0f} already occupied"
-        del cs.cues[cue_num]
+        del stk.cues[cue_num]
         cue.cue_number = new_num
-        cs.cues[new_num] = cue
-        if cs.current == cue_num:
-            cs.current = new_num
+        stk.cues[new_num] = cue
+        if stk.current == cue_num:
+            stk.current = new_num
         save_show()
-        return f"cue {cue_num:.0f} → {new_num:.0f} in '{cs.name}'"
+        return f"cue {cue_num:.0f} → {new_num:.0f} in '{stk.name}'"
 
-    # RENAME CUESTACK <n> <new name>
-    # RENAME CUE <n> <new name>          (active cuestack)
-    # RENAME CS <n> CUE <m> <new name>   (explicit cuestack)
+    # RENAME STACK <n> <new name>
+    # RENAME CUE <n> <new name>          (active stack)
+    # RENAME stk <n> CUE <m> <new name>   (explicit stack)
     # RENAME COLOR/COLOUR <n> <new name>
     # RENAME DIM <n> <new name>
     # RENAME GROUP <n> <new name>
@@ -17757,47 +17757,47 @@ def run_command(cmd_str):
     if t0 == 'RENAME' and len(tokens) >= 3:
         sub = tokens[1]
 
-        # RENAME CUESTACK <n> <name>
-        if sub == 'CUESTACK':
+        # RENAME STACK <n> <name>
+        if sub == 'STACK':
             try:
                 n = int(tokens[2])
             except ValueError:
-                return f"RENAME CUESTACK: bad number '{tokens[2]}'"
-            cs = cuestack_pool.get(n)
-            if not cs:
-                return f"cuestack {n} not found"
+                return f"RENAME STACK: bad number '{tokens[2]}'"
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
             new_name = _name_after(raw, 3)
             if not new_name:
-                return "RENAME CUESTACK: provide a new name"
-            cs.name = new_name
+                return "RENAME STACK: provide a new name"
+            stk.name = new_name
             save_show()
-            return f"cuestack {n} → \"{new_name}\""
+            return f"stack {n} → \"{new_name}\""
 
-        # RENAME CS <n> CUE <m> <name>  or  RENAME CUE <n> <name>
-        if sub == 'CUE' or (sub == 'CS' and 'CUE' in tokens):
-            if sub == 'CS' and 'CUE' in tokens:
+        # RENAME stk <n> CUE <m> <name>  or  RENAME CUE <n> <name>
+        if sub == 'CUE' or (sub == 'STK' and 'CUE' in tokens):
+            if sub == 'STK' and 'CUE' in tokens:
                 cue_idx = tokens.index('CUE')
                 try:
-                    cs_n    = int(tokens[2])
+                    stk_n    = int(tokens[2])
                     cue_num = float(tokens[cue_idx + 1])
                 except (ValueError, IndexError):
-                    return "usage: rename cs <n> cue <m> <name>"
-                cs = cuestack_pool.get(cs_n)
-                if not cs:
-                    return f"cuestack {cs_n} not found"
+                    return "usage: rename stk <n> cue <m> <name>"
+                stk = stack_pool.get(stk_n)
+                if not stk:
+                    return f"stack {stk_n} not found"
                 new_name = _name_after(raw, cue_idx + 2)
             else:
                 try:
                     cue_num = float(tokens[2])
                 except ValueError:
                     return f"RENAME CUE: bad cue number '{tokens[2]}'"
-                cs = _active_stack()
-                if not cs:
-                    return "RENAME CUE: no active cuestack"
+                stk = _active_stack()
+                if not stk:
+                    return "RENAME CUE: no active stack"
                 new_name = _name_after(raw, 3)
             if not new_name:
                 return "RENAME CUE: provide a new name"
-            cue = cs.cues.get(float(cue_num))
+            cue = stk.cues.get(float(cue_num))
             if not cue:
                 return f"cue {cue_num} not found"
             cue.name = new_name
@@ -17929,7 +17929,7 @@ def run_command(cmd_str):
             ShowFile.save_patch(patch)
             return f"fixture {n}: \"{old_name}\" → \"{new_name}\""
 
-        return (f"RENAME: unknown type '{sub}' — use CUESTACK, CUE, COLOR, DIM, GROUP, FX, "
+        return (f"RENAME: unknown type '{sub}' — use STACK, CUE, COLOR, DIM, GROUP, FX, "
                 "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO, FIXTURE")
 
     # ── COPY FIXTURE <src> TO <dst1> [dst2 ...] ──────────────────────────────
@@ -17968,13 +17968,13 @@ def run_command(cmd_str):
             copied.append(dst_id)
         return f"copied fixture {src_id} → {copied}"
 
-    # ── COPY CUE / COPY CS ────────────────────────────────────────────────────
-    # COPY CUE <src> TO <dst>               — within active cuestack
+    # ── COPY CUE / COPY stk ────────────────────────────────────────────────────
+    # COPY CUE <src> TO <dst>               — within active stack
     # COPY CUE <src> TO <dst> <name>        — with new name
-    # COPY CS <cs> CUE <src> TO <dst>       — explicit source cuestack
-    # COPY CS <cs> CUE <src> TO CS <cs2> CUE <dst>  — cross-cuestack
-    # COPY CS <n> TO CS <m>                 — whole-cuestack duplicate
-    if t0 == 'COPY' and len(tokens) >= 2 and tokens[1] in ('CUE', 'CS', 'CUESTACK'):
+    # COPY stk <stk> CUE <src> TO <dst>       — explicit source stack
+    # COPY stk <stk> CUE <src> TO stk <cs2> CUE <dst>  — cross-stack
+    # COPY stk <n> TO stk <m>                 — whole-stack duplicate
+    if t0 == 'COPY' and len(tokens) >= 2 and tokens[1] in ('CUE', 'STK', 'STACK'):
         try:
             # Locate TO keyword
             if 'TO' not in tokens:
@@ -17984,19 +17984,19 @@ def run_command(cmd_str):
             # Parse source side (before TO)
             src_tokens = tokens[1:to_idx]
 
-            # ── Whole-cuestack copy: COPY CS <n> TO CS <m> ─────────────────
-            if (src_tokens and src_tokens[0] in ('CS', 'CUESTACK') and
+            # ── Whole-stack copy: COPY stk <n> TO stk <m> ─────────────────
+            if (src_tokens and src_tokens[0] in ('STK', 'STACK') and
                     len(src_tokens) == 2 and 'CUE' not in src_tokens):
                 src_cs_n = int(src_tokens[1])
                 dst_tokens = tokens[to_idx + 1:]
-                if not dst_tokens or dst_tokens[0] not in ('CS', 'CUESTACK') or len(dst_tokens) < 2:
-                    return "COPY CS: use COPY CS <src> TO CS <dst>"
+                if not dst_tokens or dst_tokens[0] not in ('STK', 'STACK') or len(dst_tokens) < 2:
+                    return "COPY stk: use COPY stk <src> TO stk <dst>"
                 dst_cs_n = int(dst_tokens[1])
-                src_cs = cuestack_pool.get(src_cs_n)
-                if not src_cs:
-                    return f"COPY CS: source CS {src_cs_n} not found"
-                dst_cs = cuestack_pool.get(dst_cs_n) or cuestack_pool.create(dst_cs_n)
-                for cue_n, src_cue in sorted(src_cs.cues.items()):
+                src_stk = stack_pool.get(src_cs_n)
+                if not src_stk:
+                    return f"COPY stk: source stk {src_cs_n} not found"
+                dst_stk = stack_pool.get(dst_cs_n) or stack_pool.create(dst_cs_n)
+                for cue_n, src_cue in sorted(src_stk.cues.items()):
                     nc = Cue(
                         cue_number  = src_cue.cue_number,
                         name        = src_cue.name,
@@ -18009,52 +18009,52 @@ def run_command(cmd_str):
                     nc.note = src_cue.note
                     nc.fx_outfade = src_cue.fx_outfade
                     nc.data = copy.deepcopy(src_cue.data)
-                    dst_cs.cues[cue_n] = nc
-                if not dst_cs.name or dst_cs.name == f"cuestack {dst_cs_n}":
-                    dst_cs.name = src_cs.name
+                    dst_stk.cues[cue_n] = nc
+                if not dst_stk.name or dst_stk.name == f"stack {dst_cs_n}":
+                    dst_stk.name = src_stk.name
                 save_show()
-                return (f"copied CS {src_cs_n} '{src_cs.name}' → CS {dst_cs_n} "
-                        f"'{dst_cs.name}'  ({len(src_cs.cues)} cues)")
+                return (f"copied stk {src_cs_n} '{src_stk.name}' → stk {dst_cs_n} "
+                        f"'{dst_stk.name}'  ({len(src_stk.cues)} cues)")
 
             # ── Single-cue copy ─────────────────────────────────────────────
-            if src_tokens and src_tokens[0] in ('CS', 'CUESTACK'):
+            if src_tokens and src_tokens[0] in ('STK', 'STACK'):
                 if len(src_tokens) < 4 or src_tokens[2] not in ('CUE',):
-                    return "COPY: use COPY CS <n> CUE <src> TO ..."
+                    return "COPY: use COPY stk <n> CUE <src> TO ..."
                 src_cs_n  = int(src_tokens[1])
                 src_cue_n = float(src_tokens[3])
-                src_cs = cuestack_pool.get(src_cs_n)
+                src_stk = stack_pool.get(src_cs_n)
             elif src_tokens and src_tokens[0] == 'CUE':
                 src_cue_n = float(src_tokens[1])
-                src_cs    = cuestack_pool.get(active_executor[0])
+                src_stk    = stack_pool.get(active_fader[0])
             else:
-                return "COPY: use COPY CUE <n> TO <m>  or  COPY CS <n> CUE <src> TO ..."
+                return "COPY: use COPY CUE <n> TO <m>  or  COPY stk <n> CUE <src> TO ..."
 
             # Parse destination side (after TO)
             dst_tokens = tokens[to_idx + 1:]
             if not dst_tokens:
                 return "COPY CUE: missing destination after TO"
 
-            if dst_tokens[0] in ('CS', 'CUESTACK'):
-                # COPY ... TO CS <n> CUE <dst>
+            if dst_tokens[0] in ('STK', 'STACK'):
+                # COPY ... TO stk <n> CUE <dst>
                 if len(dst_tokens) < 4 or dst_tokens[2] != 'CUE':
-                    return "COPY: use ... TO CS <n> CUE <dst>"
+                    return "COPY: use ... TO stk <n> CUE <dst>"
                 dst_cs_n  = int(dst_tokens[1])
                 dst_cue_n = float(dst_tokens[3])
-                dst_cs    = cuestack_pool.get(dst_cs_n) or cuestack_pool.create(dst_cs_n)
+                dst_stk    = stack_pool.get(dst_cs_n) or stack_pool.create(dst_cs_n)
                 new_name  = _name_after(raw, tokens.index('CUE', to_idx + 1) + 2) if len(dst_tokens) > 4 else ""
             else:
                 dst_cue_n = float(dst_tokens[0])
-                dst_cs    = cuestack_pool.get(active_executor[0]) or _active_stack()
+                dst_stk    = stack_pool.get(active_fader[0]) or _active_stack()
                 new_name  = " ".join(dst_tokens[1:]) if len(dst_tokens) > 1 else ""
 
-            if not src_cs:
-                return f"COPY CUE: source cuestack not found"
-            if not dst_cs:
-                return f"COPY CUE: no active cuestack — specify CS <n> CUE <dst>"
+            if not src_stk:
+                return f"COPY CUE: source stack not found"
+            if not dst_stk:
+                return f"COPY CUE: no active stack — specify stk <n> CUE <dst>"
 
-            src_cue = src_cs.get_cue(src_cue_n)
+            src_cue = src_stk.get_cue(src_cue_n)
             if not src_cue:
-                return f"COPY CUE: cue {src_cue_n} not found in '{src_cs.name}'"
+                return f"COPY CUE: cue {src_cue_n} not found in '{src_stk.name}'"
 
             # Build the destination cue — deep-copy all data including follow_time/note
             dst_cue = Cue(
@@ -18069,54 +18069,54 @@ def run_command(cmd_str):
             dst_cue.note = src_cue.note
             dst_cue.fx_outfade = src_cue.fx_outfade
             dst_cue.data = copy.deepcopy(src_cue.data)
-            dst_cs.cues[float(dst_cue_n)] = dst_cue
+            dst_stk.cues[float(dst_cue_n)] = dst_cue
             save_show()
             return (f"copied cue {src_cue_n} '{src_cue.name}' → "
-                    f"cue {dst_cue_n} '{dst_cue.name}'  in '{dst_cs.name}'")
+                    f"cue {dst_cue_n} '{dst_cue.name}'  in '{dst_stk.name}'")
 
         except (ValueError, IndexError) as _e:
             return f"COPY CUE: bad syntax — {_e}"
 
     # ── MOVE CUE ──────────────────────────────────────────────────────────────
-    # MOVE CUE <src> TO <dst>               — renumber within active cuestack
-    # MOVE CS <cs> CUE <src> TO <dst>       — explicit cuestack
-    # MOVE CS <cs> CUE <src> TO CS <cs2> CUE <dst>  — cross-cuestack move
-    if t0 == 'MOVE' and len(tokens) >= 2 and tokens[1] in ('CUE', 'CS', 'CUESTACK'):
+    # MOVE CUE <src> TO <dst>               — renumber within active stack
+    # MOVE stk <stk> CUE <src> TO <dst>       — explicit stack
+    # MOVE stk <stk> CUE <src> TO stk <cs2> CUE <dst>  — cross-stack move
+    if t0 == 'MOVE' and len(tokens) >= 2 and tokens[1] in ('CUE', 'STK', 'STACK'):
         try:
             if 'TO' not in tokens:
                 return "MOVE CUE: missing TO — e.g. MOVE CUE 3 TO 5"
             to_idx = tokens.index('TO')
             src_tokens = tokens[1:to_idx]
-            if src_tokens and src_tokens[0] in ('CS', 'CUESTACK'):
+            if src_tokens and src_tokens[0] in ('STK', 'STACK'):
                 if len(src_tokens) < 4 or src_tokens[2] != 'CUE':
-                    return "MOVE: use MOVE CS <n> CUE <src> TO ..."
+                    return "MOVE: use MOVE stk <n> CUE <src> TO ..."
                 src_cs_n  = int(src_tokens[1])
                 src_cue_n = float(src_tokens[3])
-                src_cs = cuestack_pool.get(src_cs_n)
+                src_stk = stack_pool.get(src_cs_n)
             elif src_tokens and src_tokens[0] == 'CUE':
                 src_cue_n = float(src_tokens[1])
-                src_cs    = cuestack_pool.get(active_executor[0])
+                src_stk    = stack_pool.get(active_fader[0])
             else:
-                return "MOVE: use MOVE CUE <n> TO <m>  or  MOVE CS <n> CUE <src> TO ..."
+                return "MOVE: use MOVE CUE <n> TO <m>  or  MOVE stk <n> CUE <src> TO ..."
             dst_tokens = tokens[to_idx + 1:]
             if not dst_tokens:
                 return "MOVE CUE: missing destination after TO"
-            if dst_tokens[0] in ('CS', 'CUESTACK'):
+            if dst_tokens[0] in ('STK', 'STACK'):
                 if len(dst_tokens) < 4 or dst_tokens[2] != 'CUE':
-                    return "MOVE: use ... TO CS <n> CUE <dst>"
+                    return "MOVE: use ... TO stk <n> CUE <dst>"
                 dst_cs_n  = int(dst_tokens[1])
                 dst_cue_n = float(dst_tokens[3])
-                dst_cs    = cuestack_pool.get(dst_cs_n) or cuestack_pool.create(dst_cs_n)
+                dst_stk    = stack_pool.get(dst_cs_n) or stack_pool.create(dst_cs_n)
             else:
                 dst_cue_n = float(dst_tokens[0])
-                dst_cs    = src_cs
-            if not src_cs:
-                return "MOVE CUE: source cuestack not found"
-            src_cue = src_cs.get_cue(src_cue_n)
+                dst_stk    = src_stk
+            if not src_stk:
+                return "MOVE CUE: source stack not found"
+            src_cue = src_stk.get_cue(src_cue_n)
             if not src_cue:
-                return f"MOVE CUE: cue {src_cue_n} not found in '{src_cs.name}'"
-            if float(dst_cue_n) in dst_cs.cues and dst_cs is src_cs and dst_cue_n != src_cue_n:
-                return (f"MOVE CUE: cue {dst_cue_n} already exists in '{dst_cs.name}' "
+                return f"MOVE CUE: cue {src_cue_n} not found in '{src_stk.name}'"
+            if float(dst_cue_n) in dst_stk.cues and dst_stk is src_stk and dst_cue_n != src_cue_n:
+                return (f"MOVE CUE: cue {dst_cue_n} already exists in '{dst_stk.name}' "
                         "— DELETE it first or use COPY")
             moved = Cue(
                 cue_number  = dst_cue_n,
@@ -18130,15 +18130,15 @@ def run_command(cmd_str):
             moved.note = src_cue.note
             moved.fx_outfade = src_cue.fx_outfade
             moved.data = copy.deepcopy(src_cue.data)
-            dst_cs.cues[float(dst_cue_n)] = moved
-            src_cs.delete_cue(src_cue_n)
+            dst_stk.cues[float(dst_cue_n)] = moved
+            src_stk.delete_cue(src_cue_n)
             if src_cue_n == int(src_cue_n):
                 cue_pool.delete(int(src_cue_n))
             if dst_cue_n == int(dst_cue_n):
                 cue_pool.store(int(dst_cue_n), moved)
             save_show()
             return (f"moved cue {src_cue_n} '{moved.name}' → "
-                    f"cue {dst_cue_n}  in '{dst_cs.name}'")
+                    f"cue {dst_cue_n}  in '{dst_stk.name}'")
         except (ValueError, IndexError) as _e:
             return f"MOVE CUE: bad syntax — {_e}"
 
@@ -18603,9 +18603,9 @@ def run_command(cmd_str):
             label   = f"{ref_type} preset {ref_id}"
 
         hits = []
-        for cs_id, cs in cuestack_pool.stacks.items():
-            for cue_num in sorted(cs.cues.keys()):
-                cue = cs.cues[cue_num]
+        for cs_id, stk in stack_pool.stacks.items():
+            for cue_num in sorted(stk.cues.keys()):
+                cue = stk.cues[cue_num]
                 matched_fids = []
                 for fid, vals in cue.data.items():
                     if '.' in fid:
@@ -18621,7 +18621,7 @@ def run_command(cmd_str):
                                 break
                 if matched_fids:
                     fid_str = ', '.join(f'f{f}' for f in sorted(matched_fids, key=lambda x: int(x) if x.isdigit() else 0))
-                    hits.append(f"  cs {cs_id} \"{cs.name}\" → cue {cue_num} \"{cue.name}\"  ({fid_str})")
+                    hits.append(f"  stk {cs_id} \"{stk.name}\" → cue {cue_num} \"{cue.name}\"  ({fid_str})")
 
         if not hits:
             return f"{label}: no cue references found"
@@ -18718,7 +18718,7 @@ gui = GUIEngine(
     fade_engine      = fade_engine,
     output_state     = output_state,
     patch            = patch,
-    cuestacks        = {cs.stack_id: cs for cs in cuestack_pool.stacks.values()},
+    stacks        = {stk.stack_id: stk for stk in stack_pool.stacks.values()},
     prog             = prog,
     go_fn            = cue_go,
     back_fn          = cue_back,
@@ -18731,9 +18731,9 @@ gui = GUIEngine(
     color_pool       = color_pool,
     dim_pool         = dim_pool,
     cue_pool         = cue_pool,
-    cuestack_pool    = cuestack_pool,
-    active_executor  = active_executor,
-    executor_pool    = executor_pool,
+    stack_pool    = stack_pool,
+    active_fader  = active_fader,
+    fader_pool    = fader_pool,
     fx_pool          = fx_pool,
     form_pool        = form_pool,
     rate_pool        = rate_pool,
@@ -18771,12 +18771,12 @@ if STUDIO_HEADLESS:
         r1 = run_command("FX SINE RED BLOCK 2 DIRECTION BOUNCE PIXEL")
         _check("FX command applied to programmer", "FX" in r1)
 
-        r2 = run_command("RECORD CS 1 CUE 5")
+        r2 = run_command("RECORD stk 1 CUE 5")
         _check("cue recorded", "recorded" in r2 or "cue" in r2)
 
-        run_command("GO CS 1 CUE 5")
+        run_command("GO stk 1 CUE 5")
         time.sleep(0.25)   # let FadeEngine/FXEngine tick at least once
-        ex = executor_pool.get(1)
+        ex = fader_pool.get(1)
         _check("fader has active FX after GO", len(ex._fx_ids) > 0)
 
         dmx = output_state.get_dmx_for_universe(1)
@@ -18792,13 +18792,13 @@ if STUDIO_HEADLESS:
                _prog_time['fade'] == _pt_before['fade'])
 
         # FADER SWAP
-        _cs1_before = executor_pool.get(1).cuestack
-        _cs2_before = executor_pool.get(2).cuestack
+        _cs1_before = fader_pool.get(1).stack
+        _cs2_before = fader_pool.get(2).stack
         r_swap = run_command("FADER SWAP 1 2")
-        _check("FADER SWAP swaps cs onto fader 1",
-               executor_pool.get(1).cuestack is _cs2_before)
-        _check("FADER SWAP swaps cs onto fader 2",
-               executor_pool.get(2).cuestack is _cs1_before)
+        _check("FADER SWAP swaps stk onto fader 1",
+               fader_pool.get(1).stack is _cs2_before)
+        _check("FADER SWAP swaps stk onto fader 2",
+               fader_pool.get(2).stack is _cs1_before)
         # Swap back to restore state for remaining tests
         run_command("FADER SWAP 1 2")
 
@@ -18917,19 +18917,19 @@ if STUDIO_HEADLESS:
 
         # Pages + trigger modes
         run_command('PAGE 1 NAME "Test Page"')
-        run_command("PAGE 1 ADD CS 1")
+        run_command("PAGE 1 ADD stk 1")
         r3 = run_command("page list")
-        _check("page created and cuestack added", "Test Page" in r3 and "[1]" in r3)
+        _check("page created and stack added", "Test Page" in r3 and "[1]" in r3)
 
         run_command("FADER 1 MODE FLASH")
-        _check("trigger_mode set", executor_pool.get(1).trigger_mode == 'flash')
+        _check("trigger_mode set", fader_pool.get(1).trigger_mode == 'flash')
 
         run_command("FADER 1 flash on")
         time.sleep(0.05)
-        _check("executor active after flash on", executor_pool.get(1).is_active)
+        _check("fader active after flash on", fader_pool.get(1).is_active)
 
         run_command("FADER 1 flash off")
-        _check("executor inactive after flash off", not executor_pool.get(1).is_active)
+        _check("fader inactive after flash off", not fader_pool.get(1).is_active)
 
         # RECORD COLOR/DIM from programmer — verify no AttributeError
         run_command("ALL AT R 200 G 100 B 50")
@@ -18954,22 +18954,22 @@ if STUDIO_HEADLESS:
         r_ld = run_command("LIST DIM")
         _check("LIST DIM no exception", "dim" in r_ld)
 
-        # Verify LIST sub-commands route correctly (not to cuestack listing)
+        # Verify LIST sub-commands route correctly (not to stack listing)
         for _cmd, _kw in [
             ("LIST RATE", "Rate"), ("LIST SIZEP", "Size"),
-            ("LIST SPREADP", "Spread"), ("LIST CUESTACKS", "CueStack"),
-            ("STATUS", "Console"), ("LIST", "Cuestack"),
+            ("LIST SPREADP", "Spread"), ("LIST STACKS", "Stack"),
+            ("STATUS", "Console"), ("LIST", "Stack"),
         ]:
             _r = run_command(_cmd)
             _check(f"{_cmd!r} routes correctly", _kw.lower() in _r.lower())
 
-        # LIST CUES and LIST CUES CS <n>
+        # LIST CUES and LIST CUES stk <n>
         _lc_r = run_command("LIST CUES")
-        _check("LIST CUES returns cue list for active cuestack",
-               "cs " in _lc_r.lower() or "not found" in _lc_r.lower())
-        _lc_cs1 = run_command("LIST CUES CS 1")
-        _check("LIST CUES CS 1 targets cuestack 1",
-               "cs 1" in _lc_cs1.lower() or "not found" in _lc_cs1.lower())
+        _check("LIST CUES returns cue list for active stack",
+               "stk " in _lc_r.lower() or "not found" in _lc_r.lower())
+        _lc_cs1 = run_command("LIST CUES stk 1")
+        _check("LIST CUES stk 1 targets stack 1",
+               "stk 1" in _lc_cs1.lower() or "not found" in _lc_cs1.lower())
 
         # COPY pool preset routing — was broken by overly broad COPY CUE handler
         run_command("RECORD COLOR 5 CopySource 255 128 0")
@@ -19007,17 +19007,17 @@ if STUDIO_HEADLESS:
                "built-in" in r_cp_form_builtin.lower())
 
         # Fader-page paging — GUIEngine._fpg_exec_for_slot/_fpg_slot_for_exec map
-        # a fixed 15-slot panel onto banks of executors (page 2 slot 1 = exec 16).
+        # a fixed 15-slot panel onto banks of faders (page 2 slot 1 = fdr 16).
         # Pure functions, no dpg context needed, so they're smoke-testable headless.
-        _check("fpg slot->exec page 1 slot 1 == exec 1",
+        _check("fpg slot->fdr page 1 slot 1 == fdr 1",
                GUIEngine._fpg_exec_for_slot(1, 1) == 1)
-        _check("fpg slot->exec page 2 slot 1 == exec 16",
+        _check("fpg slot->fdr page 2 slot 1 == fdr 16",
                GUIEngine._fpg_exec_for_slot(2, 1) == 16)
-        _check("fpg slot->exec page 3 slot 15 == exec 45",
+        _check("fpg slot->fdr page 3 slot 15 == fdr 45",
                GUIEngine._fpg_exec_for_slot(3, 15) == 45)
-        _check("fpg exec->slot inverse holds for on-page exec",
+        _check("fpg fdr->slot inverse holds for on-page fdr",
                GUIEngine._fpg_slot_for_exec(2, 16) == 1)
-        _check("fpg exec->slot returns None for off-page exec",
+        _check("fpg fdr->slot returns None for off-page fdr",
                GUIEngine._fpg_slot_for_exec(1, 16) is None)
         # _fpg_step_page is the pure half of _on_fpg_page_prev/next (the dpg-
         # touching half needs a live GUI context, so it's exercised only by
@@ -19065,9 +19065,9 @@ if STUDIO_HEADLESS:
         # and never stopped it, so it's been running live in the background
         # ever since. With a selection active, "FX CLEAR" only clears
         # programmer FX (by design, scoped to selection) and leaves that
-        # executor's FX running -- its real-time envelope would otherwise
+        # fader's FX running -- its real-time envelope would otherwise
         # make the frozen red value here timing-dependent instead of
-        # deterministic. Stop the executor directly so nothing but this
+        # deterministic. Stop the fader directly so nothing but this
         # test's own explicit AT command drives colour into the freeze.
         run_command("FADER 1 STOP")
         run_command("FX CLEAR")
@@ -19214,8 +19214,8 @@ if STUDIO_HEADLESS:
             _check(f"RECORD {_attr} handles no-data case cleanly",
                    "no" in r_attr.lower() and "data in programmer" in r_attr.lower())
 
-        # OSC input dispatch (Block 11) — /gma3/fader/PAGE/EXEC is documented
-        # as a 2-segment address (page, exec) and _osc_fader parses it as
+        # OSC input dispatch (Block 11) — /gma3/fader/PAGE/fdr is documented
+        # as a 2-segment address (page, fdr) and _osc_fader parses it as
         # such, but the registered pattern had an extra "/*" wildcard segment
         # baked in since it was first added, so real /gma3/fader/1/1 messages
         # never matched it and silently fell through to the unmapped default
@@ -19237,7 +19237,7 @@ if STUDIO_HEADLESS:
         # fader 1) through the real dispatcher to confirm it now reaches
         # that fader's own level/GO/BACK, same as "FADER 3 LEVEL ..." /
         # "FADER 3 GO" typed on the command line.
-        _osc_ex = executor_pool.get(3)
+        _osc_ex = fader_pool.get(3)
         _prev_osc_ex_level = _osc_ex.level
         _fader3_msg = _OscMsgBuilder(address="/gma3/fader/1/3")
         _fader3_msg.add_arg(0.65)
@@ -19246,16 +19246,16 @@ if STUDIO_HEADLESS:
                abs(_osc_ex.level - 0.65) < 1e-6)
         _osc_ex.level = _prev_osc_ex_level
 
-        # cuestack 3 is wired to executor 3 by default at startup (every
-        # loaded cuestack assigns 1:1 into the matching executor slot), so
-        # a real GO on exec 3 should activate it.
+        # stack 3 is wired to fader 3 by default at startup (every
+        # loaded stack assigns 1:1 into the matching fader slot), so
+        # a real GO on fdr 3 should activate it.
         _key3_msg = _OscMsgBuilder(address="/gma3/key/1/3/go")
         _key3_msg.add_arg(1)
         osc._dispatch.call_handlers_for_packet(_key3_msg.build().dgram, ("127.0.0.1", 0))
         _check("OSC /gma3/key/1/3/go GOes fader 3 (routes through FADER 3 GO)",
                _osc_ex.is_active)
 
-        # /gma3/key/PAGE/EXEC/flash used to be silently dropped: the handler
+        # /gma3/key/PAGE/fdr/flash used to be silently dropped: the handler
         # returned immediately on any release (0) event regardless of TYPE,
         # and even on press only recognized go/go+/back/go-. A TouchOSC/
         # Chataigne "flash" key sent 1 then 0 and nothing happened at all.
@@ -19342,8 +19342,8 @@ if STUDIO_HEADLESS:
 
         # RECORD CUE with FOLLOW time — was silently dropped before the fix
         run_command("ALL AT R 255 G 0 B 0")
-        _r_follow = run_command("RECORD CS 1 CUE 99 FollowTest FOLLOW 3.5")
-        _cs_1 = cuestack_pool.get(1)
+        _r_follow = run_command("RECORD stk 1 CUE 99 FollowTest FOLLOW 3.5")
+        _cs_1 = stack_pool.get(1)
         _cue_99 = _cs_1.cues.get(99.0) if _cs_1 else None
         _check("RECORD CUE stores FOLLOW time", _cue_99 is not None and
                abs(getattr(_cue_99, 'follow_time', 0) - 3.5) < 0.01)
@@ -19351,7 +19351,7 @@ if STUDIO_HEADLESS:
         # COPY CUE preserves follow_time and note
         if _cue_99:
             _cue_99.note = "test note"
-        run_command("COPY CUE 99 TO 98 CS 1")
+        run_command("COPY CUE 99 TO 98 stk 1")
         _cue_98 = _cs_1.cues.get(98.0) if _cs_1 else None
         _check("COPY CUE copies follow_time", _cue_98 is not None and
                abs(getattr(_cue_98, 'follow_time', 0) - 3.5) < 0.01)
@@ -19359,7 +19359,7 @@ if STUDIO_HEADLESS:
                getattr(_cue_98, 'note', '') == "test note")
 
         # MOVE CUE renumbers and removes source
-        run_command("MOVE CUE 98 TO 97 CS 1")
+        run_command("MOVE CUE 98 TO 97 stk 1")
         _check("MOVE CUE creates destination", _cs_1.cues.get(97.0) is not None)
         _check("MOVE CUE removes source", _cs_1.cues.get(98.0) is None)
 
@@ -19368,24 +19368,24 @@ if STUDIO_HEADLESS:
         _check("GOTO non-existent cue returns error", "not found" in (_r_goto_bad or "").lower())
 
         # FADER GOTO FIRST / LAST
-        _gtfl_ex = executor_pool.get(1)
-        if _gtfl_ex and _gtfl_ex.cuestack and _gtfl_ex.cuestack.cues:
-            _gtfl_cs = _gtfl_ex.cuestack
+        _gtfl_ex = fader_pool.get(1)
+        if _gtfl_ex and _gtfl_ex.stack and _gtfl_ex.stack.cues:
+            _gtfl_cs = _gtfl_ex.stack
             _gtfl_first = _gtfl_cs._sorted_cue_numbers()[0]
             _gtfl_last  = _gtfl_cs._sorted_cue_numbers()[-1]
             run_command("FADER 1 GOTO FIRST")
-            _check("FADER GOTO FIRST positions cuestack at first cue",
+            _check("FADER GOTO FIRST positions stack at first cue",
                    _gtfl_cs.current == _gtfl_first)
             run_command("FADER 1 GOTO LAST")
-            _check("FADER GOTO LAST positions cuestack at last cue",
+            _check("FADER GOTO LAST positions stack at last cue",
                    _gtfl_cs.current == _gtfl_last)
 
         # delete cue cleans up cue_pool
         run_command("ALL AT R 128 G 0 B 0")
-        run_command("RECORD CS 1 CUE 96")
+        run_command("RECORD stk 1 CUE 96")
         _check("delete cue: cue_pool stale ref cleaned", True)  # record stores in pool
         _pool_has_96_before = cue_pool.get(96) is not None
-        run_command("delete cue 96 CS 1")
+        run_command("delete cue 96 stk 1")
         _check("delete cue removes from cue_pool",
                _pool_has_96_before and cue_pool.get(96) is None)
 
@@ -19535,7 +19535,7 @@ if STUDIO_HEADLESS:
         # This exercises the LTP tracking path in Fade.tick() for the case where
         # data_to has no dim entry.
 
-        _ts_cs = CueStack(999, "TrackTest")
+        _ts_cs = Stack(999, "TrackTest")
 
         # cue 1: dim=0.8 stored explicitly
         _tc1 = Cue(1.0, "Track1")
@@ -19552,7 +19552,7 @@ if STUDIO_HEADLESS:
         _tc3.data = {}
         _ts_cs.cues[3.0] = _tc3
 
-        # Simulate the Fade.tick() tracking logic directly (no real executor needed)
+        # Simulate the Fade.tick() tracking logic directly (no real fader needed)
         def _sim_fade(data_from, data_to):
             """Return resulting layer after a tracking fade (t=1.0, instant)."""
             result = {}
@@ -19571,7 +19571,7 @@ if STUDIO_HEADLESS:
                     result[fid][ch] = v_from + (v_to - v_from) * 1.0
             return result
 
-        # cue 1 fires from empty executor
+        # cue 1 fires from empty fader
         _layer = {}
         _layer = _sim_fade(_layer, {'_test_fid': {'dim': 0.8}})
         _check("cue tracking: cue 1 sets dim=0.8",
@@ -19595,37 +19595,37 @@ if STUDIO_HEADLESS:
         _apply_timing_edit(_fxo_cue, "FXOUTFADE 2.5")
         _check("FXOUTFADE sets cue.fx_outfade", _fxo_cue.fx_outfade == 2.5)
 
-        # COPY CUE / COPY CS / MOVE CUE must preserve fx_outfade (was silently
+        # COPY CUE / COPY stk / MOVE CUE must preserve fx_outfade (was silently
         # dropped -- Cue() constructor doesn't take it, and all three call
         # sites copied note/data/timings but forgot fx_outfade)
-        _fxo_src_cs = cuestack_pool.create(91)
+        _fxo_src_cs = stack_pool.create(91)
         _fxo_src_cue = Cue(1.0, "FXOutSrc")
         _fxo_src_cue.fx_outfade = 3.25
         _fxo_src_cs.cues[1.0] = _fxo_src_cue
-        run_command("COPY CS 91 TO CS 92")
-        _fxo_dst_cs = cuestack_pool.get(92)
-        _check("COPY CS preserves cue.fx_outfade",
+        run_command("COPY stk 91 TO stk 92")
+        _fxo_dst_cs = stack_pool.get(92)
+        _check("COPY stk preserves cue.fx_outfade",
                _fxo_dst_cs is not None and _fxo_dst_cs.cues.get(1.0) is not None and
                _fxo_dst_cs.cues[1.0].fx_outfade == 3.25)
 
-        run_command("COPY CS 91 CUE 1 TO CS 93 CUE 1")
-        _fxo_dst_cs2 = cuestack_pool.get(93)
+        run_command("COPY stk 91 CUE 1 TO stk 93 CUE 1")
+        _fxo_dst_cs2 = stack_pool.get(93)
         _check("COPY CUE (single cue) preserves cue.fx_outfade",
                _fxo_dst_cs2 is not None and _fxo_dst_cs2.cues.get(1.0) is not None and
                _fxo_dst_cs2.cues[1.0].fx_outfade == 3.25)
 
-        run_command("MOVE CS 91 CUE 1 TO CS 94 CUE 1")
-        _fxo_dst_cs3 = cuestack_pool.get(94)
+        run_command("MOVE stk 91 CUE 1 TO stk 94 CUE 1")
+        _fxo_dst_cs3 = stack_pool.get(94)
         _check("MOVE CUE preserves cue.fx_outfade",
                _fxo_dst_cs3 is not None and _fxo_dst_cs3.cues.get(1.0) is not None and
                _fxo_dst_cs3.cues[1.0].fx_outfade == 3.25)
 
-        # FX CLEAR clears executor FX layers
+        # FX CLEAR clears fader FX layers
         run_command("FX SINE RED BPM 60 SIZE 100")
-        _ex0 = _active_executor()
+        _ex0 = _active_fader()
         _ex0_had_fx = bool(_ex0._fx_ids)
         run_command("FX CLEAR")
-        _check("FX CLEAR clears fader FX (executor._fx_ids empty)",
+        _check("FX CLEAR clears fader FX (fader._fx_ids empty)",
                not _ex0._fx_ids)
 
         # FX CLEAR scoped to selection — only clears selected fixtures' programmer FX
@@ -19669,181 +19669,181 @@ if STUDIO_HEADLESS:
         _check("CLEAR DIM zeroes dim, leaves RGB intact",
                _post_dim2 == 0.0 and _post_red2 == 200)
 
-        # CS n WRAP ON/OFF — clean restart at top after last cue
-        run_command("RECORD CUESTACK 99 WrapTest")
-        _cs99 = cuestack_pool.get(99)
-        _check("CS WRAP: default is False", _cs99.wrap is False)
-        run_command("CS 99 WRAP ON")
-        _check("CS 99 WRAP ON sets .wrap = True", _cs99.wrap is True)
-        run_command("CS 99 WRAP OFF")
-        _check("CS 99 WRAP OFF sets .wrap = False", _cs99.wrap is False)
+        # stk n WRAP ON/OFF — clean restart at top after last cue
+        run_command("RECORD STACK 99 WrapTest")
+        _stk99 = stack_pool.get(99)
+        _check("stk WRAP: default is False", _stk99.wrap is False)
+        run_command("stk 99 WRAP ON")
+        _check("stk 99 WRAP ON sets .wrap = True", _stk99.wrap is True)
+        run_command("stk 99 WRAP OFF")
+        _check("stk 99 WRAP OFF sets .wrap = False", _stk99.wrap is False)
 
-        # CS INFO
-        r_csi = run_command("CS 99 INFO")
-        _check("CS INFO shows cuestack name", "WrapTest" in r_csi)
-        _check("CS INFO shows wrap/loop state", "wrap" in r_csi or "loop" in r_csi)
-        r_csi_bad = run_command("CS 9999 INFO")
-        _check("CS INFO rejects unknown cuestack", "not found" in r_csi_bad)
+        # stk INFO
+        r_csi = run_command("stk 99 INFO")
+        _check("stk INFO shows stack name", "WrapTest" in r_csi)
+        _check("stk INFO shows wrap/loop state", "wrap" in r_csi or "loop" in r_csi)
+        r_csi_bad = run_command("stk 9999 INFO")
+        _check("stk INFO rejects unknown stack", "not found" in r_csi_bad)
 
-        # CS REVERSE
-        run_command("RECORD CUESTACK 94 RevTest")
-        run_command("CUESTACK 94")
+        # stk REVERSE
+        run_command("RECORD STACK 94 RevTest")
+        run_command("STACK 94")
         run_command("1 FULL");   run_command("RECORD CUE 1 First")
         run_command("1 OUT");    run_command("RECORD CUE 2 Second")
         run_command("1 AT R 200"); run_command("RECORD CUE 3 Third")
-        _cs94 = cuestack_pool.get(94)
-        _orig_names = [_cs94.cues[n].name for n in _cs94._sorted_cue_numbers()]
-        r_rev = run_command("CS 94 REVERSE")
-        _rev_names = [_cs94.cues[n].name for n in _cs94._sorted_cue_numbers()]
-        _check("CS REVERSE reverses cue order", _rev_names == list(reversed(_orig_names)))
-        _check("CS REVERSE returns confirmation", "reversed" in r_rev)
-        _check("CS REVERSE resets current position to None", _cs94.current is None)
+        _stk94 = stack_pool.get(94)
+        _orig_names = [_stk94.cues[n].name for n in _stk94._sorted_cue_numbers()]
+        r_rev = run_command("stk 94 REVERSE")
+        _rev_names = [_stk94.cues[n].name for n in _stk94._sorted_cue_numbers()]
+        _check("stk REVERSE reverses cue order", _rev_names == list(reversed(_orig_names)))
+        _check("stk REVERSE returns confirmation", "reversed" in r_rev)
+        _check("stk REVERSE resets current position to None", _stk94.current is None)
 
-        # CS COMPRESS
-        run_command("RECORD CUESTACK 95 CompTest")
-        run_command("CUESTACK 95")
+        # stk COMPRESS
+        run_command("RECORD STACK 95 CompTest")
+        run_command("STACK 95")
         run_command("1 FULL"); run_command("RECORD CUE 1 Cue1")
         run_command("1 OUT");  run_command("RECORD CUE 5 Cue5")   # gap: 1, 5
         run_command("1 AT R 200"); run_command("RECORD CUE 10 Cue10")  # cues 1,5,10
-        _cs95 = cuestack_pool.get(95)
-        r_cmp = run_command("CS 95 COMPRESS")
-        _cmp_nums = _cs95._sorted_cue_numbers()
-        _check("CS COMPRESS renumbers cues to 1,2,3 (collapses gaps)",
+        _stk95 = stack_pool.get(95)
+        r_cmp = run_command("stk 95 COMPRESS")
+        _cmp_nums = _stk95._sorted_cue_numbers()
+        _check("stk COMPRESS renumbers cues to 1,2,3 (collapses gaps)",
                _cmp_nums == [1.0, 2.0, 3.0])
-        _check("CS COMPRESS preserves cue names in order",
-               [_cs95.cues[n].name for n in _cmp_nums] == ["Cue1", "Cue5", "Cue10"])
-        _check("CS COMPRESS returns 'compressed' confirmation", "compressed" in r_cmp)
+        _check("stk COMPRESS preserves cue names in order",
+               [_stk95.cues[n].name for n in _cmp_nums] == ["Cue1", "Cue5", "Cue10"])
+        _check("stk COMPRESS returns 'compressed' confirmation", "compressed" in r_cmp)
 
-        # CS EXTRACT
-        run_command("RECORD CUESTACK 97 ExtractSrc")
-        run_command("CUESTACK 97")
+        # stk EXTRACT
+        run_command("RECORD STACK 97 ExtractSrc")
+        run_command("STACK 97")
         run_command("1 FULL"); run_command("RECORD CUE 1 ExtCue1")
         run_command("1 OUT");  run_command("RECORD CUE 2 ExtCue2")
-        _cs97 = cuestack_pool.get(97)
-        _cs97.note = "Dark Moody Show"
-        _cs97.wrap = True
-        r_ext = run_command("CS 97 EXTRACT 2 INTO 98")
-        _cs98 = cuestack_pool.get(98)
-        _check("CS EXTRACT creates new cuestack in target slot", _cs98 is not None)
-        _check("CS EXTRACT new cuestack has exactly one cue",
-               _cs98 is not None and len(_cs98.cues) == 1)
-        _check("CS EXTRACT preserves cue name",
-               _cs98 is not None and list(_cs98.cues.values())[0].name.lower() == "extcue2")
-        _check("CS EXTRACT returns 'Extracted' confirmation", "extracted" in r_ext)
-        _check("CS EXTRACT source cuestack unchanged (still 2 cues)", len(_cs97.cues) == 2)
-        _check("CS EXTRACT carries source note to new cuestack",
-               _cs98 is not None and _cs98.note == "Dark Moody Show")
-        _check("CS EXTRACT carries source wrap flag to new cuestack",
-               _cs98 is not None and _cs98.wrap is True)
+        _stk97 = stack_pool.get(97)
+        _stk97.note = "Dark Moody Show"
+        _stk97.wrap = True
+        r_ext = run_command("stk 97 EXTRACT 2 INTO 98")
+        _stk98 = stack_pool.get(98)
+        _check("stk EXTRACT creates new stack in target slot", _stk98 is not None)
+        _check("stk EXTRACT new stack has exactly one cue",
+               _stk98 is not None and len(_stk98.cues) == 1)
+        _check("stk EXTRACT preserves cue name",
+               _stk98 is not None and list(_stk98.cues.values())[0].name.lower() == "extcue2")
+        _check("stk EXTRACT returns 'Extracted' confirmation", "extracted" in r_ext)
+        _check("stk EXTRACT source stack unchanged (still 2 cues)", len(_stk97.cues) == 2)
+        _check("stk EXTRACT carries source note to new stack",
+               _stk98 is not None and _stk98.note == "Dark Moody Show")
+        _check("stk EXTRACT carries source wrap flag to new stack",
+               _stk98 is not None and _stk98.wrap is True)
 
-        # CS DUPLICATE
-        run_command("RECORD CUESTACK 99 DupSrc")
-        run_command("CUESTACK 99")
+        # stk DUPLICATE
+        run_command("RECORD STACK 99 DupSrc")
+        run_command("STACK 99")
         run_command("1 FULL"); run_command("RECORD CUE 1 DupA")
         run_command("1 OUT");  run_command("RECORD CUE 2 DupB")
-        _cs99dup = cuestack_pool.get(99)
+        _cs99dup = stack_pool.get(99)
         _cs99dup.note = "Act 2 Opener"
         _cs99dup.wrap = True
-        r_dup = run_command("CS 99 DUPLICATE INTO 100")
-        _cs100 = cuestack_pool.get(100)
-        _check("CS DUPLICATE creates new cuestack in target slot", _cs100 is not None)
-        _check("CS DUPLICATE copies all cues",
-               _cs100 is not None and len(_cs100.cues) == len(_cs99dup.cues))
-        _check("CS DUPLICATE is a deep copy (modifying source doesn't affect copy)",
-               _cs100 is not None and _cs100.cues is not _cs99dup.cues)
-        _check("CS DUPLICATE returns 'Duplicated' confirmation", "duplicated" in r_dup)
-        _check("CS DUPLICATE source is unchanged", len(_cs99dup.cues) == 2)
-        _check("CS DUPLICATE carries source note to new cuestack",
-               _cs100 is not None and _cs100.note == "Act 2 Opener")
-        _check("CS DUPLICATE carries source wrap flag to new cuestack (regression check)",
-               _cs100 is not None and _cs100.wrap is True)
+        r_dup = run_command("stk 99 DUPLICATE INTO 100")
+        _stk100 = stack_pool.get(100)
+        _check("stk DUPLICATE creates new stack in target slot", _stk100 is not None)
+        _check("stk DUPLICATE copies all cues",
+               _stk100 is not None and len(_stk100.cues) == len(_cs99dup.cues))
+        _check("stk DUPLICATE is a deep copy (modifying source doesn't affect copy)",
+               _stk100 is not None and _stk100.cues is not _cs99dup.cues)
+        _check("stk DUPLICATE returns 'Duplicated' confirmation", "duplicated" in r_dup)
+        _check("stk DUPLICATE source is unchanged", len(_cs99dup.cues) == 2)
+        _check("stk DUPLICATE carries source note to new stack",
+               _stk100 is not None and _stk100.note == "Act 2 Opener")
+        _check("stk DUPLICATE carries source wrap flag to new stack (regression check)",
+               _stk100 is not None and _stk100.wrap is True)
 
-        # CS RENUMBER STEP
-        run_command("RECORD CUESTACK 101 StepTest")
-        run_command("CUESTACK 101")
+        # stk RENUMBER STEP
+        run_command("RECORD STACK 101 StepTest")
+        run_command("STACK 101")
         run_command("1 FULL"); run_command("RECORD CUE 1 SA")
         run_command("1 OUT");  run_command("RECORD CUE 2 SB")
         run_command("1 AT R 200"); run_command("RECORD CUE 3 SC")
-        _cs101 = cuestack_pool.get(101)
-        r_ren = run_command("CS 101 RENUMBER STEP 10")
-        _ren_nums = _cs101._sorted_cue_numbers()
-        _check("CS RENUMBER STEP 10 gives multiples of 10",
+        _stk101 = stack_pool.get(101)
+        r_ren = run_command("stk 101 RENUMBER STEP 10")
+        _ren_nums = _stk101._sorted_cue_numbers()
+        _check("stk RENUMBER STEP 10 gives multiples of 10",
                _ren_nums == [10.0, 20.0, 30.0])
-        _check("CS RENUMBER STEP returns confirmation", "renumbered" in r_ren.lower())
+        _check("stk RENUMBER STEP returns confirmation", "renumbered" in r_ren.lower())
 
         # CUE SHIFT
-        run_command("RECORD CUESTACK 96 ShiftTest")
-        run_command("CUESTACK 96")
+        run_command("RECORD STACK 96 ShiftTest")
+        run_command("STACK 96")
         run_command("1 FULL"); run_command("RECORD CUE 3 MoverCue")
         run_command("1 OUT");  run_command("RECORD CUE 7 StayCue")
-        _cs96 = cuestack_pool.get(96)
+        _stk96 = stack_pool.get(96)
         r_shift = run_command("CUE 3 SHIFT 5")   # 3+5 = cue 8
-        _shift_nums = _cs96._sorted_cue_numbers()
+        _shift_nums = _stk96._sorted_cue_numbers()
         _check("CUE SHIFT moves cue to new number (3→8)",
                3.0 not in _shift_nums and 8.0 in _shift_nums)
         _check("CUE SHIFT does not disturb other cues",
                7.0 in _shift_nums)
         _check("CUE SHIFT returns confirmation with new number", "8" in r_shift)
 
-        # CUESTACK MERGE
-        run_command("RECORD CUESTACK 91 MergeSrc")
-        run_command("CUESTACK 91")          # make active
+        # STACK MERGE
+        run_command("RECORD STACK 91 MergeSrc")
+        run_command("STACK 91")          # make active
         run_command("1 FULL")
         run_command("RECORD CUE 1 SrcCue1")
-        run_command("RECORD CUESTACK 92 MergeDst")
-        run_command("CUESTACK 92")
+        run_command("RECORD STACK 92 MergeDst")
+        run_command("STACK 92")
         run_command("1 OUT")
         run_command("RECORD CUE 1 DstCue1")
-        _cs91 = cuestack_pool.get(91)
-        _cs92 = cuestack_pool.get(92)
-        _n_before = len(_cs92.cues)
-        r_merge = run_command("CUESTACK MERGE 91 INTO 92")
-        _n_after = len(_cs92.cues)
-        _check("CUESTACK MERGE adds src cues to dst",
-               _n_after == _n_before + len(_cs91.cues))
-        _check("CUESTACK MERGE returns confirmation", "merged" in r_merge)
+        _stk91 = stack_pool.get(91)
+        _stk92 = stack_pool.get(92)
+        _n_before = len(_stk92.cues)
+        r_merge = run_command("STACK MERGE 91 INTO 92")
+        _n_after = len(_stk92.cues)
+        _check("STACK MERGE adds src cues to dst",
+               _n_after == _n_before + len(_stk91.cues))
+        _check("STACK MERGE returns confirmation", "merged" in r_merge)
         # Src cue numbers in dst should be offset past dst's original last cue
-        _merged_num = max(_cs92._sorted_cue_numbers())
-        _check("CUESTACK MERGE renumbers merged cues after dst's last cue",
+        _merged_num = max(_stk92._sorted_cue_numbers())
+        _check("STACK MERGE renumbers merged cues after dst's last cue",
                _merged_num > 1.0)
-        r_merge_bad = run_command("CUESTACK MERGE 9999 INTO 92")
-        _check("CUESTACK MERGE rejects unknown source", "not found" in r_merge_bad)
+        r_merge_bad = run_command("STACK MERGE 9999 INTO 92")
+        _check("STACK MERGE rejects unknown source", "not found" in r_merge_bad)
 
-        # CS BACK on wrap-around (first cue -> last cue) must also clear the
-        # LTP-bleed layer when WRAP is ON -- CS GO already did this on forward
+        # stk BACK on wrap-around (first cue -> last cue) must also clear the
+        # LTP-bleed layer when WRAP is ON -- stk GO already did this on forward
         # wrap (last -> first); BACK had no equivalent, flagged by a prior
         # session and left unfixed pending confirmation it wasn't intentional.
-        run_command("RECORD CUESTACK 98 BackWrapTest")
-        _cs98 = cuestack_pool.get(98)
+        run_command("RECORD STACK 98 BackWrapTest")
+        _stk98 = stack_pool.get(98)
         run_command("1")
         run_command("AT R 10")
-        run_command("RECORD CS 98 CUE 1")
+        run_command("RECORD stk 98 CUE 1")
         run_command("AT R 20")
-        run_command("RECORD CS 98 CUE 2")
+        run_command("RECORD stk 98 CUE 2")
         prog.clear_programmer()
-        run_command("ASSIGN CS 98 TO FADER 9")
-        _ex98 = executor_pool.get(9)
-        _cs98.wrap    = True
-        _cs98.current = _cs98._sorted_cue_numbers()[0]   # sitting at first cue
+        run_command("ASSIGN stk 98 TO FADER 9")
+        _ex98 = fader_pool.get(9)
+        _stk98.wrap    = True
+        _stk98.current = _stk98._sorted_cue_numbers()[0]   # sitting at first cue
         _ex98.layer['__bleed_sentinel__'] = {'red': 99}
-        _cs98.back(patch, fade_engine, _ex98)
-        _check("CS BACK wrap-around (first->last) clears LTP-bleed layer when WRAP ON",
+        _stk98.back(patch, fade_engine, _ex98)
+        _check("stk BACK wrap-around (first->last) clears LTP-bleed layer when WRAP ON",
                '__bleed_sentinel__' not in _ex98.layer)
 
-        _cs98.wrap    = False
-        _cs98.current = _cs98._sorted_cue_numbers()[0]
+        _stk98.wrap    = False
+        _stk98.current = _stk98._sorted_cue_numbers()[0]
         _ex98.layer['__bleed_sentinel2__'] = {'red': 99}
-        _cs98.back(patch, fade_engine, _ex98)
-        _check("CS BACK wrap-around leaves layer intact when WRAP OFF",
+        _stk98.back(patch, fade_engine, _ex98)
+        _check("stk BACK wrap-around leaves layer intact when WRAP OFF",
                '__bleed_sentinel2__' in _ex98.layer)
 
         # Non-wrap BACK (middle of stack, no wraparound) must never clear the
         # layer even with WRAP ON -- only the actual last->first transition should.
-        _cs98.wrap    = True
-        _cs98.current = _cs98._sorted_cue_numbers()[-1]  # sitting at last cue, BACK is not a wrap
+        _stk98.wrap    = True
+        _stk98.current = _stk98._sorted_cue_numbers()[-1]  # sitting at last cue, BACK is not a wrap
         _ex98.layer['__bleed_sentinel3__'] = {'red': 99}
-        _cs98.back(patch, fade_engine, _ex98)
-        _check("CS BACK non-wrap step leaves layer intact even with WRAP ON",
+        _stk98.back(patch, fade_engine, _ex98)
+        _check("stk BACK non-wrap step leaves layer intact even with WRAP ON",
                '__bleed_sentinel3__' in _ex98.layer)
 
         # UNDO must not desync output_state.programmer_layer from prog.data --
@@ -19870,7 +19870,7 @@ if STUDIO_HEADLESS:
                output_state.programmer_layer.get(_sub1, {}).get('red') == 77)
 
         # fader page button assignment round-trip
-        _fpg_ex = executor_pool.get(1)
+        _fpg_ex = fader_pool.get(1)
         _fpg_ex.btn_a, _fpg_ex.btn_b, _fpg_ex.btn_c = 'GO', 'BACK', 'STOP'
         r_btn = run_command("FADER 1 BTN A FLASH")
         _check("FADER 1 BTN A FLASH sets btn_a to FLASH", _fpg_ex.btn_a == 'FLASH')
@@ -19880,7 +19880,7 @@ if STUDIO_HEADLESS:
         _check("FADER 1 BTN without slot returns current state", "btn" in r_btn3.lower() or "usage" in r_btn3.lower() or "A=" in r_btn3)
 
         # RATE+/RATE- and RATE RESET smoke tests
-        _rate_ex = executor_pool.get(2)
+        _rate_ex = fader_pool.get(2)
         _rate_ex.rate_factor = 1.0
         run_command("FADER 2 RATE+")
         _check("FADER 2 RATE+ increases rate_factor to ~1.25", abs(_rate_ex.rate_factor - 1.25) < 0.01)
@@ -19897,9 +19897,9 @@ if STUDIO_HEADLESS:
         run_command("FADER 2 BTN C STOP")  # restore
 
         # FADER LABEL
-        _lbl_ex = executor_pool.get(1)
+        _lbl_ex = fader_pool.get(1)
         r_lbl = run_command("FADER 1 LABEL Main Show")
-        _check("FADER LABEL sets label on executor", _lbl_ex.label == "Main Show")
+        _check("FADER LABEL sets label on fader", _lbl_ex.label == "Main Show")
         _check("FADER LABEL returns confirmation", "Main Show" in r_lbl)
         r_lbl_list = run_command("LIST FADER")
         _check("LIST FADER shows label", "Main Show" in r_lbl_list)
@@ -19910,19 +19910,19 @@ if STUDIO_HEADLESS:
         r_fi1 = run_command("FADER 1 INFO")
         _check("FADER INFO shows level", "Level" in r_fi1)
         _check("FADER INFO shows buttons", "Buttons" in r_fi1)
-        _fi1_ex = executor_pool.get(1)
-        if _fi1_ex.cuestack:
-            _check("FADER INFO shows cuestack name", _fi1_ex.cuestack.name in r_fi1)
+        _fi1_ex = fader_pool.get(1)
+        if _fi1_ex.stack:
+            _check("FADER INFO shows stack name", _fi1_ex.stack.name in r_fi1)
         r_fi1_stat = run_command("FADER 1 STATUS")
         _check("FADER STATUS alias works", "Level" in r_fi1_stat)
 
         # FADER CLEAR
-        _clr_ex = executor_pool.get(1)
-        _clr_cs = _clr_ex.cuestack
+        _clr_ex = fader_pool.get(1)
+        _clr_cs = _clr_ex.stack
         if _clr_cs:
             _clr_cs.current = 1  # pretend we're at cue 1
             r_fc = run_command("FADER 1 CLEAR")
-            _check("FADER CLEAR resets cuestack position to None", _clr_cs.current is None)
+            _check("FADER CLEAR resets stack position to None", _clr_cs.current is None)
             _check("FADER CLEAR returns confirmation", "cleared" in r_fc or "reset" in r_fc)
 
         # FADER ALL CLEAR
@@ -19930,16 +19930,16 @@ if STUDIO_HEADLESS:
             _clr_cs.current = 2  # set a position to confirm it gets reset
         r_fac = run_command("FADER ALL CLEAR")
         _check("FADER ALL CLEAR returns 'cleared' confirmation", "cleared" in r_fac)
-        _check("FADER ALL CLEAR resets position of cuestack in fader 1",
+        _check("FADER ALL CLEAR resets position of stack in fader 1",
                _clr_cs is None or _clr_cs.current is None)
 
         # FADER LOOP ON/OFF
         if _clr_cs:
             r_loop_on  = run_command("FADER 1 LOOP ON")
-            _check("FADER LOOP ON enables wrap on assigned cuestack", _clr_cs.wrap is True)
+            _check("FADER LOOP ON enables wrap on assigned stack", _clr_cs.wrap is True)
             _check("FADER LOOP ON returns confirmation", "loop" in r_loop_on.lower() or "wrap" in r_loop_on.lower())
             r_loop_off = run_command("FADER 1 LOOP OFF")
-            _check("FADER LOOP OFF disables wrap on assigned cuestack", _clr_cs.wrap is False)
+            _check("FADER LOOP OFF disables wrap on assigned stack", _clr_cs.wrap is False)
 
         # LOAD SHOW must reload OSC targets and FX defaults, not just leave
         # the previous show's live values in place — same primitives
@@ -19992,10 +19992,10 @@ if STUDIO_HEADLESS:
                    prog.data.get(_ml_sub_fid, {}).get('gobo') == 10)
 
             # Record to a cue and fire it; verify DMX output
-            run_command("RECORD CS 2 CUE 80 FADE 0")
-            run_command("ASSIGN CS 2 TO FADER 2")
+            run_command("RECORD stk 2 CUE 80 FADE 0")
+            run_command("ASSIGN stk 2 TO FADER 2")
             prog.clear_programmer()
-            run_command("GO CS 2 CUE 80")
+            run_command("GO stk 2 CUE 80")
             time.sleep(0.12)  # 0-sec fade, just let the engine tick once
             _ml_dmx = output_state.get_dmx_for_universe(1)
             _ml_base = 400 - 1   # 0-indexed
@@ -20050,7 +20050,7 @@ if STUDIO_HEADLESS:
             run_command("50")
             run_command("AT DIM 80 PAN 180 TILT 90")
             r_snap = run_command("SNAPSHOT 95 AttrSnap")
-            _active_cs_for_snap = cuestack_pool.get(active_executor[0])
+            _active_cs_for_snap = stack_pool.get(active_fader[0])
             _snap_cue = _active_cs_for_snap.cues.get(95.0) if _active_cs_for_snap else None
             _check("SNAPSHOT creates cue with attr channel data",
                    _snap_cue is not None and
@@ -20359,26 +20359,26 @@ if STUDIO_HEADLESS:
         _check("AT COPY: green channel copied to fixture 2", _cp_g2 == 50)
         prog.clear_programmer()
 
-        # ── CS NOTE ───────────────────────────────────────────────────────────
-        _csnote_cs = cuestack_pool.get(99)
+        # ── stk NOTE ───────────────────────────────────────────────────────────
+        _csnote_cs = stack_pool.get(99)
         if _csnote_cs is None:
-            cuestack_pool.create(99, "NoteTestStack")
-            _csnote_cs = cuestack_pool.get(99)
+            stack_pool.create(99, "NoteTestStack")
+            _csnote_cs = stack_pool.get(99)
         _csnote_cs.note = ""
-        _no_note_msg = run_command("CS 99 NOTE")
-        _check("CS NOTE view returns has-no-note message when blank",
+        _no_note_msg = run_command("stk 99 NOTE")
+        _check("stk NOTE view returns has-no-note message when blank",
                "no note" in _no_note_msg.lower() or "set with" in _no_note_msg.lower())
-        run_command("CS 99 NOTE Dark Moody Show")
-        _check("CS NOTE set stores text",  _csnote_cs.note == "Dark Moody Show")
-        _note_view = run_command("CS 99 NOTE")
-        _check("CS NOTE view returns the note text", "Dark Moody Show" in _note_view)
+        run_command("stk 99 NOTE Dark Moody Show")
+        _check("stk NOTE set stores text",  _csnote_cs.note == "Dark Moody Show")
+        _note_view = run_command("stk 99 NOTE")
+        _check("stk NOTE view returns the note text", "Dark Moody Show" in _note_view)
         _csnote_cs.note = ""
 
-        # ── CS BOUNCE ─────────────────────────────────────────────────────────
-        # Verify ping-pong direction logic using a fresh 3-cue cuestack
+        # ── stk BOUNCE ─────────────────────────────────────────────────────────
+        # Verify ping-pong direction logic using a fresh 3-cue stack
         _bcs_id = 102
-        cuestack_pool.create(_bcs_id, "BounceTest")
-        _bcs = cuestack_pool.get(_bcs_id)
+        stack_pool.create(_bcs_id, "BounceTest")
+        _bcs = stack_pool.get(_bcs_id)
         _bcs.cues.clear()
         _bcs.current = None
         # Build 3 minimal cues directly (cue_pool.store returns None, so assign separately)
@@ -20391,11 +20391,11 @@ if STUDIO_HEADLESS:
         _mk_cue(1, 0.33)
         _mk_cue(2, 0.66)
         _mk_cue(3, 1.0)
-        _check("BOUNCE: cuestack has 3 cues", len(_bcs.cues) == 3)
-        run_command(f"CS {_bcs_id} bounce on")
-        _check("CS bounce on sets .bounce = True", _bcs.bounce is True)
-        # Use a minimal stub executor — bounce logic only needs .layer dict
-        _bex = executor_pool.get(_bcs_id)
+        _check("BOUNCE: stack has 3 cues", len(_bcs.cues) == 3)
+        run_command(f"stk {_bcs_id} bounce on")
+        _check("stk bounce on sets .bounce = True", _bcs.bounce is True)
+        # Use a minimal stub fader — bounce logic only needs .layer dict
+        _bex = fader_pool.get(_bcs_id)
         _bex.assign(_bcs)
         _bcs.current = None
         _bcs._bounce_dir = 1
@@ -20413,30 +20413,30 @@ if STUDIO_HEADLESS:
         _bcs.go(patch, fade_engine, _bex)   # hits start → reverses → fires cue 2
         _check("BOUNCE GO 6: reverses at first cue → cue 2", _bcs.current == 2.0)
         _check("BOUNCE GO 6: direction flipped to +1", _bcs._bounce_dir == 1)
-        run_command(f"CS {_bcs_id} bounce off")
-        _check("CS bounce off sets .bounce = False", _bcs.bounce is False)
-        cuestack_pool.stacks.pop(_bcs_id, None)
+        run_command(f"stk {_bcs_id} bounce off")
+        _check("stk bounce off sets .bounce = False", _bcs.bounce is False)
+        stack_pool.stacks.pop(_bcs_id, None)
 
-        # ── CS CLEAR ──────────────────────────────────────────────────────────
+        # ── stk CLEAR ──────────────────────────────────────────────────────────
         _cc_id = 103
-        cuestack_pool.create(_cc_id, "ClearTest")
-        _cc = cuestack_pool.get(_cc_id)
+        stack_pool.create(_cc_id, "ClearTest")
+        _cc = stack_pool.get(_cc_id)
         _cc.cues.clear()
         prog.data["1"] = {"dim": 0.5}
         _cc.cues[1.0] = Cue(1.0, "X"); _cc.cues[1.0].record(prog)
         _cc.cues[2.0] = Cue(2.0, "Y"); _cc.cues[2.0].record(prog)
         prog.data.clear()
         _cc.current = 1.0
-        _check("CS CLEAR: setup has 2 cues", len(_cc.cues) == 2)
-        _r_clear_cs = run_command(f"CS {_cc_id} CLEAR")
-        _check("CS CLEAR: removes all cues", len(_cc.cues) == 0)
-        _check("CS CLEAR: resets current to None", _cc.current is None)
-        _check("CS CLEAR: returns confirmation", "cleared" in _r_clear_cs.lower())
-        cuestack_pool.stacks.pop(_cc_id, None)
+        _check("stk CLEAR: setup has 2 cues", len(_cc.cues) == 2)
+        _r_clear_cs = run_command(f"stk {_cc_id} CLEAR")
+        _check("stk CLEAR: removes all cues", len(_cc.cues) == 0)
+        _check("stk CLEAR: resets current to None", _cc.current is None)
+        _check("stk CLEAR: returns confirmation", "cleared" in _r_clear_cs.lower())
+        stack_pool.stacks.pop(_cc_id, None)
 
         # ── LIST NOTES ────────────────────────────────────────────────────────
-        # Set a cuestack note and cue note, confirm LIST NOTES shows both
-        _ln_cs = cuestack_pool.get(1)
+        # Set a stack note and cue note, confirm LIST NOTES shows both
+        _ln_cs = stack_pool.get(1)
         if _ln_cs:
             _ln_orig_note = getattr(_ln_cs, 'note', '')
             _ln_cs.note = "ListNotesTest"
@@ -20446,7 +20446,7 @@ if STUDIO_HEADLESS:
                 _orig_cue_note = getattr(_cue1, 'note', '')
                 _cue1.note = "CueNoteTest"
             _ln_result = run_command("LIST NOTES")
-            _check("LIST NOTES: includes cuestack note", "ListNotesTest" in _ln_result)
+            _check("LIST NOTES: includes stack note", "ListNotesTest" in _ln_result)
             if _cue1:
                 _check("LIST NOTES: includes cue note", "CueNoteTest" in _ln_result)
             _ln_cs.note = _ln_orig_note
@@ -20510,31 +20510,31 @@ if STUDIO_HEADLESS:
         _check("PROGRAMMER SCALE: empty programmer returns error", "empty" in _r_ps_empty.lower())
         prog.clear_programmer()
 
-        # ── FADER ASSIGN CS ───────────────────────────────────────────────────
-        _fa_cs = cuestack_pool.get(1)
+        # ── FADER ASSIGN stk ───────────────────────────────────────────────────
+        _fa_cs = stack_pool.get(1)
         if _fa_cs:
-            _fa_ex = executor_pool.get(15)  # high slot unlikely to conflict
-            _fa_result = run_command(f"FADER 15 ASSIGN CS 1")
-            _check("FADER ASSIGN CS: wires cuestack to fader",
-                   _fa_ex.cuestack is _fa_cs)
-            _check("FADER ASSIGN CS: returns confirmation",
-                   "CS 1" in _fa_result or "assigned" in _fa_result.lower())
-            _r_fa_bad = run_command("FADER 15 ASSIGN CS 9999")
-            _check("FADER ASSIGN CS: bad CS returns error",
+            _fa_ex = fader_pool.get(15)  # high slot unlikely to conflict
+            _fa_result = run_command(f"FADER 15 ASSIGN stk 1")
+            _check("FADER ASSIGN stk: wires stack to fader",
+                   _fa_ex.stack is _fa_cs)
+            _check("FADER ASSIGN stk: returns confirmation",
+                   "stk 1" in _fa_result or "assigned" in _fa_result.lower())
+            _r_fa_bad = run_command("FADER 15 ASSIGN stk 9999")
+            _check("FADER ASSIGN stk: bad stk returns error",
                    "not found" in _r_fa_bad.lower())
 
         # ── FADER UNASSIGN ────────────────────────────────────────────────────
-        # Assign CS 1 to fader 16, then UNASSIGN it
-        if cuestack_pool.get(1):
-            run_command("FADER 16 ASSIGN CS 1")
-            _fu_ex = executor_pool.get(16)
-            _check("FADER UNASSIGN: setup — cuestack assigned", _fu_ex.cuestack is not None)
+        # Assign stk 1 to fader 16, then UNASSIGN it
+        if stack_pool.get(1):
+            run_command("FADER 16 ASSIGN stk 1")
+            _fu_ex = fader_pool.get(16)
+            _check("FADER UNASSIGN: setup — stack assigned", _fu_ex.stack is not None)
             _r_ua = run_command("FADER 16 UNASSIGN")
-            _check("FADER UNASSIGN: cuestack is None after unassign", _fu_ex.cuestack is None)
+            _check("FADER UNASSIGN: stack is None after unassign", _fu_ex.stack is None)
             _check("FADER UNASSIGN: returns confirmation", "unassigned" in _r_ua.lower())
             _r_ua_empty = run_command("FADER 16 UNASSIGN")
             _check("FADER UNASSIGN: returns error when already empty",
-                   "no cuestack" in _r_ua_empty.lower())
+                   "no stack" in _r_ua_empty.lower())
 
         # ── FAN TESTS ─────────────────────────────────────────────────────────
         prog.clear_programmer()
@@ -20715,7 +20715,7 @@ if STUDIO_HEADLESS:
         os.environ['ANTHROPIC_API_KEY'] = 'sk-ant-smoketest-dummy-unused'
         try:
             _test_ai = AIEngine(patch, prog, output_state, fx_engine, fade_engine,
-                                 cuestack_pool=cuestack_pool, executor_pool=executor_pool)
+                                 stack_pool=stack_pool, fader_pool=fader_pool)
             _test_ai.execute([{"action": "dim", "value": 5.0}])
             _check("AI 'dim' action clamps out-of-range value to 1.0",
                    output_state.programmer_layer.get("1", {}).get('dim') == 1.0
@@ -20737,43 +20737,43 @@ if STUDIO_HEADLESS:
                 _m.set_dimmer(1.0)
             prog.clear_programmer()
 
-        # ── CS CHASE MODE ─────────────────────────────────────────────────
-        _ch_cs = cuestack_pool.create(103, "ChaseTest")
+        # ── stk CHASE MODE ─────────────────────────────────────────────────
+        _ch_cs = stack_pool.create(103, "ChaseTest")
         if _ch_cs:
             _ch_cs.cues.clear()
             prog.data["1"] = {"dim": 0.5}
             for _cn in (1, 2, 3):
                 _c = Cue(float(_cn), f"Ch{_cn}"); _c.record(prog); _ch_cs.cues[float(_cn)] = _c
             prog.data.clear()
-        r_ch_on = run_command("CS 103 CHASE ON BPM 120")
-        _ch = cuestack_pool.get(103)
-        _check("CS CHASE ON enables chase_enabled", _ch is not None and _ch.chase_enabled is True)
-        _check("CS CHASE ON BPM sets chase_bpm", _ch is not None and abs(_ch.chase_bpm - 120.0) < 0.1)
-        _check("CS CHASE ON returns confirmation", "chase" in r_ch_on.lower())
-        r_ch_bpm = run_command("CS 103 CHASE BPM 90")
-        _check("CS CHASE BPM updates chase_bpm", _ch is not None and abs(_ch.chase_bpm - 90.0) < 0.1)
-        r_ch_off = run_command("CS 103 CHASE OFF")
-        _check("CS CHASE OFF disables chase_enabled", _ch is not None and _ch.chase_enabled is False)
-        _check("CS CHASE OFF returns confirmation", "chase" in r_ch_off.lower())
-        # CS INFO shows chase state
-        r_ch_info = run_command("CS 103 INFO")
-        _check("CS INFO shows chase field", "Chase" in r_ch_info or "chase" in r_ch_info.lower())
+        r_ch_on = run_command("stk 103 CHASE ON BPM 120")
+        _ch = stack_pool.get(103)
+        _check("stk CHASE ON enables chase_enabled", _ch is not None and _ch.chase_enabled is True)
+        _check("stk CHASE ON BPM sets chase_bpm", _ch is not None and abs(_ch.chase_bpm - 120.0) < 0.1)
+        _check("stk CHASE ON returns confirmation", "chase" in r_ch_on.lower())
+        r_ch_bpm = run_command("stk 103 CHASE BPM 90")
+        _check("stk CHASE BPM updates chase_bpm", _ch is not None and abs(_ch.chase_bpm - 90.0) < 0.1)
+        r_ch_off = run_command("stk 103 CHASE OFF")
+        _check("stk CHASE OFF disables chase_enabled", _ch is not None and _ch.chase_enabled is False)
+        _check("stk CHASE OFF returns confirmation", "chase" in r_ch_off.lower())
+        # stk INFO shows chase state
+        r_ch_info = run_command("stk 103 INFO")
+        _check("stk INFO shows chase field", "Chase" in r_ch_info or "chase" in r_ch_info.lower())
         # Save/load round-trip
         _ch.chase_enabled = True; _ch.chase_bpm = 77.0
-        ShowFile.save_cuestacks(cuestack_pool)
-        _ch2 = CueStack(103, "ChaseTest")
-        _tmp_pool = CueStackPool(); _tmp_pool.store(103, _ch2)
-        ShowFile.load_cuestacks(_tmp_pool, CuePool())
+        ShowFile.save_stacks(stack_pool)
+        _ch2 = Stack(103, "ChaseTest")
+        _tmp_pool = StackPool(); _tmp_pool.store(103, _ch2)
+        ShowFile.load_stacks(_tmp_pool, CuePool())
         _reloaded_ch = _tmp_pool.get(103)
-        _check("CS CHASE save/load preserves chase_enabled",
+        _check("stk CHASE save/load preserves chase_enabled",
                _reloaded_ch is not None and _reloaded_ch.chase_enabled is True)
-        _check("CS CHASE save/load preserves chase_bpm",
+        _check("stk CHASE save/load preserves chase_bpm",
                _reloaded_ch is not None and abs(_reloaded_ch.chase_bpm - 77.0) < 0.1)
         _ch.chase_enabled = False
-        cuestack_pool.stacks.pop(103, None)
+        stack_pool.stacks.pop(103, None)
 
-        # ── FADER SIZE — per-executor FX amplitude multiplier ────────────
-        _sz_ex = executor_pool.get(3)
+        # ── FADER SIZE — per-fader FX amplitude multiplier ────────────
+        _sz_ex = fader_pool.get(3)
         _sz_ex.size_factor = 1.0
         r_sz_plus = run_command("FADER 3 SIZE+")
         _check("FADER SIZE+ nudges size_factor up to ~1.25",
@@ -20834,14 +20834,14 @@ if STUDIO_HEADLESS:
         run_command("RECORD COLOR 10 Pink")
         run_command("COLOR 10")   # apply preset (sets color_ref)
         # record a cue with color_ref
-        _tcs = cuestack_pool.get(1) or cuestack_pool.create(1, "TrackTest")
+        _tcs = stack_pool.get(1) or stack_pool.create(1, "TrackTest")
         _tcue = Cue(90, "track test cue")
         _tcue.record(prog)
         _tcs.cues[float(90)] = _tcue
         prog.clear_programmer()
 
         _r_refs = run_command("LIST REFS COLOR 10")
-        _check("LIST REFS finds the cue", "track test cue" in _r_refs or "cue 90" in _r_refs.lower() or "cs 1" in _r_refs.lower())
+        _check("LIST REFS finds the cue", "track test cue" in _r_refs or "cue 90" in _r_refs.lower() or "stk 1" in _r_refs.lower())
 
         # Update the preset and check live-push returns confirmation
         run_command("1 AT R 200 G 50 B 150")
@@ -20865,7 +20865,7 @@ if STUDIO_HEADLESS:
         _tcs.cues[float(91)] = _tcue_fx
         prog.clear_programmer()
         _r_fx_refs = run_command("LIST REFS FX 11")
-        _check("LIST REFS FX finds the cue", "fx track cue" in _r_fx_refs.lower() or "cue 91" in _r_fx_refs.lower() or "cs 1" in _r_fx_refs.lower())
+        _check("LIST REFS FX finds the cue", "fx track cue" in _r_fx_refs.lower() or "cue 91" in _r_fx_refs.lower() or "stk 1" in _r_fx_refs.lower())
 
         # UPDATE FX
         run_command("FX SINE RED BPM 90")
@@ -20879,33 +20879,33 @@ if STUDIO_HEADLESS:
         _tcs.cues.pop(float(91), None)
 
         # ── Flash mode fix ────────────────────────────────────────────────────
-        _fe = executor_pool.get(98)
-        _fe_cs = cuestack_pool.create(98, "FlashTest") if not cuestack_pool.get(98) else cuestack_pool.get(98)
+        _fe = fader_pool.get(98)
+        _fe_cs = stack_pool.create(98, "FlashTest") if not stack_pool.get(98) else stack_pool.get(98)
         if not _fe_cs.cues:
             _fc = Cue(1, "flash cue")
             _fc.data = {"1": {"dim": 1.0}}
             _fe_cs.add_cue(_fc)
-        executor_pool.assign(98, _fe_cs)
+        fader_pool.assign(98, _fe_cs)
         _fe.trigger_mode = 'flash'
         _fe.flash_on(patch, fade_engine)
-        _check("flash_on activates executor", _fe.is_active)
+        _check("flash_on activates fader", _fe.is_active)
         _saved_pos = _fe_cs.current
         _fe.flash_off()
-        _check("flash_off deactivates executor", not _fe.is_active)
+        _check("flash_off deactivates fader", not _fe.is_active)
         _check("flash_off preserves cue position", _fe_cs.current == _saved_pos)
 
         # ── Fader output_mode: moment ─────────────────────────────────────────
-        _me = executor_pool.get(97)
-        _me_cs = cuestack_pool.create(97, "MomentTest") if not cuestack_pool.get(97) else cuestack_pool.get(97)
+        _me = fader_pool.get(97)
+        _me_cs = stack_pool.create(97, "MomentTest") if not stack_pool.get(97) else stack_pool.get(97)
         if not _me_cs.cues:
             _mc = Cue(1, "moment cue")
             _mc.data = {"1": {"dim": 1.0}}
             _me_cs.add_cue(_mc)
-        executor_pool.assign(97, _me_cs)
+        fader_pool.assign(97, _me_cs)
         _me.output_mode = 'moment'
         _me.level = 0.0
         _me.is_active = True
-        _active = executor_pool.active_layers()
+        _active = fader_pool.active_layers()
         _check("moment fader excluded from active_layers at level 0",
                all(lyr is not _me.layer for lyr, _ in _active))
         _me.level = 0.5
@@ -20928,7 +20928,7 @@ if STUDIO_HEADLESS:
         run_command("FADER 97 MODE TOGGLE")   # restore
 
         # ── _vfade_apply ─────────────────────────────────────────────────────
-        _ve = executor_pool.get(96)
+        _ve = fader_pool.get(96)
         _ve.output_mode = 'vfade'
         _ve.vfade_from  = {"1": {"red": 0.0}}
         _ve.vfade_to    = {"1": {"red": 255.0}}
@@ -21035,16 +21035,16 @@ audio_engine.stop()
 # OSC: Studio Console on port 8001, grandMA3 on 8000.
 #
 # ── THREE-LAYER OUTPUT MERGE ──────────────────────────────────────────────────
-# programmer  >  executor layers (LTP)  >  FX (additive)
+# programmer  >  fader layers (LTP)  >  FX (additive)
 #
-# OutputState._merged_cue_layer()  — LTP merge of all active executor layers
-#   in fire-order (last GO wins). Each Executor owns its own `layer` dict.
-#   FadeEngine.Fade.tick() writes directly into executor.layer, not a shared dict.
+# OutputState._merged_cue_layer()  — LTP merge of all active fader layers
+#   in fire-order (last GO wins). Each Fader owns its own `layer` dict.
+#   FadeEngine.Fade.tick() writes directly into fader.layer, not a shared dict.
 #
 # FXEngine runs additively on top of the merged cue layer.
 # FX layers are split into two namespaces:
 #   - programmer preview:  IDs 9000+   tracked in _prog_fx_ids  (module-level list)
-#   - Per-executor cue FX: IDs exec_id*10000+n  owned by Executor._fx_ids
+#   - Per-fader cue FX: IDs fdr_id*10000+n  owned by Fader._fx_ids
 #
 # ── FX ARCHITECTURE (just redesigned this session) ────────────────────────────
 # FX is now PROGRAMMER-NATIVE, not a standalone global thing.
@@ -21057,21 +21057,21 @@ audio_engine.stop()
 #   2. `RECORD CUE <n>` — Cue.record() does dict(vals) on programmer data,
 #      which captures the 'fx' list automatically. No special handling needed.
 #
-#   3. `GO` on a cue calls executor._start_cue_fx(cue, patch):
+#   3. `GO` on a cue calls fader._start_cue_fx(cue, patch):
 #      - reads cue.data[master_fid]['fx'] lists
-#      - starts FXLayer objects in the executor's own ID namespace
-#      - clears previous executor FX first (_clear_fx)
+#      - starts FXLayer objects in the fader's own ID namespace
+#      - clears previous fader FX first (_clear_fx)
 #
 #   4. `CLEAR` (stage 2 — programmer clear):
 #      - also stops _prog_fx_ids preview layers  (_prog_fx_stop())
 #
-#   5. `Executor.stop()` calls _clear_fx() before clearing its layer.
+#   5. `Fader.stop()` calls _clear_fx() before clearing its layer.
 #
 #   6. `RECORD FX <n>` — snapshots unique FX defs from programmer into fx_pool.
 #      (Reads from prog.data, NOT from active_fx list anymore.)
 #
 #   7. `FIRE FX <n>` — writes pool preset layers into programmer data + preview.
-#      Does NOT fire directly to an executor — goes via programmer → RECORD CUE → GO.
+#      Does NOT fire directly to an fader — goes via programmer → RECORD CUE → GO.
 #
 #   8. `FX ADD ...` — appends additional FX layers to existing programmer FX.
 #
@@ -21080,27 +21080,27 @@ audio_engine.stop()
 # KEY OBJECTS:
 #   _prog_fx_ids   — module-level list of active programmer-preview FX IDs
 #   active_fx      — module-level list of active FXLayer objects (preview)
-#   Executor._fx_ids   — list of FX IDs owned by that executor slot
-#   Executor.fx_engine / Executor.form_pool — injected from ExecutorPool defaults
-#   ExecutorPool.default_fx_engine / .default_form_pool / .default_color_pool / .default_dim_pool — set at startup
+#   Fader._fx_ids   — list of FX IDs owned by that fader slot
+#   Fader.fx_engine / Fader.form_pool — injected from FaderPool defaults
+#   FaderPool.default_fx_engine / .default_form_pool / .default_color_pool / .default_dim_pool — set at startup
 #
 # ── SHOW FILE SPLIT ───────────────────────────────────────────────────────────
 # ShowFile class (static methods only) — each category saves/loads independently.
-# Files: studio_data/cuestacks.json, groups.json, colors.json, dims.json,
+# Files: studio_data/stacks.json, groups.json, colors.json, dims.json,
 #        midi.json, fx.json, fx_pool.json, forms.json
 # Legacy migration: if studio_show.json exists, it's read and split on first run,
 #   then renamed to studio_show.json.migrated.
 #
 # ── PLAYBACK LAYER ────────────────────────────────────────────────────────────
-# ExecutorPool holds numbered Executor slots.
-# Each Executor: one CueStack, its own layer dict, its own FX IDs, level fader.
+# FaderPool holds numbered Fader slots.
+# Each Fader: one Stack, its own layer dict, its own FX IDs, level fader.
 # LTP priority: _fire_order list — last GO = highest priority.
-# FadeEngine fires Fade objects that tick() directly into executor.layer.
+# FadeEngine fires Fade objects that tick() directly into fader.layer.
 #
 # COMMANDS:
-#   ASSIGN CS <n> TO EXEC <n>    — wire cuestack to executor slot
-#   EXEC <n> GO/BACK/STOP/GOTO   — control specific executor
-#   EXECUTOR <n>                 — set active executor for bare GO/BACK
+#   ASSIGN stk <n> TO fdr <n>    — wire stack to fader slot
+#   fdr <n> GO/BACK/STOP/GOTO   — control specific fader
+#   FADER <n>                 — set active fader for bare GO/BACK
 #
 # ── KEY COMMANDS ──────────────────────────────────────────────────────────────
 #   FX SINE RED [bpm n] [size n] [SPREAD n]
@@ -21114,33 +21114,33 @@ audio_engine.stop()
 #   FIRE FX <n>                    — add preset to programmer (channel-additive; same-channel layers replaced)
 #   FORM LIST
 #   record form <n> [name] 0.0,0.0 0.5,1.0 1.0,0.0   — custom breakpoint curve
-#   record cs [n] cue <m> [preset-tokens]
-#   go cs [n] cue <m>
+#   record stk [n] cue <m> [preset-tokens]
+#   go stk [n] cue <m>
 #
 # ── POOLS ──────────────────────────────────────────────────────────────────────
 #   color_pool    — Colorpreset  (numbered, saved to colors.json)
 #   dim_pool      — Dimpreset    (numbered, saved to dims.json)
 #   group_pool    — group        (numbered, saved to groups.json)
-#   cuestack_pool — cuestack     (numbered, saved to cuestacks.json)
+#   stack_pool — stack     (numbered, saved to stacks.json)
 #   fx_pool       — FXpreset     (numbered, 1-12 visible in GUI, saved to fx_pool.json)
 #   form_pool     — Formpreset   (1-4 built-in builtins: sine/ramp/pulse/square;
 #                                 5+ custom breakpoint curves; saved to forms.json)
-#   executor_pool — Executor     (cuestack/level/priority/mode saved to executors.json)
+#   fader_pool — Fader     (stack/level/priority/mode saved to faders.json)
 #
 # ── WHAT WORKS ────────────────────────────────────────────────────────────────
 # - Full output pipeline (sACN, FX additive, programmer+cue merge)
-# - cuestack playback with fades, executor isolation, LTP priority
+# - stack playback with fades, fader isolation, LTP priority
 # - FX as programmer-native (redesigned this session — just landed)
 # - CLEAR 3-tap protocol: selection → programmer → full output
 # - FX pool record/fire, Forms pool with custom breakpoints
 # - show file per-category save/load with .bak auto-backup
-# - GUI panels: cuestacks, groups, colors, dims, FX pool, forms pool
+# - GUI panels: stacks, groups, colors, dims, FX pool, forms pool
 # - MIDI fader control, OSC bridge, AI command layer (ANTHROPIC_API_KEY gated)
 # - audio reactive panel: device pick, capture start/stop, mapping toggle,
 #   gain, live level/low/mid/high meters (GUI front-end for Block 9)
 #
 # ── KNOWN ISSUES / TODO ───────────────────────────────────────────────────────
-# - executor_pool now persists cuestack assignments to executors.json; loaded
+# - fader_pool now persists stack assignments to faders.json; loaded
 #   at startup so GO works immediately after restart without re-assigning.
 #
 # =============================================================================

@@ -1,8 +1,8 @@
 {
   "version": "3.0",
   "master_level": 1.0,
-  "active_executor": 7,
-  "executors": {
+  "active_fader": 7,
+  "faders": {
     "1": {
       "stack_id": 1,
       "current": null,
