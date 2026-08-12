@@ -69,26 +69,6 @@
   "midi_note": [
     {
       "channel": 10,
-      "note": 36,
-      "target": "Cue 1 Red"
-    },
-    {
-      "channel": 10,
-      "note": 38,
-      "target": "Cue 2 Blue"
-    },
-    {
-      "channel": 10,
-      "note": 42,
-      "target": "Cue 3 Magenta"
-    },
-    {
-      "channel": 10,
-      "note": 46,
-      "target": "Cue 4 Off"
-    },
-    {
-      "channel": 10,
       "note": 50,
       "target": "BACK"
     },

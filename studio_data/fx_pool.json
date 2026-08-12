@@ -660,6 +660,31 @@
           "target_scope": null
         }
       ]
+    },
+    "24": {
+      "name": "FX 24",
+      "layers": [
+        {
+          "waveform": "pulse",
+          "channel": "dim",
+          "bpm": 20.0,
+          "size": 100.0,
+          "spread": 0.0,
+          "phase_offset": 100.0,
+          "form_id": null,
+          "rate_id": null,
+          "size_id": null,
+          "spread_id": null,
+          "dim_id": 1,
+          "color_id": 20,
+          "group_id": 1,
+          "speed_id": 1,
+          "block_size": 1,
+          "order": "linear",
+          "direction": "forward",
+          "target_scope": null
+        }
+      ]
     }
   }
 }

@@ -22,8 +22,8 @@
       100,
       100
     ],
-    "width": 859,
-    "height": 533,
+    "width": 776,
+    "height": 710,
     "show": false
   },
   "fx_editor_window": {
@@ -58,8 +58,8 @@
       100,
       100
     ],
-    "width": 560,
-    "height": 400,
+    "width": 860,
+    "height": 488,
     "show": false
   },
   "monitors_window": {
@@ -67,8 +67,8 @@
       100,
       100
     ],
-    "width": 1586,
-    "height": 405,
+    "width": 1474,
+    "height": 346,
     "show": false
   },
   "ai_history_window": {
@@ -85,8 +85,8 @@
       100,
       100
     ],
-    "width": 1904,
-    "height": 303,
+    "width": 1687,
+    "height": 365,
     "show": false
   },
   "ai_prompts_window": {
@@ -112,8 +112,8 @@
       100,
       100
     ],
-    "width": 512,
-    "height": 524,
+    "width": 519,
+    "height": 560,
     "show": false
   },
   "speed_master_window": {
@@ -121,8 +121,35 @@
       100,
       100
     ],
-    "width": 560,
-    "height": 340,
+    "width": 581,
+    "height": 397,
+    "show": false
+  },
+  "fader_page_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 1781,
+    "height": 720,
+    "show": false
+  },
+  "audio_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 420,
+    "height": 300,
+    "show": false
+  },
+  "fx_params_window": {
+    "pos": [
+      100,
+      100
+    ],
+    "width": 434,
+    "height": 221,
     "show": false
   }
 }

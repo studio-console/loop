@@ -1,7 +1,7 @@
 {
   "version": "3.0",
   "master_level": 1.0,
-  "active_executor": 10,
+  "active_executor": 7,
   "executors": {
     "1": {
       "stack_id": 1,
@@ -14,7 +14,7 @@
     },
     "2": {
       "stack_id": 2,
-      "current": null,
+      "current": 5.0,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
@@ -86,7 +86,43 @@
     },
     "10": {
       "stack_id": 10,
-      "current": 2.0,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "11": {
+      "stack_id": 11,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "12": {
+      "stack_id": 12,
+      "current": null,
+      "priority": 0,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "13": {
+      "stack_id": 13,
+      "current": null,
+      "priority": 1,
+      "level": 1.0,
+      "time_on": false,
+      "time_fade": null,
+      "time_delay": null
+    },
+    "14": {
+      "stack_id": 14,
+      "current": null,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
@@ -96,7 +132,7 @@
   },
   "prog_time": {
     "on": false,
-    "fade": 0.0,
+    "fade": 2.0,
     "delay": 0.0
   },
   "fader_dim": 0.33070866141732286
