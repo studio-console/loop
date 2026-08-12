@@ -5347,17 +5347,18 @@ except ImportError:
     _DPG_OK = False
 
 # Colour palette — near-black / violet accent
-_C_BG        = (3,   2,   8, 255)   # near pure black with faint violet
-_C_PANEL     = (13,  10,  28, 255)  # dark indigo panel (was 8,6,18)
-_C_BORDER    = (60,  42, 115, 255)  # violet divider — more visible (was 38,26,78)
-_C_TEXT      = (232, 226, 255, 255) # clean white with violet cast
-_C_DIM       = (95,  74, 148, 255)  # dimmed — readable but recessed (was 72,56,115)
-_C_ACCENT    = (162, 115, 255, 255) # violet #a273ff — slightly brighter (was 139,92,246)
-_C_HOT       = (212, 152, 255, 255) # bright violet-pink for live status
-_C_BTN       = (28,  20,  64, 255)  # resting button — more visible (was 15,10,36)
-_C_BTN_H     = (80,  56, 155, 255)  # hover — punchy (was 52,34,106)
-_C_BTN_A     = (122,  84, 215, 255) # active — bright violet (was 98,64,182)
-_C_CUE_ACT   = (72,  50, 148, 255)  # selected cue row — brighter violet
+# ——— modern-pro palette: vibey deep violet, richer depth, luminous states ———
+_C_BG        = (5,   4,  12, 255)  # deepest background — where cards float
+_C_PANEL     = (22,  17,  48, 255) # card surface — clearly lifted off the bg (3D step 1)
+_C_BORDER    = (70,  52, 144, 255) # violet card edge — clean definition
+_C_TEXT      = (240, 236, 255, 255)# crisp white with a violet cast
+_C_DIM       = (110, 92, 172, 255) # dimmed — readable but recessed
+_C_ACCENT    = (176, 128, 255, 255)# electric violet #b080ff — primary accent
+_C_HOT       = (230, 168, 255, 255)# bright violet-pink for live status
+_C_BTN       = (44,  34,  98, 255) # raised button (elevated above fields)
+_C_BTN_H     = (98,  72, 190, 255) # hover — luminous lift
+_C_BTN_A     = (146, 102, 248, 255)# active — bright violet
+_C_CUE_ACT   = (88,  64, 172, 255) # selected cue row — brighter violet
 _C_SLIDER_G  = _C_ACCENT
 
 # pool panel header colours — violet family, varied lightness/hue for readability
@@ -5382,16 +5383,17 @@ def _apply_theme():
             dpg.add_theme_color(dpg.mvThemeCol_WindowBg,       _C_BG)
             dpg.add_theme_color(dpg.mvThemeCol_ChildBg,        _C_PANEL)
             dpg.add_theme_color(dpg.mvThemeCol_Border,         _C_BORDER)
+            dpg.add_theme_color(dpg.mvThemeCol_BorderShadow,   (0, 0, 0, 70))   # subtle drop-sink under cards/buttons
             dpg.add_theme_color(dpg.mvThemeCol_Text,           _C_TEXT)
             dpg.add_theme_color(dpg.mvThemeCol_TextDisabled,   _C_DIM)
             dpg.add_theme_color(dpg.mvThemeCol_Button,         _C_BTN)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,  _C_BTN_H)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,   _C_BTN_A)
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (20, 14,  46, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (40, 28,  90, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (68, 48, 145, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (14, 11,  32, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (24, 18,  50, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (34, 26,  68, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,     ( 0,  0,   0,   0))
-            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (26, 18,  56,  90))
+            dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (30, 22,  70,  90))
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,     _C_SLIDER_G)
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, _C_ACCENT)
             dpg.add_theme_color(dpg.mvThemeCol_Header,         _C_CUE_ACT)
@@ -5410,10 +5412,11 @@ def _apply_theme():
             # Input cursor and selection highlight
             dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, (80, 50, 160, 140))
             dpg.add_theme_color(dpg.mvThemeCol_NavHighlight,   _C_ACCENT)
-            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  6)
-            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   6)
-            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   8)
-            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    6)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  12)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   12)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   10)
+            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    9)
+            dpg.add_theme_style(dpg.mvStyleVar_ScrollbarRounding, 10)
             dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 1)
             dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,     6, 5)
             dpg.add_theme_style(dpg.mvStyleVar_FramePadding,    8, 4)
@@ -5426,9 +5429,10 @@ def _make_go_theme():
     """Amber/orange theme for the GO ▶ button — visually distinct from default purple."""
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvButton):
-            dpg.add_theme_color(dpg.mvThemeCol_Button,        (100, 58, 12, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 110, 22, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (255, 170,  40, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (120, 70, 14, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (210, 128, 26, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (255, 186,  60, 255))
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 12)
     return t
 
 
@@ -5613,37 +5617,68 @@ def _make_active_slot_theme():
 
 _CONSOLE_FONT_CANDIDATES = [
     "/System/Library/Fonts/SFNSMono.ttf",                                   # macOS
+    "/System/Library/Fonts/Menlo.ttc",                                      # macOS (Alt)
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",                  # Debian/Ubuntu
     "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",      # Debian/Ubuntu (RPM-derived)
     "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",               # Fedora/RHEL
     "C:/Windows/Fonts/consola.ttf",                                        # Windows
 ]
 
+# Clean humanist sans-serif used for labels/headers/buttons (the "surface" text).
+# Mono stays on the actual console data + command line so those columns align.
+_SURFACE_FONT_CANDIDATES = [
+    "/System/Library/Fonts/Avenir.ttc",                                     # macOS Avenir (chosen look)
+    "/System/Library/Fonts/Avenir Next.ttc",                                # macOS Avenir Next
+    "/System/Library/Fonts/SFCompact.ttc",                                  # macOS SF Compact
+    "/System/Library/Fonts/SFCompactRounded.ttf",                           # macOS SF Compact Rounded
+    "/System/Library/Fonts/HelveticaNeue.ttc",                              # macOS Helvetica Neue
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                      # Debian/Ubuntu
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",      # Debian/Ubuntu (RPM-derived)
+    "C:/Windows/Fonts/arial.ttf",                                          # Windows
+]
 
-def _load_console_font():
-    """
-    Load a monospace console font if one is found on this OS; returns the
-    font tag or None (DearPyGui's built-in bitmap font is the fallback).
 
-    Previously this only tried SF Mono (macOS), so every other OS silently
-    fell back to DPG's built-in bitmap font — which has no glyphs for
-    em/en dash, curly quotes, ellipsis, bullet, or the ▲▼◀▶■□●○ symbols
-    used for status indicators, rendering every one of them as a literal
-    '?'. Confirmed visually via an Xvfb+screenshot smoke test: on Linux,
-    with a real font loaded (DejaVu Sans Mono/Liberation Mono), those
-    glyphs render correctly with no extra range/hint calls needed — DPG
-    2.3.1 sizes a loaded font's glyph ranges automatically (add_font_range
-    and add_font_range_hint are both deprecated no-ops in this version).
+def _setup_fonts():
     """
-    font_path = next((p for p in _CONSOLE_FONT_CANDIDATES if os.path.exists(p)), None)
-    if font_path is None:
-        return None
+    Load a two-tier font system and return (surface_font, mono_font).
+
+      surface_font — clean sans-serif for labels/headers/buttons (the modern
+                     "graph" text). If none found, falls back to None so DPG's
+                     built-in bitmap font is used (caller decides).
+      mono_font    — monospace for console data + command line. Falls back to
+                     the surface font (or None) if no mono is available.
+
+    Both fonts are loaded into the same registry in one block so glyph ranges
+    are sized automatically (add_font_range/add_font_range_hint are deprecated
+    no-ops in DPG 2.3.1).
+    """
+    surface_path = next((p for p in _SURFACE_FONT_CANDIDATES
+                         if os.path.exists(p)), None)
+    mono_path    = next((p for p in _CONSOLE_FONT_CANDIDATES
+                         if os.path.exists(p)), None)
+    if surface_path is None and mono_path is None:
+        return None, None
     try:
         with dpg.font_registry():
-            with dpg.font(font_path, 14) as fid:
-                pass
-        dpg.bind_font(fid)
-        return fid
+            surface_id = None
+            if surface_path is not None:
+                with dpg.font(surface_path, 17) as fid:
+                    surface_id = fid
+            mono_id = None
+            if mono_path is not None:
+                with dpg.font(mono_path, 17) as fid:
+                    mono_id = fid
+        # Default (graph) text = surface font; data/console widgets will be
+        # bound to the mono font selectively by the caller.
+        if surface_id is not None:
+            dpg.bind_font(surface_id)
+        # If we have a mono font but no surface, fall back to mono for the
+        # default text too (keeps behaviour identical to the old all-mono UI).
+        if surface_id is None and mono_id is not None:
+            dpg.bind_font(mono_id)
+        return surface_id, mono_id
+    except Exception:
+        return None, None
     except Exception as e:
         print(f"  Font: {e} — using default")
         return None
@@ -5808,7 +5843,7 @@ class GUIEngine:
 
         dpg.create_context()
         _apply_theme()
-        _load_console_font()
+        self._surface_font, self._mono_font = _setup_fonts()
         self._go_theme       = _make_go_theme()
         self._back_theme     = _make_back_theme()
         self._fade_bar_theme = _make_fade_bar_theme()
@@ -5930,8 +5965,9 @@ class GUIEngine:
     def _build_header(self):
         # ── Top row: info + 4 grouped button clusters ──────────
         with dpg.group(horizontal=True):
-            dpg.add_text("studio  v0.21", color=_C_ACCENT)
-            dpg.add_spacer(width=6)
+            dpg.add_text("STUDIO", color=_C_ACCENT)
+            dpg.add_text("v0.21", color=_C_DIM)
+            dpg.add_spacer(width=8)
             dpg.add_text("▶", tag="hdr_cue", color=_C_TEXT)
             dpg.add_spacer(width=6)
             dpg.add_text("fx: off", tag="hdr_fx", color=_C_DIM)
@@ -6550,9 +6586,9 @@ class GUIEngine:
     # pool grid
     _POOL_SLOTS = 24    # 4 rows × 6 cols per panel
     _POOL_COLS  = 6
-    _PANEL_W    = 634   # panels touch: 3 × 634 = 1902 fits 1920 w/ outer padding
+    _PANEL_W    = 630   # 3 panels + 2 ItemSpacing gaps fit 1920 (3×630+12 = 1902)
     # BTN_W: (634 - 2×8pad - 2×1border - 5×6gap) / 6 = (616-30)/6 = 97.7 → 97
-    _BTN_W      =  97   # exactly fits 6 columns in a 634-wide panel
+    _BTN_W      =  97   # exactly fits 6 columns in a 630-wide panel (97×6+5×6 = 612)
     _BTN_H      =  30   # 4 rows × 30 + 3 × 5gap + header = ~155px content
     _POOL_H     = _H_P1
 
@@ -6581,7 +6617,7 @@ class GUIEngine:
     def _build_stage_panel(self):
         """Inline stage view — third column in the main row, fills remaining width."""
         vp_w      = getattr(self, '_vp_w', self._W)
-        canvas_w  = max(200, vp_w - self._W_LEFT - self._W_RIGHT - 24)
+        canvas_w  = max(200, vp_w - self._W_LEFT - self._W_RIGHT - 16)
         canvas_h  = self._H_MAIN - 42   # _H_MAIN minus master-fader row and padding
         with dpg.child_window(tag="stage_win", width=-1, height=self._H_MAIN,
                               border=True, no_scrollbar=True,
@@ -6610,7 +6646,7 @@ class GUIEngine:
                     )
                     dpg.draw_text(
                         pos=(0, 0), tag=f"stage_lbl_{i}",
-                        text="", color=_C_TEXT, size=14,
+                        text="", color=_C_TEXT, size=12,
                     )
                     dpg.draw_text(
                         pos=(0, 0), tag=f"stage_dim_{i}",
@@ -6627,9 +6663,17 @@ class GUIEngine:
     def _tick_stage(self):
         """Recompute fixture colours from output state and update stage canvas.
         All geometry is computed here from the actual canvas size so the layout
-        scales automatically when the window is resized."""
+        scales automatically when the window is resized.
+        First, clamp the drawlist to the real visible stage window so fixture
+        slots never run past the right edge (fixes last fixture being clipped)."""
         try:
-            rect = dpg.get_item_rect_size("stage_canvas")
+            sw = dpg.get_item_rect_size("stage_win")            # visible column
+            rect = dpg.get_item_rect_size("stage_canvas")       # configured drawlist
+            if sw and sw[0] > 20 and sw[0] != rect[0]:
+                # Clamp only the WIDTH to the real visible column so the rightmost
+                # fixture is never clipped; keep the canvas height as configured.
+                dpg.configure_item("stage_canvas", width=sw[0])
+                rect = (sw[0], rect[1])
             w, h = rect[0], rect[1]
         except Exception:
             return
@@ -7309,10 +7353,11 @@ class GUIEngine:
             pass
 
     def _build_forms_panel(self):
-        # Spans the same width as the 3 pool panels above (3 × _PANEL_W).
-        # BTN_W: (3×PANEL_W - 2×1border - 2×8WP_X - 11×6IS_X) / 12
+        # Spans the same width as the 3 pool panels above INCLUDING the
+        # inter-panel ItemSpacing gaps, so its right edge lines up with theirs:
+        #   3×_PANEL_W  (panels)  +  2×ItemSpacing.X  (gaps)
         _FORMS_COLS  = 12
-        _PANEL_TOTAL = 3 * self._PANEL_W           # 1902px
+        _PANEL_TOTAL = 3 * self._PANEL_W + 2 * 6           # 1890 + 12 = 1902
         _FORMS_BTN_W = (_PANEL_TOTAL - 2 - 16 - (_FORMS_COLS - 1) * 6) // _FORMS_COLS
         _FORMS_H     = 32 + 2 * (self._BTN_H + 4) # header + 2 button rows
         with dpg.child_window(tag="pool_forms", width=_PANEL_TOTAL,

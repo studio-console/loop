@@ -6,3 +6,5 @@
 !studio_project.py
 !studio_data/
 !studio_data/*.json
+!CLAUDE.md
+!CURRENT.md
