@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-12",
+      "summary": "Phase 1: extract models/{fixtures,presets}.py",
+      "details": []
+    },
+    {
+      "date": "2026-08-12",
       "summary": "Phase 4: extract show.py \u2014 ShowFile, _write_file, _read_file",
       "details": []
     },
