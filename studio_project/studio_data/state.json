@@ -1,11 +1,11 @@
 {
   "version": "3.0",
   "master_level": 1.0,
-  "active_fader": 1,
+  "active_fader": 3,
   "faders": {
     "1": {
       "stack_id": 1,
-      "current": 3200.0,
+      "current": null,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
@@ -23,7 +23,7 @@
     },
     "3": {
       "stack_id": 3,
-      "current": null,
+      "current": 2.0,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
