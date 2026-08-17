@@ -1,6 +1,6 @@
 {
   "version": "3.0",
-  "master_level": 1.0,
+  "master_level": 0.24,
   "active_fader": 3,
   "faders": {
     "1": {
