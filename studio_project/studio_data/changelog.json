@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-17",
+      "summary": "Phase 7: split GUIEngine into 14 mixin classes",
+      "details": []
+    },
+    {
+      "date": "2026-08-17",
       "summary": "Phase 5: extract state.py \u2014 startup wiring + close-coupled helpers",
       "details": []
     },
