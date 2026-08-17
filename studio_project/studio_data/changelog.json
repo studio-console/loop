@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-17",
+      "summary": "Phase 10: extract tests_smoke.py + thin entry point",
+      "details": []
+    },
+    {
+      "date": "2026-08-17",
       "summary": "Phase 9: split run_command's 117 branches into commands/ category files",
       "details": []
     },
