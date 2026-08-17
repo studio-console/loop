@@ -2,6 +2,11 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-08-17",
+      "summary": "Phase 2: extract engine/{playback,fx}.py",
+      "details": []
+    },
+    {
       "date": "2026-08-12",
       "summary": "Phase 1: extract models/{fixtures,presets}.py",
       "details": []
