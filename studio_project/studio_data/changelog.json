@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-08-17",
+      "summary": "Phase 8: hoist run_command's shared closures to commands/_shared.py",
+      "details": []
+    },
+    {
+      "date": "2026-08-17",
       "summary": "Phase 7: split GUIEngine into 14 mixin classes",
       "details": []
     },
