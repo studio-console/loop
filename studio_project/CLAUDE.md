@@ -13,9 +13,10 @@ Package layout below). GUI: DearPyGui 2.3.1. All show data lives in
 python3 studio_project.py                                      # normal launch
 STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 python3 studio_project.py  # headless smoke test
 python3 -m py_compile studio_project.py                        # compile check only
+pytest                                                          # same 456 checks, pytest-native reporting
 ```
 
-Smoke test must stay at **456/456 PASS**. Run it after every change.  
+Smoke test must stay at **456/456 PASS**. Run it after every change (either form — see below).  
 `STUDIO_DRY_RUN=1` disables sACN output. `STUDIO_HEADLESS=1` skips the GUI and runs tests.
 
 Always run `studio_project.py` directly as the entry point — most of
@@ -23,6 +24,24 @@ Always run `studio_project.py` directly as the entry point — most of
 "Deferred imports" under Key gotchas below). Importing pieces of
 `studio_console/` standalone (e.g. `python3 -c "import studio_console.state"`)
 does not work and isn't meant to.
+
+**Two ways to run the same 456 checks:**
+- `STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 python3 studio_project.py` — the
+  original oracle (`studio_console/tests_smoke.py`, `run_smoke_test(gui)`).
+  Every phase of the package split was verified against this; it's the
+  source of truth and stays untouched.
+- `pytest` (needs `pytest` + `pytest-subtests` installed) — runs
+  `studio_console/tests/test_smoke_pytest.py`, a generated, additive
+  pytest port of the exact same check sequence (`pytest.ini` points
+  `testpaths` at it). Per-check pass/fail via `-v`, `-k` filtering,
+  JUnit XML for CI. It's one long `test_smoke_full_pipeline` function,
+  not ~456 independent tests — the checks are genuinely sequential
+  (each depends on state the earlier ones left in `fader_pool`/`patch`/
+  `stack_pool`), so `pytest-subtests` reports each one individually
+  without pretending they're isolated. It builds `gui` and every engine
+  singleton by actually running `studio_project.py` via `runpy` (see
+  `STUDIO_PYTEST_COLLECT` in `studio_project.py`), so it's exactly the
+  same construction/wiring as a real launch, not a re-derived copy.
 
 ---
 
@@ -209,6 +228,15 @@ If you add a new cross-module reference in this codebase: check whether
 the target is defined *earlier* or *later* in `studio_project.py`'s
 import order than the module you're editing. Earlier → safe as a normal
 top-level import. Later, or genuinely circular → needs this pattern.
+
+`studio_console/tests/test_smoke_pytest.py` is the one place that
+deliberately works around the `__main__`-only assumption: it runs
+`studio_project.py` via `runpy.run_path(..., run_name="__main__")` (real
+construction/wiring, no duplicated setup) and then manually re-pins
+`sys.modules['__main__']` to the harvested namespace afterward, since
+`runpy` restores the caller's original `__main__` once it returns — and
+these deferred imports keep firing well after that point, throughout the
+whole check sequence.
 
 Related, easy to reintroduce by accident: any class-level constant
 computed via `os.path.dirname(os.path.abspath(__file__))` breaks
