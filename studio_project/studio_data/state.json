@@ -1,6 +1,6 @@
 {
   "version": "3.0",
-  "master_level": 0.24,
+  "master_level": 0.28,
   "active_fader": 3,
   "faders": {
     "1": {
@@ -23,7 +23,7 @@
     },
     "3": {
       "stack_id": 3,
-      "current": 2.0,
+      "current": 4.0,
       "priority": 0,
       "level": 1.0,
       "time_on": false,

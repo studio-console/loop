@@ -1,7 +1,9 @@
 # Studio Console — CLAUDE.md
 
-Single-file Python lighting console (`studio_project.py`, ~21k lines).
-GUI: DearPyGui 2.3.1. All show data lives in `studio_data/`. Version: v0.21.
+Python lighting console. `studio_project.py` is a thin entry point (~180
+lines); almost everything lives in the `studio_console/` package (see
+Package layout below). GUI: DearPyGui 2.3.1. All show data lives in
+`studio_data/`. Version: v0.21.
 
 ---
 
@@ -16,11 +18,68 @@ python3 -m py_compile studio_project.py                        # compile check o
 Smoke test must stay at **456/456 PASS**. Run it after every change.  
 `STUDIO_DRY_RUN=1` disables sACN output. `STUDIO_HEADLESS=1` skips the GUI and runs tests.
 
+Always run `studio_project.py` directly as the entry point — most of
+`studio_console/` depends on it being the running `__main__` (see
+"Deferred imports" under Key gotchas below). Importing pieces of
+`studio_console/` standalone (e.g. `python3 -c "import studio_console.state"`)
+does not work and isn't meant to.
+
 ---
 
-## Architecture — key classes (all in studio_project.py)
+## Package layout
 
-### Data models
+```
+studio_project.py            entry point: wiring imports, builds GUIEngine,
+                              launches GUI or (STUDIO_HEADLESS) the smoke test
+studio_console/
+  paths.py                   DATA_DIR/SAVES_DIR, anchored to studio_project.py's dir
+  state.py                   startup wiring — every pool/engine/driver singleton,
+                              show-file loading, MIDI/OSC setup, save_show/cue_go/
+                              goto_cue and other closely-coupled helpers
+  show.py                    ShowFile — save/load all studio_data/*.json
+  tests_smoke.py             the 456-case headless smoke test (run_smoke_test(gui))
+  models/
+    fixtures.py               FixtureProfile, FixtureLibrary, GDTFLoader,
+                               SubFixture, MasterFixture, Patch, programmer
+    presets.py                ColorPreset/Pool, DimmerPreset/Pool, Group/Pool,
+                               Cue, Stack, CuePool, StackPool, Fader, FaderPool,
+                               FXPreset/Pool, Fade
+  engine/
+    playback.py                FadeEngine, OutputState, _resolve_cue_refs,
+                                _vfade_apply, _exec_fader_mode_hook, _stack_go/
+                                back/goto/reload
+    fx.py                       Waveform, Form/Rate/Size/Spread/SpeedMaster
+                                 pools, FXLayer, FXEngine
+  drivers/
+    network.py, midi.py, osc.py, audio.py, ai.py
+                                 NetworkEngine, MIDIEngine, OSCEngine,
+                                 AudioEngine/AudioMapper, AIEngine
+  gui/                         GUIEngine — composed in studio_project.py via
+                                multiple inheritance from 14 mixin classes:
+    theme.py                    palette, DPG themes, font setup
+    core.py                     __init__, build(), run(), _tick(), _log,
+                                 all class-level layout constants
+    header.py, left_column.py, right_column.py, stage.py, pools_panel.py,
+    hardware_popups.py, misc_popups.py, fx_editor.py, ai_popups.py,
+    color_picker.py, speed_master.py, fader_page.py, audio_monitors.py
+                                 one file per panel/popup cluster
+  commands/                    run_command() — composed in commands/__init__.py
+                                from 114 branch functions across 9 category files:
+    __init__.py                 dispatcher: preamble + ordered dispatch list +
+                                 default-to-programmer fallback
+    _shared.py                   _record_cue_into, _prog_fx_stop/start/rebuild
+    stack.py, fader.py, programmer.py, fx.py, misc.py, macro.py, io.py,
+    patch.py, presets.py
+                                 one file per command category
+```
+
+Full rationale for this layout: `/Users/c/.claude/plans/glimmering-spinning-moth.md`.
+
+---
+
+## Architecture — key classes
+
+### Data models (`studio_console/models/`)
 | Class | Purpose |
 |-------|---------|
 | `MasterFixture` / `SubFixture` | Patched fixture with profile channels |
@@ -32,7 +91,7 @@ Smoke test must stay at **456/456 PASS**. Run it after every change.
 | `Fader` | Playback slot: `.level` (0–1), `.stack`, `.is_active`, `.output_mode`, `.priority` |
 | `FaderPool` | `executors[id]` dict; `fader_pool.get(n)` auto-creates |
 
-### Engine
+### Engine (`studio_console/engine/`)
 | Class / Function | Purpose |
 |-----------------|---------|
 | `OutputState` | Merges all layers → DMX. `_merged_cue_layer()` returns `{fid: {ch: val}}` |
@@ -42,33 +101,33 @@ Smoke test must stay at **456/456 PASS**. Run it after every change.
 | `_exec_fader_mode_hook(fader)` | Called on fader level change; handles moment/vfade logic |
 | `_stack_go/back/goto` | Advance/retreat cue position, trigger fade |
 
-### Commands
+### Commands (`studio_console/commands/`)
 | Function | Purpose |
 |----------|---------|
-| `run_command(cmd_str)` | Main entry point (line ~14262). Uppercases tokens, dispatches |
+| `run_command(cmd_str)` | `commands/__init__.py`. Uppercases tokens, dispatches to whichever of 114 branch functions (across 9 category files) matches first, in original first-match-wins order |
 
 All commands are **case-insensitive** — the parser does `.upper()` on input.
 
-### GUI (`GUIEngine`, line ~5687)
-| Method | Purpose |
-|--------|---------|
-| `_build_fader_page()` | 10-slot MA-style fader grid |
-| `_fpg_reflow(w, h)` | Resizes all fader slot widgets dynamically on window resize |
-| `_tick()` | Main render loop; syncs all widget state from engine |
-| `_setup_fonts()` | Loads Avenir (surface) + mono fonts; currently **17px** |
+### GUI (`GUIEngine`, composed in `studio_project.py` from `studio_console/gui/*.py`)
+| Method | File | Purpose |
+|--------|------|---------|
+| `_build_fader_page_popup()` | `gui/fader_page.py` | MA-style fader grid |
+| `_fpg_reflow(w, h)` | `gui/fader_page.py` | Resizes all fader slot widgets dynamically on window resize |
+| `_tick()` | `gui/core.py` | Main render loop; syncs all widget state from engine |
+| `_setup_fonts()` | `gui/theme.py` | Loads Avenir (surface) + mono fonts; currently **17px** |
 
-### Show file (`ShowFile`, line ~12141)
+### Show file (`ShowFile`, `studio_console/show.py`)
 `save_show()` / `load_show()` — reads/writes all `studio_data/*.json`.  
 Data format version: `"3.0"`.
 
-### Drivers
-| Class | Purpose |
-|-------|---------|
-| `NetworkEngine` | sACN DMX output |
-| `MIDIEngine` | MIDI CC/note input; mappable to any command |
-| `OSCEngine` | OSC input; MA3-compatible `/gma3/fader/...` routes |
-| `AudioEngine` | Audio-to-FX mapper |
-| `AIEngine` | AI assistant integration |
+### Drivers (`studio_console/drivers/`)
+| Class | File | Purpose |
+|-------|------|---------|
+| `NetworkEngine` | `network.py` | sACN DMX output |
+| `MIDIEngine` | `midi.py` | MIDI CC/note input; mappable to any command |
+| `OSCEngine` | `osc.py` | OSC input; MA3-compatible `/gma3/fader/...` routes |
+| `AudioEngine` | `audio.py` | Audio-to-FX mapper |
+| `AIEngine` | `ai.py` | AI assistant integration |
 
 ---
 
@@ -123,9 +182,48 @@ All pool files follow the same pattern: `{"version": "3.0", "<pool_key>": {...}}
 - `trigger_mode`: `'toggle'` / `'flash'` / `'moment'`
 - `priority`: `-1` (lo) / `0` (nrm) / `1` (hi) — controls LTP merge order
 
+### Deferred imports (`from __main__ import X`)
+
+Several modules in `studio_console/` reach back into `studio_project.py`
+with a **function-local** `from __main__ import X` instead of a normal
+top-level import — e.g. `drivers/ai.py` importing `Fader`,
+`engine/playback.py` importing `_prog_time`, several `commands/*.py`
+files importing `run_command` itself. This is deliberate, not leftover
+debt:
+
+- `studio_project.py` runs as `__main__`, not as a module literally
+  named `studio_project` — `from studio_project import X` fails or
+  (worse) silently re-imports and re-executes the whole file as a
+  second module.
+- Some of these are genuine circular dependencies (e.g. `commands/*.py`
+  needs `run_command`, which is itself assembled from `commands/*.py`
+  in `commands/__init__.py`) — a top-level import would fail outright.
+- The import is **function-local** (inside the method that uses it),
+  not module-level, so it only resolves at call time — by then, the
+  whole file has finished loading and the name genuinely exists in
+  `__main__`. A lambda can't contain an import statement, which is why
+  a couple of these got converted to small named wrapper functions
+  instead.
+
+If you add a new cross-module reference in this codebase: check whether
+the target is defined *earlier* or *later* in `studio_project.py`'s
+import order than the module you're editing. Earlier → safe as a normal
+top-level import. Later, or genuinely circular → needs this pattern.
+
+Related, easy to reintroduce by accident: any class-level constant
+computed via `os.path.dirname(os.path.abspath(__file__))` breaks
+silently if the code defining it ever moves to a file at a different
+directory depth than the one it was written for — anchor to
+`studio_console/paths.py`'s `DATA_DIR`/`_SCRIPT_DIR` instead. And moving
+module-level code into a function body can silently turn a bare name
+rebind (`_some_flag = False`) into an `UnboundLocalError`, if anything
+reads that name earlier in the same function — Python treats a name as
+local to the *whole* function if it's assigned anywhere in it,
+regardless of execution order.
+
 ---
 
-## Theme / palette
+## Theme / palette (`studio_console/gui/theme.py`)
 
 ```python
 _C_BG     = (3, 2, 8)
