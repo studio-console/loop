@@ -159,7 +159,17 @@ if getattr(ai, '_enabled', False):
     ai._cmd = run_command
     ai._log = gui._log
 
-if STUDIO_HEADLESS:
+if os.environ.get('STUDIO_PYTEST_COLLECT'):
+    # Used by studio_console/tests/test_smoke_pytest.py, via
+    # runpy.run_path(..., run_name="__main__"), to harvest this
+    # module's fully-wired globals (gui, run_command, every engine
+    # singleton) with zero duplicated construction logic — same `gui`
+    # a real launch would build, minus the smoke test / GUI event loop
+    # / shutdown calls below, so the pytest fixture controls those
+    # itself. Doesn't affect STUDIO_HEADLESS or normal launches — this
+    # branch is unreachable unless something explicitly opts in.
+    pass
+elif STUDIO_HEADLESS:
     # tests_smoke.py is imported lazily, only when actually running
     # headless — normal GUI launches never need it. GUIEngine is
     # already fully defined and `gui` already constructed by this
@@ -171,10 +181,10 @@ else:
     gui.build()   # build all widgets (main thread)
     gui.run()     # hand control to DearPyGui — blocks until window closed
 
-midi.stop()
-network.stop()
-fade_engine.stop()
-fx_engine.stop()
-audio_mapper.stop()
-audio_engine.stop()
+    midi.stop()
+    network.stop()
+    fade_engine.stop()
+    fx_engine.stop()
+    audio_mapper.stop()
+    audio_engine.stop()
 
