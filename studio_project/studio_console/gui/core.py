@@ -426,6 +426,25 @@ class GUIEngineCore:
             time.sleep(0.05)
         self._running = False
     def _tick(self):
+        self._tick_first_sync()
+        self._tick_deferred_maintenance()
+        self._tick_prog_live_fades()
+
+        self._tick_pools()
+        self._tick_stage()
+        self._tick_fader_page()
+        self._tick_audio()
+
+        self._tick_status_bar()
+        self._tick_playbacks_and_faders()
+        self._tick_cue_list()
+        self._tick_fx_header()
+        self._tick_programmer_monitor()
+        self._tick_output_monitor()
+        self._tick_midi_osc()
+        self._tick_autosave()
+
+    def _tick_first_sync(self):
         # Deferred import — see _on_save above for rationale.
         from __main__ import GUIEngine
         # One-shot sync on first tick — apply loaded values to GUI widgets
@@ -467,6 +486,7 @@ class GUIEngineCore:
             except Exception as _e:
                 self._log(f"auto-reload error: {_e}")
 
+    def _tick_deferred_maintenance(self):
         # Consume deferred MIDI table rebuild (must be on main thread)
         if self._pending_table_refresh:
             self._pending_table_refresh = False
@@ -482,6 +502,7 @@ class GUIEngineCore:
                 except Exception:
                     pass
 
+    def _tick_prog_live_fades(self):
         # Advance live programmer fades (AT … IN <seconds>)
         if self._prog and self._prog.live_fades:
             import time as _t
@@ -505,11 +526,7 @@ class GUIEngineCore:
                     _still_active.append(_fade)
             self._prog.live_fades = _still_active
 
-        self._tick_pools()
-        self._tick_stage()
-        self._tick_fader_page()
-        self._tick_audio()
-
+    def _tick_status_bar(self):
         # ── Status bar: programmer + selection ──────────────────
         prog_data   = self._prog.data if self._prog else {}
         prog_active = any(v for v in prog_data.values() if v)
@@ -667,6 +684,7 @@ class GUIEngineCore:
         except Exception:
             pass
 
+    def _tick_playbacks_and_faders(self):
         # Active playbacks — rebuild list when fader state changes
         ph = self._playbacks_state_hash()
         if ph != self._last_playbacks_hash:
@@ -797,6 +815,7 @@ class GUIEngineCore:
                     except Exception:
                         pass
 
+    def _tick_cue_list(self):
         # Active stack — refresh left column when fader changes
         active_n = self._active_fader[0] if self._active_fader else 1
         active_cs   = self._stack_pool.get(active_n) if self._stack_pool else None
@@ -900,6 +919,7 @@ class GUIEngineCore:
                 except Exception:
                     pass
 
+    def _tick_fx_header(self):
         # Header: FX
         layers = list(self._fx._layers.values())
         if layers:
@@ -956,6 +976,9 @@ class GUIEngineCore:
         except Exception:
             pass
 
+    def _tick_programmer_monitor(self):
+        prog_data = self._prog.data if self._prog else {}
+        prog_active = any(v for v in prog_data.values() if v)
         # Header: dim (from programmer layer)
         pl = self._out.programmer_layer
         any_dim = next(iter(pl.values()), {}).get('dim') if pl else None
@@ -1074,6 +1097,7 @@ class GUIEngineCore:
             except Exception:
                 pass
 
+    def _tick_output_monitor(self):
         # Output monitor — sample first sub-fixture for RGB (pixel 1 of each tube),
         # master entry for dim. Keys are 'red'/'green'/'blue' throughout.
         for master in self._patch.all_fixtures():
@@ -1140,6 +1164,7 @@ class GUIEngineCore:
                     except: pass
                     del self._out_bar_themes[fid]
 
+    def _tick_midi_osc(self):
         # MIDI status column (soft-takeover state)
         for (ch, cc), m in self._midi.cc_maps.items():
             tag = f"mr_st_cc_{ch}_{cc}"
@@ -1186,6 +1211,8 @@ class GUIEngineCore:
             if self._osc and self._out and self._patch:
                 self._osc.broadcast_state(self._out, self._fader_pool, self._patch)
 
+    def _tick_autosave(self):
+        from __main__ import GUIEngine
         # Clear save status after delay
         _now_as = time.monotonic()
         if (GUIEngine._save_status_clear_at > 0.0 and
@@ -1214,6 +1241,7 @@ class GUIEngineCore:
         elif GUIEngine._auto_save_t == 0.0:
             # First tick — arm the timer
             GUIEngine._auto_save_t = _now_as
+
     def run(self):
         if not _DPG_OK:
             # Fall back to the old sleep loop
