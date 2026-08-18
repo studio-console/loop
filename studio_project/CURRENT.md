@@ -3,7 +3,7 @@
 **Date:** 2026-08-17
 **Version:** v0.21
 **Smoke test:** 456/456 PASS
-**Branch:** main, 28 commits ahead of origin/main (not pushed)
+**Branch:** main, up to date with origin/main
 
 ---
 
@@ -31,7 +31,7 @@
    - Was 789 lines, the one method the Phase 7 mixin split had left alone (flagged as future work in `CURRENT.md`'s "Known / pending"). Already delegated to `_tick_pools`/`_tick_stage`/`_tick_fader_page`/`_tick_audio`, but ~600 lines of status-bar, cue-list, programmer-monitor, output-monitor, MIDI/OSC, and autosave logic still lived directly in the method body.
    - Split into `_tick_first_sync`, `_tick_deferred_maintenance`, `_tick_prog_live_fades`, `_tick_status_bar`, `_tick_playbacks_and_faders`, `_tick_cue_list`, `_tick_fx_header`, `_tick_programmer_monitor`, `_tick_output_monitor`, `_tick_midi_osc`, `_tick_autosave` — all still on `GUIEngineCore` in `gui/core.py`, called in the exact original order
    - Pure boundary extraction: every new method's body verified byte-identical to its slice of the original `_tick()`, plus `py_compile`, an AST undefined-name pass, and the smoke test at 456/456 ×3
-   - Not yet pushed to origin
+   - Pushed to origin along with the rest of the split (29 commits)
 
 2. **studio_project.py split into the studio_console/ package** (2026-08-13):
    - `studio_project.py`: 21,191 lines → 180-line entry point. Everything else moved into 39 files under `studio_console/`: `models/` (fixture + preset data classes), `engine/` (playback + FX), `drivers/` (network/midi/osc/audio/ai), `gui/` (14 mixin files composing `GUIEngine`), `commands/` (9 category files + dispatcher composing `run_command`), plus `show.py`, `state.py`, `paths.py`, `tests_smoke.py`
@@ -66,7 +66,7 @@
 ## Known / pending
 
 - Test stacks 11–14 get wiped by headless smoke test (`SaveShow` overwrites files) — re-seed manually after any headless run
-- **File split is done** (see Recent changes #1) — not yet pushed to origin (ahead of origin/main; push blocked in the assistant's environment, needs a manual `git push origin main`)
+- **File split is done** (see Recent changes #2) and pushed to origin
 - **`GUIEngine._tick()` decomposed** (2026-08-17): split into 12 named `_tick_*` sub-methods (`_tick_first_sync`, `_tick_deferred_maintenance`, `_tick_prog_live_fades`, `_tick_status_bar`, `_tick_playbacks_and_faders`, `_tick_cue_list`, `_tick_fx_header`, `_tick_programmer_monitor`, `_tick_output_monitor`, `_tick_midi_osc`, `_tick_autosave`), all still in `gui/core.py`, called in original order — pure boundary extraction, verified byte-identical against git history, 456/456 ×3
 - Deliberately deferred, not urgent: converting `tests_smoke.py`'s 456 sequential checks to a real pytest suite (many checks share state built up by earlier ones in the same run — decoupling that is real work, not a mechanical conversion)
 - DeepSeek API ($2 budget, refilled once mid-split) used across the split's phases 1/3/4/6 plus the earlier rename/GUI-polish sessions — exact final balance not tracked here, check with whoever's account it is
