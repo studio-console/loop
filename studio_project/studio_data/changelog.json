@@ -2,6 +2,18 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-08-24",
+      "summary": "Manual popup: fix 2 wrong doc entries, add 6 missing command entries; COL alias for COLOR",
+      "details": [
+        "Audited the roadmap against the current codebase before touching anything, same as the 2026-08-02 session: this session's stored prompt still describes studio_project.py as a single 21k-line file with GUI polish / manual popup / changelog popup / MIDI FLASH / Block 12 AI / MIDI mapping GUI / attribute pool panels as open roadmap items. All of that was already done, and the file itself was split into the studio_console/ package back on 2026-08-12 through 08-17 (see CURRENT.md). Went looking for the next real gap in the manual popup specifically, since that's the one roadmap phrase ('all commands documented') with room to literally verify against the dispatcher.",
+        "Used a subagent to cross-reference every branch function in commands/__init__.py's dispatch list against _build_keys_popup's documented command list in gui/misc_popups.py. Found 6 real, implemented-but-undocumented commands: RELOAD, UPDATE CUE <n> (cue-merge form), FX ADD <waveform>, DIM PRESET <n>, RENAME FX/RATE/SIZEP/SPREADP/FORM, and the CFADE/CDELAY/DDELAY cue-timing overrides. Added a doc line for each, verified against the actual implementing code (not just the agent's report) before writing.",
+        "Also found two real doc-vs-behavior bugs while verifying, confirmed by actually calling run_command() through the pytest runpy harness (not just reading code): (1) the manual documented 'DIM 2' as 'apply dim preset to selection', but bare DIM <n> is raw-dimmer shorthand (AT DIM <n>) — only 'DIM PRESET <n>' recalls a preset; fixed the doc line and added a note. (2) the manual documented 'COL 3 / COLOR 3' as two equivalent ways to apply a colour preset, but 'COL' was never wired into the dispatcher (only 'COLOR'/'COLOUR') — COL 3 silently no-op'd. Since this project leans on short aliases everywhere (stk/stack, fdr/fader) and the doc already promised COL as one, added 'COL' to cmd_076_color's token check (presets.py) rather than removing the promise from the docs — narrowly scoped to the direct-apply command only, not the broader COLOR/COLOUR sub-token used by UPDATE/CLEAR/RENAME/etc elsewhere.",
+        "Also removed a stale 'Known/pending' note in CURRENT.md claiming headless smoke-test runs wipe test stacks 11-14 by overwriting studio_data/*.json — STUDIO_HEADLESS has redirected DATA_DIR to an isolated tempdir (studio_console/paths.py) since the 2026-08-12 package split at the latest, so this hasn't been true for a while; just never got removed from the doc.",
+        "No data model or schema changes. Verified with python3 -m py_compile, STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 (456/456), and pytest (456/456 subtests). New COL alias behavior spot-checked directly via the pytest runpy harness before and after the fix.",
+        "Environment note: this container had none of the project's runtime deps installed (dearpygui, sacn, mido, python-rtmidi, sounddevice, anthropic, pytest, pytest-subtests, python-osc) — pip installed all of them to be able to run the smoke test at all. No requirements.txt exists in the repo to pin these; worth adding one in a future session so this isn't a surprise every time."
+      ]
+    },
+    {
       "date": "2026-08-17",
       "summary": "Phase 10: extract tests_smoke.py + thin entry point",
       "details": []

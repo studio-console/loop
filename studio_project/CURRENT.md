@@ -75,7 +75,6 @@
 
 ## Known / pending
 
-- Test stacks 11–14 get wiped by headless smoke test (`SaveShow` overwrites files) — re-seed manually after any headless run
 - **File split is done** (see Recent changes #3) and pushed to origin
 - **`GUIEngine._tick()` decomposed** (see Recent changes #2) — pushed to origin
 - **`tests_smoke.py` ported to pytest** (see Recent changes #1) — the previously-deferred item; `tests_smoke.py` itself stays the untouched oracle, `pytest` is now an additional, equally-verified way to run the same 456 checks

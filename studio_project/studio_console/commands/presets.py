@@ -161,7 +161,7 @@ def cmd_075_record_group(t0, tokens, raw):
 
 
 def cmd_076_color(t0, tokens, raw):
-    if t0 in ('COLOR', 'COLOUR') and len(tokens) > 1:
+    if t0 in ('COL', 'COLOR', 'COLOUR') and len(tokens) > 1:
         try:
             pid = int(tokens[1])
         except ValueError:
