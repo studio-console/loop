@@ -78,24 +78,25 @@ class GUIEngineCore:
     _ERR_PREFIXES = ("Usage:", "Error:", "bad ", "not found", "unknown verb",
                      "Unknown", "invalid", "no stack", "no active", "not set",
                      "AI error")
-    # Touch-target sizing: 40px buttons/fader width and 30px badges land
-    # close to the ~44pt minimum tap target most touch UI guidelines
-    # recommend, given the 17px UI font this app already uses. Slot width
-    # widened from the old 88px specifically to leave room for a fader
-    # strip that's actually finger-width instead of the old 14px sliver.
+    # Touch-target sizing: 40px buttons and 30px badges land close to the
+    # ~44pt minimum tap target most touch UI guidelines recommend, given
+    # the 17px UI font this app already uses. The fader itself is the
+    # slot's full width, MA-style — it's the channel strip, not a sliver
+    # beside a cue list (that list is gone; its cue name is now drawn
+    # directly on the fader fill — see fader_page.py).
     _FPG_SLOTS   = 15
     _FPG_SLOT_W  = 120    # initial slot width (reflow updates dynamically)
     _FPG_BTN_W   = 108    # initial button width
     _FPG_BTN_H   = 40     # button height — real touch target (was 24)
     _FPG_BADGE_H = 30     # priority/output-mode badge height (was hardcoded 18)
-    _FPG_FADER_W = 40     # fader strip width — touch-target width, not reflowed
+    _FPG_FADER_W = _FPG_SLOT_W - 16   # initial fader width (reflow recomputes)
     # Every fixed-height row in a fader-page slot, in build order, plus the
     # item-spacing gap before each (theme.py's ItemSpacing.y=5) and the
     # child_window's own top+bottom padding (WindowPadding.y=6 each side).
     # Whatever's left of the slot's total height after this goes to the
-    # cuelist/fader row — computed here, not hand-tuned, specifically
-    # because a hand-tuned guess is what caused the fader page's own
-    # buttons to get silently clipped before (no_scrollbar=True hides
+    # fader row — computed here, not hand-tuned, specifically because a
+    # hand-tuned guess is what caused the fader page's own buttons to get
+    # silently clipped before (no_scrollbar=True hides
     # overflow instead of erroring, so a wrong guess is invisible until
     # someone's actually looking at it). _fpg_reflow reuses this same
     # constant so the two can't drift apart from each other.
