@@ -78,13 +78,32 @@ class GUIEngineCore:
     _ERR_PREFIXES = ("Usage:", "Error:", "bad ", "not found", "unknown verb",
                      "Unknown", "invalid", "no stack", "no active", "not set",
                      "AI error")
-    _FPG_SLOTS  = 15
-    _FPG_SLOT_W = 88     # initial slot width (reflow updates dynamically)
-    _FPG_SLOT_H = 340    # initial slot height (reflow updates dynamically)
-    _FPG_FADER_H= 140    # initial fader track height
-    _FPG_FADER_W= 72     # initial fader width
-    _FPG_BTN_W  = 76     # initial button width
-    _FPG_BTN_H  = 24     # button height
+    # Touch-target sizing: 40px buttons/fader width and 30px badges land
+    # close to the ~44pt minimum tap target most touch UI guidelines
+    # recommend, given the 17px UI font this app already uses. Slot width
+    # widened from the old 88px specifically to leave room for a fader
+    # strip that's actually finger-width instead of the old 14px sliver.
+    _FPG_SLOTS   = 15
+    _FPG_SLOT_W  = 120    # initial slot width (reflow updates dynamically)
+    _FPG_BTN_W   = 108    # initial button width
+    _FPG_BTN_H   = 40     # button height — real touch target (was 24)
+    _FPG_BADGE_H = 30     # priority/output-mode badge height (was hardcoded 18)
+    _FPG_FADER_W = 40     # fader strip width — touch-target width, not reflowed
+    # Every fixed-height row in a fader-page slot, in build order, plus the
+    # item-spacing gap before each (theme.py's ItemSpacing.y=5) and the
+    # child_window's own top+bottom padding (WindowPadding.y=6 each side).
+    # Whatever's left of the slot's total height after this goes to the
+    # cuelist/fader row — computed here, not hand-tuned, specifically
+    # because a hand-tuned guess is what caused the fader page's own
+    # buttons to get silently clipped before (no_scrollbar=True hides
+    # overflow instead of erroring, so a wrong guess is invisible until
+    # someone's actually looking at it). _fpg_reflow reuses this same
+    # constant so the two can't drift apart from each other.
+    _FPG_FIXED_ROWS_H = (_FPG_BADGE_H + 20 + 20          # badges, name, level%
+                          + _FPG_BTN_H * 3 + 6 + _FPG_BTN_H  # A/B/C, sep, trig
+                          ) + 5 * 8 + 6 * 2
+    _FPG_SLOT_H  = 540    # initial slot height (reflow updates dynamically)
+    _FPG_FADER_H = max(80, _FPG_SLOT_H - _FPG_FIXED_ROWS_H)  # initial fader h
     _AI_CHIPS = [
         ("warm wash",    "warm amber golden wash on all fixtures, moderate brightness"),
         ("strobe",       "fast white strobe on all fixtures"),
@@ -175,6 +194,11 @@ class GUIEngineCore:
         self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
         self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows fdr (page-1)*15+N
         self._fpg_last_win_size = (0, 0)
+        # Current fader strip size, tracked explicitly (not re-queried via
+        # dpg.get_item_rect_size) so fill-bar redraws stay correct even
+        # before a render frame has happened — rect-size queries only
+        # reflect reality after at least one actual render pass.
+        self._fpg_fader_dims    = (self._FPG_FADER_W, self._FPG_FADER_H)
     def _save_popup_layout(self):
         layout = {}
         for tag in self._POPUP_TAGS:
@@ -237,6 +261,7 @@ class GUIEngineCore:
         self._go_btn_theme        = _make_go_btn_theme()
         self._stop_btn_theme      = _make_stop_btn_theme()
         self._active_slot_theme   = _make_active_slot_theme()
+        self._fpg_fader_theme     = _make_fpg_fader_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
                             # non-resizable full-height viewport, clipping the bottom

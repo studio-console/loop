@@ -144,6 +144,28 @@ def _make_transport_go_theme():
     return t
 
 
+def _make_fpg_fader_theme():
+    """Transparent-track slider theme for the fader-page grid's touch faders.
+
+    The slider itself stays the real interactive widget (tap-anywhere-then-
+    drag is native ImGui/DPG slider behavior, no custom hit-testing needed)
+    but its own frame is made fully transparent so it can sit directly on
+    top of a hand-drawn fill rectangle (see fader_page.py's fpg_faderfill_*)
+    without painting over it. The grab is a thin bright line, not a knob —
+    the drawn fill's top edge is the real level indicator.
+    """
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvSliderInt):
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,          (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered,   (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,    (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,       (230, 210, 255, 220))
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (255, 255, 255, 255))
+            dpg.add_theme_style(dpg.mvStyleVar_GrabMinSize, 10)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 0)
+    return t
+
+
 def _make_dim_btn_theme():
     """Dimmed/inactive button style for toggleable status indicators."""
     with dpg.theme() as t:
@@ -366,5 +388,6 @@ __all__ = [
     "_make_out_moment_theme", "_make_out_vfade_theme", "_make_trig_flash_theme",
     "_make_trig_moment_theme", "_make_pri_hi_theme", "_make_pri_lo_theme",
     "_make_go_btn_theme", "_make_stop_btn_theme", "_make_active_slot_theme",
+    "_make_fpg_fader_theme",
     "_CONSOLE_FONT_CANDIDATES", "_SURFACE_FONT_CANDIDATES", "_setup_fonts",
 ]
