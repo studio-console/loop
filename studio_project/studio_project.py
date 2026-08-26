@@ -8,6 +8,30 @@ import json
 import copy
 import re as _re
 
+# Load studio_data/.env (gitignored — never committed) into the environment
+# before anything else runs. Must happen before any studio_console import:
+# state.py constructs AIEngine at import time, which reads ANTHROPIC_API_KEY
+# from os.environ in its own __init__ — by the time that happens, whatever
+# .env would have set needs to already be there. os.environ.setdefault()
+# means a real shell-exported value always wins over the file, same as
+# every dotenv-style loader.
+def _load_dotenv(path):
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, _, val = line.partition('=')
+            key = key.strip()
+            val = val.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, val)
+
+_load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           'studio_data', '.env'))
+
 from studio_console.models.fixtures import FixtureProfile, FixtureLibrary, GDTFLoader, SubFixture, MasterFixture, Patch, programmer
 from studio_console.models.presets import ColorPreset, ColorPool, DimmerPreset, DimmerPool, AttributePreset, AttributePool, Group, GroupPool, Cue, Stack, CuePool, StackPool, Fader, FaderPool, FXPreset, FXPool, Fade
 
