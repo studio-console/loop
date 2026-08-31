@@ -205,6 +205,21 @@ else:
     gui.build()   # build all widgets (main thread)
     gui.run()     # hand control to DearPyGui — blocks until window closed
 
+    # gui.run() has already saved the popup layout + show (see its own
+    # tail) before returning here, so by this point the operator's work
+    # is safe regardless of what happens below — only driver cleanup is
+    # left. A hardware driver's stop() (sACN sender, MIDI port close,
+    # audio stream teardown) occasionally not returning promptly on a
+    # real machine (network/OS/hardware specifics this dev environment
+    # can't reproduce — no display, limited networking) shouldn't leave
+    # the whole process hanging after the operator has already closed
+    # the window. Force-exit after a grace period generous enough for
+    # normal cleanup if the shutdown below hasn't finished by then.
+    def _force_exit_if_stuck():
+        time.sleep(4.0)
+        os._exit(0)
+    threading.Thread(target=_force_exit_if_stuck, daemon=True).start()
+
     midi.stop()
     network.stop()
     fade_engine.stop()
