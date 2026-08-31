@@ -403,6 +403,11 @@ class GUIEngineCore:
                             resizable=True, x_pos=0, y_pos=32)
         dpg.setup_dearpygui()
         dpg.show_viewport()
+        # Default to fullscreen on launch (was windowed) — DPG's own
+        # fullscreen toggle, not a manual viewport resize, so exiting it
+        # (OS-dependent shortcut, e.g. Ctrl+Cmd+F on macOS) still works
+        # normally afterward.
+        dpg.toggle_viewport_fullscreen()
         dpg.set_primary_window("main", True)
     def _on_cmd_execute(self):
         raw = dpg.get_value("cmd_input").strip()
