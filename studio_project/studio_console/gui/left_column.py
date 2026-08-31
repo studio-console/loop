@@ -76,10 +76,17 @@ class GUIEngineLeftColumn:
                 for line in str(result).splitlines():
                     self._log(f"  {line}")
     def _numpad_backspace(self, s=None, a=None, u=None):
+        """On-screen backspace button — same empty-input-triggers-UNDO
+        behavior as the physical Backspace key (_on_global_backspace),
+        for touch use with no keyboard."""
         try:
             v = dpg.get_value("cmd_input")
             if v:
                 dpg.set_value("cmd_input", v[:-1])
+            elif self._cmd:
+                result = self._cmd("UNDO")
+                if result:
+                    self._log(f"> {result}")
         except Exception:
             pass
     def _numpad_clear_input(self, s=None, a=None, u=None):
@@ -208,12 +215,21 @@ class GUIEngineLeftColumn:
         dpg.set_value("cmd_input",
                       dpg.get_value("cmd_input") + lo)
     def _on_global_backspace(self, *_):
-        """Route Backspace to cmd_input when no other text widget is active."""
+        """Route Backspace to cmd_input when no other text widget is active.
+        Once the command line is already empty, Backspace instead triggers
+        UNDO (same as Ctrl+Z) — a quick, single-key way to reverse the
+        last programmer change with no modifier needed, but only once
+        there's nothing left to delete, so it can never fire mid-typo-fix
+        while actually typing a command."""
         if self._cmd_input_needs_focus():
             return
         v = dpg.get_value("cmd_input")
         if v:
             dpg.set_value("cmd_input", v[:-1])
+        elif self._cmd:
+            result = self._cmd("UNDO")
+            if result:
+                self._log(f"> {result}")
     def _on_global_enter(self, *_):
         """Execute cmd_input command when Enter pressed outside the input field."""
         if self._cmd_input_needs_focus():

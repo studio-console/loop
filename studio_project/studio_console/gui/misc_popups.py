@@ -493,6 +493,7 @@ class GUIEngineMiscPopups:
                 ("Cmd/Ctrl + S",          "save show"),
                 ("tap button (FX panel)", "set BPM from tap intervals (auto-resets after 3s)"),
                 ("Ctrl/Cmd + Z",          "undo last programmer change (same as UNDO command)"),
+                ("Backspace (empty line)", "also undoes — only when the command line is already empty, so it never interrupts typing"),
                 ("MIDI button",           "open MIDI mapping editor"),
                 ("PATCH button",          "open patch editor"),
                 ("PAGES button",          "open pages editor (assign stacks to pages)"),
