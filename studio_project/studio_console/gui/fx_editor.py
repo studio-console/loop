@@ -73,6 +73,40 @@ class GUIEngineFXEditor:
 
             dpg.add_separator()
 
+            # ── Live controls — moved here from the main window to
+            # declutter it (was the "› fx" section in left_column.py).
+            # Same tags/callbacks as before: these act on every currently
+            # RUNNING programmer FX layer at once, independent of whatever
+            # preset slot is loaded above for editing — not a per-preset
+            # setting, so they live in their own row rather than inside
+            # the add-layer form.
+            with dpg.group(horizontal=True):
+                dpg.add_text("› live", color=_C_ACCENT)
+                dpg.add_spacer(width=4)
+                dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=24,
+                               callback=self._on_tap_tempo)
+                dpg.add_text("", tag="fx_tap_label", color=_C_DIM)
+                dpg.add_spacer(width=12)
+                dpg.add_button(label="kill fx", tag="kill_fx_btn", width=90,
+                               callback=lambda: self._cmd("KILL FX") if self._cmd else None)
+                dpg.add_button(label="rsp pool", width=80,
+                               callback=self._on_fx_params_toggle)
+            with dpg.group(horizontal=True):
+                dpg.add_slider_float(label="rate bpm", tag="fx_rate",
+                                     default_value=60.0, min_value=10.0,
+                                     max_value=480.0, width=240,
+                                     callback=self._on_fx_rate)
+                dpg.add_slider_float(label="size", tag="fx_size",
+                                     default_value=100.0, min_value=0.0,
+                                     max_value=100.0, width=240,
+                                     callback=self._on_fx_size)
+                dpg.add_slider_float(label="spread", tag="fx_spread",
+                                     default_value=0.0, min_value=0.0,
+                                     max_value=100.0, width=240,
+                                     callback=self._on_fx_spread)
+
+            dpg.add_separator()
+
             # ── Layer list ────────────────────────────────────
             dpg.add_text("layers:", color=_C_DIM)
             with dpg.child_window(tag="fxed_layers_win",

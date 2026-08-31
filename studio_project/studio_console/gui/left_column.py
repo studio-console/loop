@@ -52,33 +52,13 @@ class GUIEngineLeftColumn:
                                   border=False, no_scrollbar=False, no_scroll_with_mouse=False):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
 
-            # ── FX controls ─────────────────────
-            with dpg.group(horizontal=True):
-                dpg.add_text("› fx", color=_C_ACCENT)
-                dpg.add_spacer(width=4)
-                dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=24,
-                               callback=self._on_tap_tempo)
-                dpg.add_text("", tag="fx_tap_label", color=_C_DIM)
-            dpg.add_separator()
-            _sw = _W - 120
-            dpg.add_slider_float(label="rate bpm", tag="fx_rate",
-                                 default_value=60.0, min_value=10.0,
-                                 max_value=480.0, width=_sw,
-                                 callback=self._on_fx_rate)
-            dpg.add_slider_float(label="size    ", tag="fx_size",
-                                 default_value=100.0, min_value=0.0,
-                                 max_value=100.0, width=_sw,
-                                 callback=self._on_fx_size)
-            dpg.add_slider_float(label="spread  ", tag="fx_spread",
-                                 default_value=0.0, min_value=0.0,
-                                 max_value=100.0, width=_sw,
-                                 callback=self._on_fx_spread)
-            with dpg.group(horizontal=True):
-                dpg.add_button(label="kill fx", tag="kill_fx_btn",
-                               width=_W - 20 - 80 - 4,
-                               callback=lambda: self._cmd("KILL FX") if self._cmd else None)
-                dpg.add_button(label="rsp pool", width=80,
-                               callback=self._on_fx_params_toggle)
+            # FX live controls (tap/rate/size/spread/kill fx/rsp pool) moved
+            # into the fx editor window — see _build_fx_editor_popup in
+            # fx_editor.py. Kept out of the main window to declutter it;
+            # same tags (fx_rate/fx_size/fx_spread/etc.), same callbacks,
+            # so _tick_fx_header's live sync is unaffected by the move —
+            # DPG widgets are addressed by tag regardless of which window
+            # currently contains them.
     def _numpad_append(self, sender, app_data, user_data):
         """Append a string to the command input field."""
         try:
