@@ -396,6 +396,7 @@ class GUIEngineCore:
             dpg.bind_item_theme("go_btn",           self._transport_go_theme)
             dpg.bind_item_theme("back_btn",         self._back_theme)
             dpg.bind_item_theme("numpad_digit_group", self._numpad_digit_theme)
+            dpg.bind_item_theme("hdr_close_btn",    self._alert_btn_theme)
         except Exception:
             pass
 

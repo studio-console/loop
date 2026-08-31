@@ -92,6 +92,23 @@ class GUIEngineHeader:
                            callback=self._on_save)
             dpg.add_spacer(width=6)
             dpg.add_text("", tag="hdr_save_status", color=_C_DIM)
+            dpg.add_spacer(width=8)
+            dpg.add_text("│", color=_C_BORDER)
+            dpg.add_spacer(width=6)
+
+            # cluster: window — min / close. The app starts fullscreen
+            # (no OS title bar), so these are the only way to minimize or
+            # quit without a keyboard shortcut. "close" runs the same
+            # dpg.stop_dearpygui() the OS window-close button would have
+            # triggered, which flows into run()'s normal shutdown path
+            # (popup layout + show autosave) — not a hard process kill.
+            dpg.add_text("win", color=_C_DIM)
+            dpg.add_spacer(width=4)
+            dpg.add_button(label="min", tag="hdr_minimize_btn", width=46, height=24,
+                           callback=lambda: dpg.minimize_viewport())
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="close", tag="hdr_close_btn", width=56, height=24,
+                           callback=lambda: dpg.stop_dearpygui())
 
         dpg.add_separator()
         # ── Status bar: programmer state + mode pills + selection ─
