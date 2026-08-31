@@ -305,7 +305,7 @@ class FXLayer:
                  dim_id=None, speed_id=None,
                  phase_offset=0.0, infade=0.0, outfade=0.0,
                  block_size=1, order='linear', direction='forward',
-                 grouping=None):
+                 grouping=None, low=0.0):
         self.fx_id        = fx_id
         self.waveform     = waveform
         self.channel      = channel
@@ -380,6 +380,15 @@ class FXLayer:
 
         # Per-fader amplitude multiplier — set by FADER n SIZE; 1.0 = normal
         self.size_scale = 1.0
+
+        # Floor for the oscillation range (0-100, same units as size) — the
+        # waveform swings between `low` and `size` instead of between 0 and
+        # `size`, e.g. low=40 size=70 keeps a strobe/dim sync between 40%
+        # and 70% instead of ever going fully dark. No pool backing (unlike
+        # rate/size/spread) — a plain inline value, since there's no
+        # existing "low" concept to reuse a preset pool for. 0 (default)
+        # reproduces the exact original 0-to-size behavior.
+        self.low = max(0.0, min(100.0, float(low)))
 
     def begin_outfade(self, now=None):
         """Trigger amplitude ramp-out. Engine auto-removes when amplitude hits 0."""
@@ -547,16 +556,29 @@ class FXLayer:
             cycle_phase = (now - self.start) * rate_hz
         base_phase = cycle_phase + self.phase_offset
 
-        # size  0-100 → 0-255 DMX;  spread 0-100 → 0.0-1.0 phase fraction
-        sz     = (self.size / 100.0) * 255.0 * env * max(0.0, self.size_scale)
+        # size 0-100 → 0-255 DMX high bound; low 0-100 → 0-255 DMX floor;
+        # spread 0-100 → 0.0-1.0 phase fraction. The waveform swings
+        # between `base` (low) and `base + swing` (high) instead of
+        # between 0 and high — low=0 (default) makes swing == the
+        # original sz and base == 0, i.e. the exact original 0-to-size
+        # behavior. Both base and swing scale with env/size_scale
+        # together so the whole effect (floor included) still fades to
+        # true 0 on infade/outfade/FADER SIZE, rather than leaving a
+        # residual floor lit after the effect has "faded out".
+        env_scale = env * max(0.0, self.size_scale)
+        lo_frac = max(0.0, min(1.0, self.low  / 100.0))
+        hi_frac = max(0.0, min(1.0, self.size / 100.0))
+        if hi_frac < lo_frac:
+            hi_frac = lo_frac
+        base   = lo_frac * 255.0 * env_scale
+        swing  = (hi_frac - lo_frac) * 255.0 * env_scale
         sp     = self.spread / 100.0
         result = {}
         for i, sub in enumerate(self.targets):
             phase = (base_phase + self._offsets[i] * sp) % 1.0
-            if self.waveform == 'flicker':
-                result[str(sub.fixture_id)] = Waveform.flicker(phase, i) * sz
-            else:
-                result[str(sub.fixture_id)] = fn(phase) * sz
+            wave_val = (Waveform.flicker(phase, i) if self.waveform == 'flicker'
+                        else fn(phase))
+            result[str(sub.fixture_id)] = base + wave_val * swing
         return result
 
     def __repr__(self):
@@ -573,8 +595,9 @@ class FXLayer:
         if self.order != 'linear':  dist.append(f"order:{self.order}")
         if self.direction != 'forward': dist.append(f"dir:{self.direction}")
         dist_s = f" ({','.join(dist)})" if dist else ""
+        low_s = f" low={self.low:.0f}" if self.low else ""
         return (f"[FX {self.fx_id}] {self.waveform}{ref_s} on {self.channel} | "
-                f"{self.rate_bpm:.1f}BPM size={self.size:.0f} spread={self.spread:.2f}{dist_s} "
+                f"{self.rate_bpm:.1f}BPM size={self.size:.0f}{low_s} spread={self.spread:.2f}{dist_s} "
                 f"[{len(self.targets)} targets]")
 
 
@@ -615,7 +638,7 @@ class FXEngine:
             speed_id=None,
             phase_offset=0.0, infade=0.0, outfade=0.0,
             block_size=1, order='linear', direction='forward',
-            grouping=None):
+            grouping=None, low=0.0):
         """
         Add an FX layer.
         waveform    — name string ('sine', 'ramp' …) or ignored when form_id given.
@@ -628,6 +651,9 @@ class FXEngine:
         direction   — 'forward' | 'reverse' | 'bounce' (default 'forward').
         grouping    — None | 'block' | 'mirror' | 'cluster' | 'random' — see
                       FXLayer's own docstring/comments for what each does.
+        low         — 0-100 floor for the oscillation range; the waveform
+                      swings between low and size instead of 0 and size
+                      (default 0 — unchanged original behavior).
         """
         layer = FXLayer(
             fx_id, waveform, channel, rate_bpm, size, targets, spread,
@@ -651,6 +677,7 @@ class FXEngine:
             order        = order,
             direction    = direction,
             grouping     = grouping,
+            low          = low,
         )
         with self._lock:
             self._layers[fx_id] = layer
@@ -764,6 +791,7 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
             key = (ld.get('waveform', 'sine'), ld.get('channel'),
                    round(ld.get('bpm',    60.0), 3),
                    round(ld.get('size',  100.0), 2),
+                   round(ld.get('low',     0.0), 2),
                    round(ld.get('spread',  0.0), 4),
                    ld.get('phase_offset', 0.0),
                    ld.get('form_id'), ld.get('rate_id'),

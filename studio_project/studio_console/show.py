@@ -534,6 +534,7 @@ class ShowFile:
                     'order':        ld.get('order', 'linear'),
                     'direction':    ld.get('direction', 'forward'),
                     'grouping':     ld.get('grouping'),
+                    'low':          ld.get('low', 0.0),
                     'target_scope': ld.get('target_scope'),
                 })
             doc["fx_presets"][str(pid)] = {"name": preset.name, "layers": layers_out}
@@ -570,6 +571,7 @@ class ShowFile:
                     order        = ld.get("order",   "linear"),
                     direction    = ld.get("direction","forward"),
                     grouping     = ld.get("grouping"),
+                    low          = ld.get("low", 0.0),
                     target_scope = ld.get("target_scope"),
                 )
             fx_pool.store(pid, preset)

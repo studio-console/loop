@@ -795,6 +795,7 @@ class Fader:
                 order        = ld.get('order',    'linear'),
                 direction    = ld.get('direction','forward'),
                 grouping     = ld.get('grouping'),
+                low          = ld.get('low', 0.0),
             )
             self._fx_ids.append(fxid)
             # Apply fader size_factor to the newly-created layer
@@ -1015,12 +1016,13 @@ class FXPreset:
                   form_id=None, rate_id=None, size_id=None, spread_id=None, bpm=None,
                   dim_id=None, color_id=None, group_id=None, speed_id=None,
                   phase_offset=0.0, block_size=1, order='linear', direction='forward',
-                  grouping=None, target_scope=None):
+                  grouping=None, low=0.0, target_scope=None):
         self.layers.append({
             'waveform':      waveform.lower(),
             'channel':       channel.lower(),
             'bpm':           float(bpm if bpm is not None else rate_bpm),
             'size':          float(size),
+            'low':           float(low),
             'spread':        float(spread),
             'phase_offset':  float(phase_offset),
             'form_id':       form_id,
@@ -1062,6 +1064,7 @@ class FXPreset:
                 order        = ld.get('order', 'linear'),
                 direction    = ld.get('direction', 'forward'),
                 grouping     = ld.get('grouping'),
+                low          = ld.get('low', 0.0),
             )
             fired.append(layer)
         return fired
@@ -1100,6 +1103,7 @@ class FXPool:
                 size_id   = layer._size_id,
                 spread_id = layer._spread_id,
                 grouping  = layer.grouping,
+                low       = layer.low,
             )
         self.presets[int(n)] = preset
         return preset

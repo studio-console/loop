@@ -233,6 +233,7 @@ def _prog_fx_start(fx_defs_by_fid):
             order        = ld.get('order',    'linear'),
             direction    = ld.get('direction','forward'),
             grouping     = ld.get('grouping'),
+            low          = ld.get('low', 0.0),
         )
         _prog_fx_ids.append(fxid)
         active_fx.append(layer)

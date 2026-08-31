@@ -394,19 +394,24 @@ def cmd_039_fx_main(t0, tokens, raw):
                 lines.append("Pool: (empty)")
             return "\n".join(lines)
 
-        # fx [add] <waveform|form n|COLOR n> [channel] [bpm n] [size n] [SPREAD n]
-        #   [group n] [dimref n] [BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
+        # fx [add] <waveform|form n|COLOR n> [channel] [bpm n] [size n] [LOW n] [SPREAD n]
+        #   [group n] [dimref n] [BLOCK n] [GROUPING BLOCK|MIRROR|CLUSTER|RANDOM]
+        #   [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
         #
         # Tree references:
         #   COLOR n  — drives R/G/B from Colorpreset n (waveform drives intensity of that color)
         #   GROUP n  — target only fixtures in GroupPool slot n instead of programmer selection
         #   dimref n — live size ceiling: Dimmerpreset n's level scales FX amplitude (0–1)
+        #   LOW n    — floor for the oscillation range (0-100, default 0); the
+        #              waveform swings between LOW and SIZE instead of 0 and
+        #              SIZE, e.g. LOW 40 SIZE 70 keeps a dim/strobe sync
+        #              between 40% and 70% instead of ever going fully dark.
         add_mode = (sub == 'ADD')
         base_idx = 2 if add_mode else 1
 
         if base_idx >= len(tokens):
             return ("usage: fx [add] <waveform|form n|COLOR n> [channel] "
-                    "[bpm n] [size n] [SPREAD n] [group n] [dimref n] "
+                    "[bpm n] [size n] [low n] [SPREAD n] [group n] [dimref n] "
                     "[BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE]")
 
         form_id  = None
@@ -457,6 +462,7 @@ def cmd_039_fx_main(t0, tokens, raw):
 
         bpm       = _fx_val('BPM',     _fx_params['rate_bpm'])
         size      = _fx_val('SIZE',    _fx_params['size'])
+        low       = _fx_val('LOW',     0.0)
         spread    = _fx_val('SPREAD',  _fx_params['spread'])
         phase     = _fx_val('PHASE',   0.0)
         infade    = _fx_val('INFADE',  _fx_params['infade'])
@@ -524,6 +530,7 @@ def cmd_039_fx_main(t0, tokens, raw):
             'channel':      channel.lower(),
             'bpm':          bpm,
             'size':         size,
+            'low':          low,
             'spread':       spread,
             'phase_offset': phase,
             'infade':       infade,
@@ -630,6 +637,7 @@ def cmd_040_record_fx(t0, tokens, raw):
                 order        = ld.get('order',    'linear'),
                 direction    = ld.get('direction','forward'),
                 grouping     = ld.get('grouping'),
+                low          = ld.get('low', 0.0),
                 target_scope = ld.get('target_scope'),
             )
         fx_pool.store(fx_n, preset)

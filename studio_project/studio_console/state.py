@@ -1052,6 +1052,7 @@ def import_presets(path):
                     block_size=ld.get("block_size", 1),
                     order=ld.get("order", "linear"), direction=ld.get("direction", "forward"),
                     grouping=ld.get("grouping"),
+                    low=ld.get("low", 0.0),
                     target_scope=ld.get("target_scope"),
                 )
             fx_pool.store(pid, preset)
