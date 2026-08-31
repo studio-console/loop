@@ -976,6 +976,7 @@ class GUIEnginePoolsPanel:
         self._fx_sliders_to_prog('bpm', value)
         if self._fx_params is not None:
             self._fx_params['rate_bpm'] = value
+        self._fxed_push_to_selected_row('bpm', value)
     def _on_fx_size(self, sender, value):
         for layer in self._fx._layers.values():
             if layer.fx_id >= 10000:
@@ -984,6 +985,7 @@ class GUIEnginePoolsPanel:
         self._fx_sliders_to_prog('size', value)
         if self._fx_params is not None:
             self._fx_params['size'] = value
+        self._fxed_push_to_selected_row('size', value)
     def _on_fx_spread(self, sender, value):
         for layer in self._fx._layers.values():
             if layer.fx_id >= 10000:
@@ -992,6 +994,7 @@ class GUIEnginePoolsPanel:
         self._fx_sliders_to_prog('spread', value)
         if self._fx_params is not None:
             self._fx_params['spread'] = value
+        self._fxed_push_to_selected_row('spread', value)
     def _on_tap_tempo(self, *_):
         """Record a tap — delegates to the TAP command so GUI and text share state."""
         if self._cmd:

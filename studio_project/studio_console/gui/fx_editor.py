@@ -16,6 +16,14 @@ class GUIEngineFXEditor:
         """Floating FX preset editor — hidden by default, opened via FX ED button."""
         self._fx_ed_slot   = None   # currently selected preset slot (int)
         self._fx_ed_layers = []     # working copy: list of layer dicts
+        # Which _fx_ed_layers row (int, or None if no layers) the live
+        # rate/size/spread sliders below are bidirectionally linked to —
+        # dragging a slider updates this row's bpm/size/spread, and
+        # editing the row's own bpm/size/spread fields updates the
+        # slider. Clamped/defaulted by _fxed_rebuild_rows on every call
+        # rather than by each individual caller, so there's one place
+        # that can't drift out of sync with the actual layer list.
+        self._fx_ed_selected_row = None
 
         _FXED_COLS   = 8
         _FXED_BTN_W  = 108   # 8 × 108 + 7 × 6 spacing ≈ 906, fits in 940px window
@@ -104,6 +112,7 @@ class GUIEngineFXEditor:
                                      default_value=0.0, min_value=0.0,
                                      max_value=100.0, width=240,
                                      callback=self._on_fx_spread)
+                dpg.add_text("", tag="fxed_linked_lbl", color=_C_DIM)
 
             dpg.add_separator()
 
@@ -115,6 +124,7 @@ class GUIEngineFXEditor:
                                borders_innerV=False, borders_outerV=False,
                                borders_innerH=False, borders_outerH=False,
                                policy=dpg.mvTable_SizingFixedFit):
+                    dpg.add_table_column(label="live",     width_fixed=True, init_width_or_weight=32)
                     dpg.add_table_column(label="waveform", width_fixed=True, init_width_or_weight=94)
                     dpg.add_table_column(label="channel",  width_fixed=True, init_width_or_weight=74)
                     dpg.add_table_column(label="bpm",      width_fixed=True, init_width_or_weight=64)
@@ -181,6 +191,7 @@ class GUIEngineFXEditor:
     def _fxed_select_slot(self, _s, _a, user_data):
         self._fx_ed_slot = user_data
         preset = self._fx_pool.get(user_data) if self._fx_pool else None
+        self._fx_ed_selected_row = None   # a different preset — don't carry over a stale row index
         if preset:
             dpg.set_value("fxed_name", preset.name)
             self._fx_ed_layers = [dict(ld) for ld in preset.layers]
@@ -194,6 +205,7 @@ class GUIEngineFXEditor:
                 self._fx_ed_slot = n
                 dpg.set_value("fxed_name", f"fx {n}")
                 self._fx_ed_layers = []
+                self._fx_ed_selected_row = None
                 self._fxed_rebuild_rows()
                 return
         self._log(f"all {self._POOL_SLOTS} fx slots are full — delete one first")
@@ -201,6 +213,7 @@ class GUIEngineFXEditor:
         if self._fx_ed_slot and self._fx_pool:
             self._fx_pool.delete(self._fx_ed_slot)
             self._fx_ed_layers = []
+            self._fx_ed_selected_row = None
             dpg.set_value("fxed_name", "")
             self._fxed_rebuild_rows()
             ShowFile.save_fx_pool(self._fx_pool)
@@ -214,6 +227,7 @@ class GUIEngineFXEditor:
             {'waveform': 'sine', 'channel': 'green', 'bpm': 30.0, 'size': 200.0, 'spread': 1.0, 'phase_offset': 0.333},
             {'waveform': 'sine', 'channel': 'blue',  'bpm': 30.0, 'size': 200.0, 'spread': 1.0, 'phase_offset': 0.667},
         ]
+        self._fx_ed_selected_row = None
         if not dpg.get_value("fxed_name"):
             dpg.set_value("fxed_name", "rainbow")
         self._fxed_rebuild_rows()
@@ -224,6 +238,7 @@ class GUIEngineFXEditor:
             {'waveform': 'pulse', 'channel': 'green', 'bpm': 60.0, 'size': 200.0, 'spread': 1.0, 'phase_offset': 0.333},
             {'waveform': 'pulse', 'channel': 'blue',  'bpm': 60.0, 'size': 200.0, 'spread': 1.0, 'phase_offset': 0.667},
         ]
+        self._fx_ed_selected_row = None
         if not dpg.get_value("fxed_name"):
             dpg.set_value("fxed_name", "chase rgb")
         self._fxed_rebuild_rows()
@@ -254,6 +269,17 @@ class GUIEngineFXEditor:
                 pass
         self._fxed_row_ids = []
 
+        # Clamp/default the slider-linked row here, once, rather than in
+        # every caller that can change _fx_ed_layers (select slot, new
+        # preset, add/remove layer, rainbow/chase templates, ...) — one
+        # place that can't drift out of sync with the actual layer list.
+        n_layers = len(self._fx_ed_layers)
+        if n_layers == 0:
+            self._fx_ed_selected_row = None
+        elif (self._fx_ed_selected_row is None
+              or not (0 <= self._fx_ed_selected_row < n_layers)):
+            self._fx_ed_selected_row = 0
+
         _spd_items = ["—"] + [str(n) for n in range(1, SpeedMasterPool._DEFAULT_SLOTS + 1)]
         _grp_items = self._fxed_named_items(self._groups,  'groups',  'name')
         _col_items = self._fxed_named_items(self._colors,  'presets', 'name')
@@ -269,6 +295,14 @@ class GUIEngineFXEditor:
             # _fxed_sync_rows() reads the correct value even if the user never
             # touched the widget (default_value alone isn't returned by get_value).
             with dpg.table_row(parent="fxed_layer_table") as row_id:
+                # "live" column — which row the rate/size/spread sliders
+                # above are bidirectionally linked to. ● marks the linked
+                # row; click any row's mark to re-link it.
+                _is_sel = (i == self._fx_ed_selected_row)
+                dpg.add_selectable(label="●" if _is_sel else "○",
+                                   tag=f"fxed_r{i}_sel", width=20,
+                                   callback=self._fxed_select_row, user_data=i)
+
                 dpg.add_combo(tag=f"fxed_r{i}_wave", label="", width=90,
                               items=self._FX_WAVEFORMS,
                               default_value=ld.get('waveform', 'sine'))
@@ -282,19 +316,25 @@ class GUIEngineFXEditor:
                 dpg.add_input_float(tag=f"fxed_r{i}_bpm", label="", width=60,
                                     default_value=ld.get('bpm', 60.0),
                                     min_value=1.0, max_value=999.0,
-                                    step=0, format="%.1f")
+                                    step=0, format="%.1f",
+                                    callback=self._fxed_on_row_val_change,
+                                    user_data=(i, 'bpm'))
                 dpg.set_value(f"fxed_r{i}_bpm", ld.get('bpm', 60.0))
 
                 dpg.add_input_float(tag=f"fxed_r{i}_size", label="", width=60,
                                     default_value=ld.get('size', 100.0),
                                     min_value=0.0, max_value=100.0,
-                                    step=0, format="%.0f")
+                                    step=0, format="%.0f",
+                                    callback=self._fxed_on_row_val_change,
+                                    user_data=(i, 'size'))
                 dpg.set_value(f"fxed_r{i}_size", ld.get('size', 100.0))
 
                 dpg.add_input_float(tag=f"fxed_r{i}_spread", label="", width=55,
                                     default_value=ld.get('spread', 0.0),
                                     min_value=0.0, max_value=100.0,
-                                    step=0, format="%.1f")
+                                    step=0, format="%.1f",
+                                    callback=self._fxed_on_row_val_change,
+                                    user_data=(i, 'spread'))
                 dpg.set_value(f"fxed_r{i}_spread", ld.get('spread', 0.0))
 
                 dpg.add_input_float(tag=f"fxed_r{i}_phase", label="", width=55,
@@ -325,6 +365,73 @@ class GUIEngineFXEditor:
                                callback=self._fxed_remove_layer,
                                user_data=i)
             self._fxed_row_ids.append(row_id)
+        self._fxed_sync_sliders_to_selected_row()
+    def _fxed_select_row(self, _s, _a, user_data):
+        """Re-link the rate/size/spread sliders to a different layer row."""
+        self._fx_ed_selected_row = int(user_data)
+        for i in range(len(self._fx_ed_layers)):
+            try:
+                dpg.configure_item(f"fxed_r{i}_sel",
+                                   label="●" if i == self._fx_ed_selected_row else "○")
+            except Exception:
+                pass
+        self._fxed_sync_sliders_to_selected_row()
+    def _fxed_sync_sliders_to_selected_row(self):
+        """Push the linked row's bpm/size/spread into the live sliders
+        (display only — does not touch running FX) and update the label
+        showing which row is linked."""
+        idx = self._fx_ed_selected_row
+        try:
+            if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
+                dpg.set_value("fxed_linked_lbl", "no layer linked")
+                return
+            ld = self._fx_ed_layers[idx]
+            dpg.set_value("fx_rate",   ld.get('bpm',    60.0))
+            dpg.set_value("fx_size",   ld.get('size',  100.0))
+            dpg.set_value("fx_spread", ld.get('spread',  0.0))
+            dpg.set_value("fxed_linked_lbl", f"↔ linked to row {idx + 1}")
+        except Exception:
+            pass
+    def _fxed_on_row_val_change(self, _sender, app_data, user_data):
+        """A layer row's own bpm/size/spread field was edited directly.
+        Updates _fx_ed_layers immediately (not just on the next
+        _fxed_sync_rows() pass) and, if this is the slider-linked row,
+        pushes the same value out through the normal live-FX slider
+        callback — editing the linked row's field is equivalent to
+        dragging its slider, not a separate/silent path."""
+        i, field = user_data
+        if 0 <= i < len(self._fx_ed_layers):
+            self._fx_ed_layers[i][field] = app_data
+        if i == self._fx_ed_selected_row:
+            # A real slider drag has DPG update the slider's own displayed
+            # value natively as part of the drag — calling its callback
+            # out-of-band like this doesn't, so it has to be done here
+            # explicitly or the slider would silently stay stale even
+            # though everything it *controls* did update.
+            _slider_tag = {'bpm': 'fx_rate', 'size': 'fx_size',
+                           'spread': 'fx_spread'}[field]
+            try:
+                dpg.set_value(_slider_tag, app_data)
+            except Exception:
+                pass
+            {'bpm': self._on_fx_rate,
+             'size': self._on_fx_size,
+             'spread': self._on_fx_spread}[field](None, app_data)
+    def _fxed_push_to_selected_row(self, field, value):
+        """Called from _on_fx_rate/_on_fx_size/_on_fx_spread (pools_panel.py)
+        on every live slider drag — the other half of the bidirectional
+        link: mirrors the drag into the slider-linked row's stored value
+        and displayed table cell, if one is linked. A no-op if the FX
+        editor hasn't been opened/built yet or no row is linked."""
+        idx = getattr(self, '_fx_ed_selected_row', None)
+        layers = getattr(self, '_fx_ed_layers', None)
+        if idx is None or not layers or not (0 <= idx < len(layers)):
+            return
+        layers[idx][field] = value
+        try:
+            dpg.set_value(f"fxed_r{idx}_{field}", value)
+        except Exception:
+            pass
     def _fxed_add_layer(self, *_):
         self._fxed_sync_rows()   # save any edits in existing rows first
         self._fx_ed_layers.append({
