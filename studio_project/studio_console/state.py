@@ -107,7 +107,8 @@ speed_master_pool = SpeedMasterPool()
 fx_engine    = FXEngine(output_state, form_pool=form_pool,
                         rate_pool=rate_pool, size_pool=size_pool,
                         spread_pool=spread_pool, dim_pool=dim_pool,
-                        speed_master_pool=speed_master_pool)
+                        speed_master_pool=speed_master_pool,
+                        group_pool=group_pool)
 # Wire fx_engine + form_pool into fader_pool so new faders inherit them
 fader_pool.default_fx_engine  = fx_engine
 fader_pool.default_form_pool  = form_pool
@@ -1050,6 +1051,7 @@ def import_presets(path):
                     group_id=ld.get("group_id"), speed_id=ld.get("speed_id"),
                     block_size=ld.get("block_size", 1),
                     order=ld.get("order", "linear"), direction=ld.get("direction", "forward"),
+                    grouping=ld.get("grouping"),
                     target_scope=ld.get("target_scope"),
                 )
             fx_pool.store(pid, preset)

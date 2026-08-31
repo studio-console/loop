@@ -533,6 +533,7 @@ class ShowFile:
                     'block_size':   ld.get('block_size', 1),
                     'order':        ld.get('order', 'linear'),
                     'direction':    ld.get('direction', 'forward'),
+                    'grouping':     ld.get('grouping'),
                     'target_scope': ld.get('target_scope'),
                 })
             doc["fx_presets"][str(pid)] = {"name": preset.name, "layers": layers_out}
@@ -568,6 +569,7 @@ class ShowFile:
                     block_size   = ld.get("block_size",     1),
                     order        = ld.get("order",   "linear"),
                     direction    = ld.get("direction","forward"),
+                    grouping     = ld.get("grouping"),
                     target_scope = ld.get("target_scope"),
                 )
             fx_pool.store(pid, preset)

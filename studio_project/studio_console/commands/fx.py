@@ -494,6 +494,21 @@ def cmd_039_fx_main(t0, tokens, raw):
         elif dir_word in ('FWD', 'FORWARD'):
             direction = 'forward'
 
+        # GROUPING <BLOCK|MIRROR|CLUSTER|RANDOM|NONE> — selects the algorithm
+        # that buckets targets into phase-steps (see FXLayer's grouping
+        # comments in engine/fx.py for what each does). Distinct from the
+        # bare GROUP n above, which selects the target *fixtures* — this
+        # picks the chase *pattern* across whatever targets end up in play.
+        grouping = None
+        grouping_m = _re.search(r'\bGROUPING\s+(\w+)', up)
+        if grouping_m:
+            _gw = grouping_m.group(1)
+            grouping = {
+                'BLOCK': 'block', 'MIRROR': 'mirror',
+                'CLUSTER': 'cluster', 'RANDOM': 'random',
+                'NONE': None,
+            }.get(_gw)
+
         target_scope = None
         if 'PIXEL' in up_tokens:
             target_scope = 'pixel'
@@ -523,6 +538,7 @@ def cmd_039_fx_main(t0, tokens, raw):
             'block_size':   block_size,
             'order':        order,
             'direction':    direction,
+            'grouping':     grouping,
             'target_scope': target_scope,
         }
 
@@ -613,6 +629,7 @@ def cmd_040_record_fx(t0, tokens, raw):
                 block_size   = ld.get('block_size',      1),
                 order        = ld.get('order',    'linear'),
                 direction    = ld.get('direction','forward'),
+                grouping     = ld.get('grouping'),
                 target_scope = ld.get('target_scope'),
             )
         fx_pool.store(fx_n, preset)

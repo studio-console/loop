@@ -300,11 +300,12 @@ class FXLayer:
     def __init__(self, fx_id, waveform, channel, rate_bpm, size,
                  targets, spread=0.0,
                  form_pool=None, rate_pool=None, size_pool=None, spread_pool=None,
-                 dim_pool=None, speed_master_pool=None,
+                 dim_pool=None, speed_master_pool=None, group_pool=None,
                  form_id=None, rate_id=None, size_id=None, spread_id=None,
                  dim_id=None, speed_id=None,
                  phase_offset=0.0, infade=0.0, outfade=0.0,
-                 block_size=1, order='linear', direction='forward'):
+                 block_size=1, order='linear', direction='forward',
+                 grouping=None):
         self.fx_id        = fx_id
         self.waveform     = waveform
         self.channel      = channel
@@ -314,14 +315,41 @@ class FXLayer:
         self.is_active    = True
 
         # Distribution — how targets are grouped/sequenced across the spread.
-        # block_size — adjacent targets per step (1 = one target per step).
+        # `grouping` selects the algorithm that buckets the target list
+        # into phase-steps, which is what actually produces different
+        # chase *patterns* from the same waveform/targets:
+        #   grouping=None (default) — legacy behavior, unchanged: plain
+        #       block_size chunking (adjacent targets per step) + the
+        #       separate order='random'/direction knobs below. Existing
+        #       saved shows/layers have no grouping field and must
+        #       reproduce their exact original pattern.
+        #   'block'   — same block_size chunking, named explicitly.
+        #   'mirror'  — folds the target list in half: target i and target
+        #       (n-1-i) share a phase-step, so the pattern runs
+        #       symmetrically from both ends inward (or center outward,
+        #       with direction='reverse') — e.g. a stage-left/stage-right
+        #       mirrored chase instead of a single sweep across everything.
+        #   'cluster' — phase-step is which GroupPool group a target's
+        #       fixture belongs to (by group_id order; ungrouped fixtures
+        #       share one trailing step) instead of raw list position —
+        #       e.g. "front truss" and "back truss" step separately
+        #       regardless of patch order, if those are two Groups.
+        #   'random'  — steps shuffled once (stable per fx_id) — same
+        #       mechanism order='random' already provided, just reachable
+        #       from the one grouping selector alongside the others.
+        # block_size — adjacent targets per step (1 = one target per step);
+        #              only meaningful when grouping is None or 'block'.
         # order      — 'linear' (patch order) or 'random' (shuffled once, stable per fx_id).
+        #              Superseded by grouping='random' but kept for the
+        #              grouping=None legacy path.
         # direction  — 'forward' | 'reverse' (flips step sequence) | 'bounce' (phase
         #              folds forward-then-back in time instead of wrapping — the whole
         #              chase sweeps out across targets and back).
         self.block_size = max(1, int(block_size))
         self.order      = order
         self.direction  = direction
+        self.grouping   = grouping
+        self._group_pool = group_pool
         self._offsets   = self._compute_offsets()
 
         # Amplitude envelope
@@ -429,22 +457,31 @@ class FXLayer:
     def _compute_offsets(self):
         """
         Precompute each target's 0.0-1.0 phase offset (before the spread
-        multiplier is applied), honoring block_size/order/direction.
-        Computed once at construction — order='random' shuffles groups with
-        a seed stable for this layer's lifetime, not re-rolled every tick.
+        multiplier is applied), honoring grouping/block_size/order/direction.
+        Computed once at construction — random shuffles groups with a seed
+        stable for this layer's lifetime, not re-rolled every tick.
 
-        block_size=1, order='linear', direction='forward' reproduces the
-        original i/count offset exactly, so existing saved shows are
-        unaffected.
+        grouping=None, block_size=1, order='linear', direction='forward'
+        reproduces the original i/count offset exactly, so existing saved
+        shows are unaffected.
         """
         n = len(self.targets)
         if n <= 1:
             return [0.0] * n
 
-        group_of    = [i // self.block_size for i in range(n)]
-        num_groups  = group_of[-1] + 1
+        if self.grouping == 'mirror':
+            # Target i and target (n-1-i) share a phase-step — the pattern
+            # runs symmetrically from both ends inward.
+            group_of = [min(i, n - 1 - i) for i in range(n)]
+        elif self.grouping == 'cluster':
+            group_of = self._cluster_indices()
+        else:
+            # None or 'block' — plain adjacent-target chunking.
+            group_of = [i // self.block_size for i in range(n)]
+
+        num_groups  = max(group_of) + 1
         positions   = list(range(num_groups))
-        if self.order == 'random':
+        if self.grouping == 'random' or self.order == 'random':
             random.Random(self.fx_id).shuffle(positions)
         if self.direction == 'reverse':
             positions = positions[::-1]
@@ -452,6 +489,30 @@ class FXLayer:
         denom        = num_groups if num_groups > 1 else 1
         group_offset = [p / denom for p in positions]
         return [group_offset[g] for g in group_of]
+
+    def _cluster_indices(self):
+        """Bucket targets by GroupPool membership instead of raw list
+        order — targets whose containing fixture is in the same Group
+        step together (grouped by group_id order; a target whose fixture
+        isn't in any group falls into one trailing shared bucket)."""
+        n = len(self.targets)
+        if not self._group_pool:
+            return [0] * n
+        fids = []
+        for t in self.targets:
+            fid = getattr(t, 'master_id', None)
+            if fid is None:
+                fid = getattr(t, 'fixture_id', None)
+            fids.append(fid)
+        group_ids_sorted = sorted(self._group_pool.groups.keys())
+        fid_to_bucket = {}
+        for bucket_idx, gid in enumerate(group_ids_sorted):
+            grp = self._group_pool.groups[gid]
+            for _type, member_fid in grp.members:
+                if member_fid not in fid_to_bucket:
+                    fid_to_bucket[member_fid] = bucket_idx
+        ungrouped_bucket = len(group_ids_sorted)
+        return [fid_to_bucket.get(fid, ungrouped_bucket) for fid in fids]
 
     def get_values(self, now):
         if not self.is_active or not self.targets:
@@ -507,6 +568,7 @@ class FXLayer:
         if self._dim_id    is not None: refs.append(f"dimref:{self._dim_id}")
         ref_s = f" [{','.join(refs)}]" if refs else ""
         dist = []
+        if self.grouping is not None: dist.append(f"grouping:{self.grouping}")
         if self.block_size != 1:    dist.append(f"block:{self.block_size}")
         if self.order != 'linear':  dist.append(f"order:{self.order}")
         if self.direction != 'forward': dist.append(f"dir:{self.direction}")
@@ -532,7 +594,7 @@ class FXEngine:
     """
     def __init__(self, output_state, form_pool=None, rate_pool=None,
                  size_pool=None, spread_pool=None, dim_pool=None,
-                 speed_master_pool=None):
+                 speed_master_pool=None, group_pool=None):
         self.output_state      = output_state
         self.form_pool         = form_pool
         self.rate_pool         = rate_pool
@@ -540,6 +602,7 @@ class FXEngine:
         self.spread_pool       = spread_pool
         self.dim_pool          = dim_pool
         self.speed_master_pool = speed_master_pool
+        self.group_pool        = group_pool   # for grouping='cluster' layers
         self._layers      = {}
         self._lock        = threading.Lock()
         self._running     = True
@@ -551,7 +614,8 @@ class FXEngine:
             rate_id=None, size_id=None, spread_id=None, dim_id=None,
             speed_id=None,
             phase_offset=0.0, infade=0.0, outfade=0.0,
-            block_size=1, order='linear', direction='forward'):
+            block_size=1, order='linear', direction='forward',
+            grouping=None):
         """
         Add an FX layer.
         waveform    — name string ('sine', 'ramp' …) or ignored when form_id given.
@@ -562,6 +626,8 @@ class FXEngine:
         block_size  — adjacent targets grouped per step (default 1).
         order       — 'linear' or 'random' target sequencing (default 'linear').
         direction   — 'forward' | 'reverse' | 'bounce' (default 'forward').
+        grouping    — None | 'block' | 'mirror' | 'cluster' | 'random' — see
+                      FXLayer's own docstring/comments for what each does.
         """
         layer = FXLayer(
             fx_id, waveform, channel, rate_bpm, size, targets, spread,
@@ -571,6 +637,7 @@ class FXEngine:
             spread_pool       = self.spread_pool,
             dim_pool          = self.dim_pool,
             speed_master_pool = self.speed_master_pool,
+            group_pool        = self.group_pool,
             form_id      = form_id,
             rate_id      = rate_id,
             size_id      = size_id,
@@ -583,6 +650,7 @@ class FXEngine:
             block_size   = block_size,
             order        = order,
             direction    = direction,
+            grouping     = grouping,
         )
         with self._lock:
             self._layers[fx_id] = layer
@@ -706,6 +774,7 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
                    ld.get('block_size', 1),
                    ld.get('order',      'linear'),
                    ld.get('direction',  'forward'),
+                   ld.get('grouping'),
                    ld.get('infade', 0.0), ld.get('outfade', 0.0))
             if key not in buckets:
                 buckets[key] = (ld, scope, [])
