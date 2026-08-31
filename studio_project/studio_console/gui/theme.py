@@ -308,73 +308,56 @@ def _make_active_slot_theme():
     return t
 
 
+# One font, everywhere (surface UI text + console/data text both bind to
+# this). Avenir — and every other humanist-sans candidate checked
+# (Avenir Next, SF Compact, Helvetica Neue) — genuinely has no glyphs at
+# all for most of the arrows/geometric-shape/dingbat symbols this UI uses
+# throughout (▶ ● ○ ⟳ → ⚡ etc. — verified directly against each font
+# file's own cmap table with fontTools, not assumed), and DPG has no
+# OS-level font-fallback chain the way native macOS text rendering does,
+# so any glyph missing from the loaded font renders as a "?" placeholder
+# — this was reported live, not theoretical, and it was pervasive. DPG
+# 2.3.1 also doesn't support merging glyphs from a second font file into
+# one atlas (its font-nesting API rejects it outright: "Incompatible
+# parent. Acceptable parents include: mvFontRegistry" — fonts can only be
+# direct registry children, not children of each other), so the fix is
+# switching fonts, not patching glyph ranges. Menlo — already this app's
+# console/data font, so it's a known-good look here already — covers all
+# but 2 of the ~45 symbols in use (⟳ wrap icon, ⧖ takeover icon); those 2
+# are substituted for glyphs Menlo does have (↻, ◐) at their call sites
+# rather than needing a font workaround for just two characters.
 _CONSOLE_FONT_CANDIDATES = [
-    "/System/Library/Fonts/SFNSMono.ttf",                                   # macOS
-    "/System/Library/Fonts/Menlo.ttc",                                      # macOS (Alt)
+    "/System/Library/Fonts/Menlo.ttc",                                      # macOS
+    "/System/Library/Fonts/SFNSMono.ttf",                                   # macOS (Alt)
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",                  # Debian/Ubuntu
     "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",      # Debian/Ubuntu (RPM-derived)
     "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",               # Fedora/RHEL
     "C:/Windows/Fonts/consola.ttf",                                        # Windows
 ]
-
-# Clean humanist sans-serif used for labels/headers/buttons (the "surface" text).
-# Mono stays on the actual console data + command line so those columns align.
-_SURFACE_FONT_CANDIDATES = [
-    "/System/Library/Fonts/Avenir.ttc",                                     # macOS Avenir (chosen look)
-    "/System/Library/Fonts/Avenir Next.ttc",                                # macOS Avenir Next
-    "/System/Library/Fonts/SFCompact.ttc",                                  # macOS SF Compact
-    "/System/Library/Fonts/SFCompactRounded.ttf",                           # macOS SF Compact Rounded
-    "/System/Library/Fonts/HelveticaNeue.ttc",                              # macOS Helvetica Neue
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                      # Debian/Ubuntu
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",      # Debian/Ubuntu (RPM-derived)
-    "C:/Windows/Fonts/arial.ttf",                                          # Windows
-]
+_SURFACE_FONT_CANDIDATES = _CONSOLE_FONT_CANDIDATES
 
 
 def _setup_fonts():
     """
-    Load a two-tier font system and return (surface_font, mono_font).
-
-      surface_font — clean sans-serif for labels/headers/buttons (the modern
-                     "graph" text). If none found, falls back to None so DPG's
-                     built-in bitmap font is used (caller decides).
-      mono_font    — monospace for console data + command line. Falls back to
-                     the surface font (or None) if no mono is available.
-
-    Both fonts are loaded into the same registry in one block so glyph ranges
-    are sized automatically (add_font_range/add_font_range_hint are deprecated
-    no-ops in DPG 2.3.1).
+    Load one font (Menlo — see the _CONSOLE_FONT_CANDIDATES comment above
+    for why) and return (surface_font, mono_font) as the *same* font id
+    for both — callers bind widgets to either name interchangeably.
+    Falls back to (None, None) so DPG's built-in bitmap font is used if
+    nothing in the candidate list is found on this system.
     """
-    surface_path = next((p for p in _SURFACE_FONT_CANDIDATES
-                         if os.path.exists(p)), None)
-    mono_path    = next((p for p in _CONSOLE_FONT_CANDIDATES
-                         if os.path.exists(p)), None)
-    if surface_path is None and mono_path is None:
+    font_path = next((p for p in _CONSOLE_FONT_CANDIDATES
+                      if os.path.exists(p)), None)
+    if font_path is None:
         return None, None
     try:
         with dpg.font_registry():
-            surface_id = None
-            if surface_path is not None:
-                with dpg.font(surface_path, 17) as fid:
-                    surface_id = fid
-            mono_id = None
-            if mono_path is not None:
-                with dpg.font(mono_path, 17) as fid:
-                    mono_id = fid
-        # Default (graph) text = surface font; data/console widgets will be
-        # bound to the mono font selectively by the caller.
-        if surface_id is not None:
-            dpg.bind_font(surface_id)
-        # If we have a mono font but no surface, fall back to mono for the
-        # default text too (keeps behaviour identical to the old all-mono UI).
-        if surface_id is None and mono_id is not None:
-            dpg.bind_font(mono_id)
-        return surface_id, mono_id
-    except Exception:
-        return None, None
+            with dpg.font(font_path, 17) as fid:
+                font_id = fid
+        dpg.bind_font(font_id)
+        return font_id, font_id
     except Exception as e:
         print(f"  Font: {e} — using default")
-        return None
+        return None, None
 
 
 __all__ = [

@@ -890,7 +890,7 @@ class GUIEngineCore:
             else:
                 dpg.set_value("hdr_cue", "▶  (none)")
             dpg.set_value("hdr_wrap",
-                          "  ⟳wrap" if getattr(active_cs, 'wrap', False) else "")
+                          "  ↻wrap" if getattr(active_cs, 'wrap', False) else "")
         except Exception:
             pass
 
@@ -1194,7 +1194,7 @@ class GUIEngineCore:
         for (ch, cc), m in self._midi.cc_maps.items():
             tag = f"mr_st_cc_{ch}_{cc}"
             try:
-                status = "live" if m.taken_over else "⧖ takeover"
+                status = "live" if m.taken_over else "◐ takeover"
                 col    = _C_TEXT if m.taken_over else _C_DIM
                 dpg.set_value(tag, status)
                 dpg.configure_item(tag, color=col)

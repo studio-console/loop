@@ -528,7 +528,7 @@ class GUIEngineFaderPage:
                                    user_data=ex.fdr_id)
                     dpg.configure_item(dpg.last_item(), enabled=stk.allow_exec_time)
                     if not stk.allow_exec_time:
-                        dpg.add_text("🔒", color=_C_DIM)
+                        dpg.add_text("×", color=_C_DIM)
                 else:
                     dpg.add_button(label="time", width=44, height=20,
                                    callback=self._on_exec_time_toggle,

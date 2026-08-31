@@ -790,7 +790,7 @@ class GUIEnginePoolsPanel:
                             nfx += len(v.get('fx', []) or [])
                 fx_s  = f"\n{nfx} FX layer(s)" if nfx else ""
                 note  = getattr(cue, 'note', '')
-                note_s = f"\n📝 {note}" if note else ""
+                note_s = f"\nnote: {note}" if note else ""
                 tip   = f"cue {n}: {cue.name}{ft_s}{dt_s}{fw_s}{fxo_s}{fix_s}{fx_s}{note_s}"
             else:
                 lbl = f"{n}"

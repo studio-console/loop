@@ -707,7 +707,7 @@ class GUIEngineHardwarePopups:
         for (ch, cc), m in list(self._midi.cc_maps.items()):
             row_tag = f"mr_cc_{ch}_{cc}"
             self._map_rows[('cc', ch, cc)] = row_tag
-            status = "live" if m.taken_over else "⧖ takeover"
+            status = "live" if m.taken_over else "◐ takeover"
             with dpg.table_row(tag=row_tag, parent="midi_table"):
                 dpg.add_text(str(ch))
                 dpg.add_text(str(cc))
