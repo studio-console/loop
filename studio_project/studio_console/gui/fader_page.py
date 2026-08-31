@@ -48,8 +48,8 @@ class GUIEngineFaderPage:
                             tag="fpg_range_lbl", color=_C_DIM)
             dpg.add_separator()
             fader_h = self._FPG_FADER_H
-            fader_w = self._FPG_FADER_W
-            self._fpg_fader_dims = (fader_w, fader_h)
+            fader_w = self._FPG_SLOT_W - 16
+            cuelist_w = self._FPG_SLOT_W - 16
             with dpg.group(horizontal=True):
                 for n in range(1, self._FPG_SLOTS + 1):
                     with dpg.child_window(
@@ -75,66 +75,39 @@ class GUIEngineFaderPage:
                         # against; see _FPG_FIXED_ROWS_H in core.py)
                         dpg.add_text("—", tag=f"fpg_name_{n}", color=_C_ACCENT)
 
-                        # row 3 — full-width fill-bar fader, MA-style: the
-                        # fader IS the channel strip, not a sliver beside a
-                        # cue list nobody could read. A drawn track+fill
-                        # (fpg_faderbg_/fpg_faderfill_) with the current
-                        # cue's name drawn directly on top of the fill
-                        # (fpg_cuename_/_shadow_ — the shadow copy keeps it
-                        # legible against both the empty track and the
-                        # filled accent colour) and the real interactive
-                        # slider overlaid at the same position via
-                        # pos=(0, 0) — the slider is a fully transparent
-                        # hit target (see _make_fpg_fader_theme) so DPG's
-                        # native "tap anywhere on the track, then drag"
-                        # slider behavior still works on a touch monitor,
-                        # it just doesn't paint its own frame over the
-                        # drawn fill/text. Isolated in its own fixed-size
-                        # child_window so this pos= overlay can't disturb
-                        # the rest of the slot's normal top-to-bottom
-                        # layout flow. Direct-tap cue selection (the old
-                        # side listbox) doesn't coexist cleanly with
-                        # drag-to-set-level on the same surface — GO/BACK
-                        # below still step cues; this view is now
-                        # look-and-set-level, not a cue picker.
-                        with dpg.child_window(
-                                tag=f"fpg_fadercell_{n}",
-                                width=fader_w, height=fader_h,
-                                border=False, no_scrollbar=True,
-                                no_scroll_with_mouse=True):
-                            with dpg.drawlist(tag=f"fpg_faderbg_{n}",
-                                              width=fader_w, height=fader_h):
-                                dpg.draw_rectangle(
-                                    pmin=(0, 0), pmax=(fader_w, fader_h),
-                                    tag=f"fpg_fadertrack_{n}",
-                                    fill=_C_PANEL, color=_C_BORDER,
-                                    thickness=1, rounding=6)
-                                dpg.draw_rectangle(
-                                    pmin=(0, 0), pmax=(fader_w, fader_h),
-                                    tag=f"fpg_faderfill_{n}",
-                                    fill=_C_ACCENT, color=(0, 0, 0, 0),
-                                    rounding=6)
-                                dpg.draw_text(
-                                    pos=(7, 7), tag=f"fpg_cuename_shadow_{n}",
-                                    text="— no cue —", size=15,
-                                    color=(0, 0, 0, 180))
-                                dpg.draw_text(
-                                    pos=(6, 6), tag=f"fpg_cuename_{n}",
-                                    text="— no cue —", size=15,
-                                    color=_C_TEXT)
-                            dpg.add_slider_int(
-                                tag=f"fpg_fader_{n}",
-                                vertical=True,
-                                pos=(0, 0),
-                                width=fader_w, height=fader_h,
-                                min_value=0, max_value=255,
-                                default_value=255, format="",
-                                no_input=True,
-                                callback=self._on_fpg_fader, user_data=n)
-                            dpg.bind_item_theme(f"fpg_fader_{n}",
-                                                self._fpg_fader_theme)
+                        # row 3 — full-width cue list: every cue in the
+                        # stack, running one marked with ▶ and pre-selected
+                        # (native listbox selection highlight). Click jumps
+                        # straight to that cue via GOTO.
+                        dpg.add_listbox(
+                            tag=f"fpg_cuelist_{n}",
+                            items=["—"],
+                            num_items=self._FPG_CUELIST_ITEMS,
+                            width=cuelist_w,
+                            callback=self._on_fpg_cuelist_click,
+                            user_data=n)
 
-                        # row 4 — level %
+                        # row 4 — full-width fader, MA-style. Deliberately a
+                        # plain, unmodified add_slider_int — no pos= overlay,
+                        # no drawn fill underneath it. An earlier version
+                        # tried a drawlist-fill-plus-transparent-slider
+                        # overlay for a true bottom-up fill look; on a real
+                        # run the drag stopped working entirely. This is the
+                        # same interactive mechanism the original (never
+                        # reported broken) narrow fader used, just resized
+                        # and themed — colored track + a big bright grab via
+                        # _make_fpg_fader_theme, guaranteed to actually drag.
+                        dpg.add_slider_int(
+                            tag=f"fpg_fader_{n}",
+                            vertical=True,
+                            width=fader_w, height=fader_h,
+                            min_value=0, max_value=255,
+                            default_value=255, format="",
+                            no_input=True,
+                            callback=self._on_fpg_fader, user_data=n)
+                        dpg.bind_item_theme(f"fpg_fader_{n}", self._fpg_fader_theme)
+
+                        # row 5 — level %
                         dpg.add_text("100%", tag=f"fpg_level_{n}", color=_C_DIM)
 
                         # rows 6-8 — A/B/C buttons with right-click reassign popups
@@ -161,7 +134,6 @@ class GUIEngineFaderPage:
                             tag=f"fpg_trig_{n}", label="tgl",
                             width=self._FPG_BTN_W, height=self._FPG_BTN_H,
                             callback=self._on_fpg_trig_cycle, user_data=n)
-                        self._fpg_set_fader_fill(n, 1.0, fader_w, fader_h)
     def _on_fader_page_toggle(self, *_):
         try:
             vis = dpg.is_item_shown("fader_page_window")
@@ -214,53 +186,22 @@ class GUIEngineFaderPage:
         slot_w      = max(90,  (win_w - _W_EDGE) // self._FPG_SLOTS - _W_GAP)
         fader_h     = max(80,  slot_h - self._FPG_FIXED_ROWS_H)
         fader_w     = max(60,  slot_w - 16)   # full-width fader, not a sliver
+        cuelist_w   = max(60,  slot_w - 16)
         btn_w       = max(36,  slot_w - 12)
         badge_w     = max(24,  (slot_w - 20) // 2 - 2)
-        self._fpg_fader_dims = (fader_w, fader_h)
 
         for n in range(1, self._FPG_SLOTS + 1):
             try:
-                dpg.configure_item(f"fpg_slot_{n}",      width=slot_w,    height=slot_h)
-                dpg.configure_item(f"fpg_fadercell_{n}", width=fader_w, height=fader_h)
-                dpg.configure_item(f"fpg_faderbg_{n}",   width=fader_w, height=fader_h)
-                dpg.configure_item(f"fpg_fadertrack_{n}", pmin=(0, 0),
-                                   pmax=(fader_w, fader_h))
-                dpg.configure_item(f"fpg_fader_{n}",     width=fader_w, height=fader_h)
-                dpg.configure_item(f"fpg_pri_{n}",       width=badge_w)
-                dpg.configure_item(f"fpg_out_{n}",       width=badge_w)
+                dpg.configure_item(f"fpg_slot_{n}",    width=slot_w,  height=slot_h)
+                dpg.configure_item(f"fpg_cuelist_{n}", width=cuelist_w)
+                dpg.configure_item(f"fpg_fader_{n}",   width=fader_w, height=fader_h)
+                dpg.configure_item(f"fpg_pri_{n}",     width=badge_w)
+                dpg.configure_item(f"fpg_out_{n}",     width=badge_w)
                 for _s in ('a', 'b', 'c'):
                     dpg.configure_item(f"fpg_btn{_s}_{n}", width=btn_w)
                 dpg.configure_item(f"fpg_trig_{n}", width=btn_w)
-                # Re-draw the fill at its current level for the new size —
-                # width/height changed underneath it, so the old pmax is stale.
-                _lvl = dpg.get_value(f"fpg_fader_{n}") / 255.0
-                self._fpg_set_fader_fill(n, _lvl, fader_w, fader_h)
-                # Cue-name text re-truncates on the next _tick_fader_page
-                # pass (it recomputes from live fader_pool state anyway,
-                # every tick the popup is shown) rather than duplicating
-                # that lookup here.
             except Exception:
                 pass
-    def _fpg_set_fader_fill(self, n, level, fader_w=None, fader_h=None):
-        """Redraw fader-page slot n's fill rectangle to reflect level
-        (0.0-1.0), bottom-anchored like a real mixer fader. Called on every
-        level change (drag, tick sync, reflow) — see fpg_faderfill_* in
-        _build_fader_page_popup for the drawn track/fill this updates.
-        Defaults to self._fpg_fader_dims (kept current by _fpg_reflow)
-        rather than querying dpg.get_item_rect_size — a rect-size query
-        only reflects reality after an actual render frame, so it can
-        read (0, 0) right after a drag if no frame has landed yet."""
-        try:
-            if fader_w is None or fader_h is None:
-                fader_w, fader_h = self._fpg_fader_dims
-            if fader_w <= 0 or fader_h <= 0:
-                return
-            level = max(0.0, min(1.0, float(level)))
-            fill_top = fader_h * (1.0 - level)
-            dpg.configure_item(f"fpg_faderfill_{n}",
-                               pmin=(0, fill_top), pmax=(fader_w, fader_h))
-        except Exception:
-            pass
     def _fpg_refresh_all(self):
         """Sync all fader page slot labels and fader positions from fader pool."""
         if not self._fader_pool:
@@ -276,7 +217,6 @@ class GUIEngineFaderPage:
                     dpg.set_value(f"fpg_name_{n}", "—")
                 lvl = ex.level if ex else 1.0
                 dpg.set_value(f"fpg_fader_{n}", round(lvl * 255))
-                self._fpg_set_fader_fill(n, lvl)
             except Exception:
                 pass
     def _on_fpg_fader(self, _sender, value, user_data):
@@ -287,7 +227,6 @@ class GUIEngineFaderPage:
             if ex:
                 ex.level = max(0.0, min(1.0, float(value) / 255.0))
                 _exec_fader_mode_hook(ex)
-                self._fpg_set_fader_fill(n, ex.level)
     def _on_fpg_btn(self, _sender, _app_data, user_data):
         n, slot = user_data
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
@@ -335,6 +274,18 @@ class GUIEngineFaderPage:
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
         if self._cmd:
             self._cmd(f"FADER {eid} BTN {btn_slot.upper()} {fn}")
+    def _on_fpg_cuelist_click(self, _sender, value, user_data):
+        """GOTO the cue the user clicked in the fader page cue list."""
+        if not value or value.strip() in ("—", ""):
+            return
+        n   = int(user_data)
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        try:
+            cue_num = float(value.strip().lstrip("▶").strip().split()[0])
+            if self._cmd:
+                self._cmd(f"GOTO {eid} {cue_num}")
+        except (ValueError, IndexError):
+            pass
     def _tick_fader_page(self):
         """Update fader page slot labels + mode badges (called from _tick)."""
         if not dpg.is_item_shown("fader_page_window"):
@@ -350,23 +301,28 @@ class GUIEngineFaderPage:
                 dpg.set_value(f"fpg_name_{n}",
                               self._fit_text(_nm, self._FPG_SLOT_W - 10))
 
-                # ── current cue name, drawn on the fader itself ──
-                if ex and ex.stack and ex.stack.current is not None:
-                    _cue = ex.stack.cues.get(ex.stack.current)
-                    _cue_lbl = (f"▶ {ex.stack.current:.0f}  {_cue.name}"
-                                if _cue else f"▶ {ex.stack.current:.0f}")
+                # ── cue list: every cue, running one marked + selected ──
+                if ex and ex.stack:
+                    _cs   = ex.stack
+                    _cur  = _cs.current
+                    _items, _sel = [], None
+                    for _cn in sorted(_cs.cues.keys()):
+                        _c   = _cs.cues[_cn]
+                        _lbl = f"{'▶' if _cn == _cur else ' '}{_cn:.0f} {_c.name}"
+                        _items.append(_lbl)
+                        if _cn == _cur:
+                            _sel = _lbl
+                    dpg.configure_item(f"fpg_cuelist_{n}",
+                                       items=_items if _items else ["—"])
+                    if _sel:
+                        dpg.set_value(f"fpg_cuelist_{n}", _sel)
                 else:
-                    _cue_lbl = "— no cue —"
-                _fader_w = self._fpg_fader_dims[0]
-                _fit_lbl = self._fit_text(_cue_lbl, _fader_w - 12)
-                dpg.configure_item(f"fpg_cuename_{n}", text=_fit_lbl)
-                dpg.configure_item(f"fpg_cuename_shadow_{n}", text=_fit_lbl)
+                    dpg.configure_item(f"fpg_cuelist_{n}", items=["—"])
 
                 # ── fader (sync when not dragging) ───────────
                 _lvl01 = ex.level if ex else 1.0
                 if not dpg.is_item_active(f"fpg_fader_{n}"):
                     dpg.set_value(f"fpg_fader_{n}", round(_lvl01 * 255))
-                    self._fpg_set_fader_fill(n, _lvl01)
                 lv = _lvl01 * 100
                 dpg.set_value(f"fpg_level_{n}", f"{lv:.0f}%")
 

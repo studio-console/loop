@@ -79,17 +79,44 @@ Rules:
 
     _CMD_HISTORY_MAX = 12
 
+    # DeepSeek publishes an Anthropic-compatible endpoint (same
+    # messages.create() shape, same response.content[0].text /
+    # response.usage.input_tokens|output_tokens fields) — so switching
+    # provider is just a different api_key/base_url/model, not a
+    # different request/response code path. AI_PROVIDER picks which;
+    # unset or unrecognized falls back to real Anthropic.
+    _PROVIDERS = {
+        "anthropic": {
+            "env_key":  "ANTHROPIC_API_KEY",
+            "base_url": None,
+            "model":    "claude-haiku-4-5-20251001",
+        },
+        "deepseek": {
+            "env_key":  "DEEPSEEK_API_KEY",
+            "base_url": "https://api.deepseek.com/anthropic",
+            "model":    "deepseek-v4-flash",
+        },
+    }
+
     def __init__(self, patch, prog, output_state, fx_engine, fade_engine,
                  stack_pool=None, fader_pool=None, cmd_fn=None, log_fn=None,
-                 model="claude-haiku-4-5-20251001"):
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+                 model=None):
+        provider = os.environ.get("AI_PROVIDER", "anthropic").strip().lower()
+        if provider not in self._PROVIDERS:
+            provider = "anthropic"
+        _cfg = self._PROVIDERS[provider]
+        self._provider  = provider
+        self._env_key   = _cfg["env_key"]   # readable even while disabled
+        api_key = os.environ.get(_cfg["env_key"])
         if not api_key:
-            print("  AI Engine: ANTHROPIC_API_KEY not set — AI disabled.")
-            print("  Run:  export ANTHROPIC_API_KEY='sk-ant-...'")
+            print(f"  AI Engine: {_cfg['env_key']} not set — AI disabled.")
+            print(f"  Run:  export {_cfg['env_key']}='...' "
+                  f"(or add it to studio_data/.env)")
             self._enabled = False
             return
-        self._client         = anthropic.Anthropic(api_key=api_key)
-        self._model          = model
+        self._client          = anthropic.Anthropic(api_key=api_key,
+                                                      base_url=_cfg["base_url"])
+        self._model           = model or _cfg["model"]
         self._patch          = patch
         self._prog           = prog
         self._output         = output_state
@@ -105,7 +132,7 @@ Rules:
         self._last_fade      = None      # pending fade_time override, consumed by the next cue fire
         self._cmd_history    = []        # last N commands for context
         self._token_cb       = None      # optional callback(in_tok, out_tok) for GUI
-        print(f"  AI Engine: ready ({model})")
+        print(f"  AI Engine: ready ({provider}: {self._model})")
 
     def push_cmd_history(self, cmd_str):
         """Call after each user command to feed recent context into AI prompts."""
@@ -181,7 +208,7 @@ Rules:
         and optionally executes them immediately.
         """
         if not self._enabled:
-            print("  AI disabled — set ANTHROPIC_API_KEY first.")
+            print(f"  AI disabled — set {self._env_key} first.")
             return []
 
         state_json = json.dumps(self._state(), indent=2)
@@ -213,8 +240,22 @@ Rules:
                 system=system,
                 messages=[{"role": "user", "content": user_msg}],
                 timeout=30.0,
+                # DeepSeek's models think by default (unlike Claude, where
+                # it's opt-in) — a ThinkingBlock then leads resp.content,
+                # which has no .text attribute at all, so a bare
+                # content[0].text would AttributeError on every DeepSeek
+                # request. We want fast, deterministic JSON here, not
+                # chain-of-thought, so disable it outright; harmless
+                # no-op against real Anthropic, which already defaults
+                # to this for a non-extended-thinking model.
+                thinking={"type": "disabled"},
             )
-            raw = resp.content[0].text.strip()
+            _text_block = next(
+                (b for b in resp.content if getattr(b, "text", None) is not None),
+                None)
+            if _text_block is None:
+                raise ValueError(f"no text block in response: {resp.content!r}")
+            raw = _text_block.text.strip()
             # Strip markdown code fences if model wraps in them
             if raw.startswith("```"):
                 raw = raw.split("```")[1]

@@ -80,30 +80,34 @@ class GUIEngineCore:
                      "AI error")
     # Touch-target sizing: 40px buttons and 30px badges land close to the
     # ~44pt minimum tap target most touch UI guidelines recommend, given
-    # the 17px UI font this app already uses. The fader itself is the
-    # slot's full width, MA-style — it's the channel strip, not a sliver
-    # beside a cue list (that list is gone; its cue name is now drawn
-    # directly on the fader fill — see fader_page.py).
-    _FPG_SLOTS   = 15
-    _FPG_SLOT_W  = 120    # initial slot width (reflow updates dynamically)
-    _FPG_BTN_W   = 108    # initial button width
-    _FPG_BTN_H   = 40     # button height — real touch target (was 24)
-    _FPG_BADGE_H = 30     # priority/output-mode badge height (was hardcoded 18)
-    _FPG_FADER_W = _FPG_SLOT_W - 16   # initial fader width (reflow recomputes)
+    # the 17px UI font this app already uses. The cue list and fader are
+    # both the slot's near-full width, stacked (not side by side) — every
+    # cue is readable, and the fader is still a proper touch-width strip,
+    # without the two competing for the same horizontal space.
+    _FPG_SLOTS        = 15
+    _FPG_SLOT_W       = 120    # initial slot width (reflow updates dynamically)
+    _FPG_BTN_W        = 108    # initial button width
+    _FPG_BTN_H        = 40     # button height — real touch target (was 24)
+    _FPG_BADGE_H      = 30     # priority/output-mode badge height (was hardcoded 18)
+    _FPG_CUELIST_ITEMS = 6     # visible cue rows before the listbox scrolls
+    _FPG_CUELIST_ROW_H = 22    # px per listbox row (matches the left-column
+                                # cue list's own row-height estimate, core.py)
     # Every fixed-height row in a fader-page slot, in build order, plus the
     # item-spacing gap before each (theme.py's ItemSpacing.y=5) and the
     # child_window's own top+bottom padding (WindowPadding.y=6 each side).
     # Whatever's left of the slot's total height after this goes to the
     # fader row — computed here, not hand-tuned, specifically because a
     # hand-tuned guess is what caused the fader page's own buttons to get
-    # silently clipped before (no_scrollbar=True hides
-    # overflow instead of erroring, so a wrong guess is invisible until
-    # someone's actually looking at it). _fpg_reflow reuses this same
-    # constant so the two can't drift apart from each other.
-    _FPG_FIXED_ROWS_H = (_FPG_BADGE_H + 20 + 20          # badges, name, level%
-                          + _FPG_BTN_H * 3 + 6 + _FPG_BTN_H  # A/B/C, sep, trig
-                          ) + 5 * 8 + 6 * 2
-    _FPG_SLOT_H  = 540    # initial slot height (reflow updates dynamically)
+    # silently clipped before (no_scrollbar=True hides overflow instead of
+    # erroring, so a wrong guess is invisible until someone's actually
+    # looking at it). _fpg_reflow reuses this same constant so the two
+    # can't drift apart from each other.
+    _FPG_FIXED_ROWS_H = (_FPG_BADGE_H + 20                     # badges, name
+                          + _FPG_CUELIST_ITEMS * _FPG_CUELIST_ROW_H + 8  # cue list
+                          + 20                                  # level %
+                          + _FPG_BTN_H * 3 + 6 + _FPG_BTN_H      # A/B/C, sep, trig
+                          ) + 5 * 9 + 6 * 2
+    _FPG_SLOT_H  = 600    # initial slot height (reflow updates dynamically)
     _FPG_FADER_H = max(80, _FPG_SLOT_H - _FPG_FIXED_ROWS_H)  # initial fader h
     _AI_CHIPS = [
         ("warm wash",    "warm amber golden wash on all fixtures, moderate brightness"),
@@ -195,11 +199,6 @@ class GUIEngineCore:
         self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
         self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows fdr (page-1)*15+N
         self._fpg_last_win_size = (0, 0)
-        # Current fader strip size, tracked explicitly (not re-queried via
-        # dpg.get_item_rect_size) so fill-bar redraws stay correct even
-        # before a render frame has happened — rect-size queries only
-        # reflect reality after at least one actual render pass.
-        self._fpg_fader_dims    = (self._FPG_FADER_W, self._FPG_FADER_H)
     def _save_popup_layout(self):
         layout = {}
         for tag in self._POPUP_TAGS:

@@ -145,24 +145,26 @@ def _make_transport_go_theme():
 
 
 def _make_fpg_fader_theme():
-    """Transparent-track slider theme for the fader-page grid's touch faders.
+    """Touch-styled slider theme for the fader-page grid's faders.
 
-    The slider itself stays the real interactive widget (tap-anywhere-then-
-    drag is native ImGui/DPG slider behavior, no custom hit-testing needed)
-    but its own frame is made fully transparent so it can sit directly on
-    top of a hand-drawn fill rectangle (see fader_page.py's fpg_faderfill_*)
-    without painting over it. The grab is a thin bright line, not a knob —
-    the drawn fill's top edge is the real level indicator.
+    Deliberately a plain, unmodified add_slider_int underneath this —
+    tap-anywhere-then-drag is native ImGui/DPG slider behavior, no custom
+    hit-testing needed — just themed for visibility: a real dark track
+    (not transparent — an earlier version drew a fill rectangle behind a
+    transparent slider for a true bottom-up fill look, but the overlay
+    broke dragging on a real run) and a large, bright grab so the current
+    level is still clearly visible at a glance, if not a full proportional
+    fill.
     """
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvSliderInt):
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,          (0, 0, 0, 0))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered,   (0, 0, 0, 0))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,    (0, 0, 0, 0))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,       (230, 210, 255, 220))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (255, 255, 255, 255))
-            dpg.add_theme_style(dpg.mvStyleVar_GrabMinSize, 10)
-            dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 0)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,          _C_PANEL)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered,   _C_PANEL)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,    _C_PANEL)
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,       _C_ACCENT)
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (230, 210, 255, 255))
+            dpg.add_theme_style(dpg.mvStyleVar_GrabMinSize, 36)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 6)
     return t
 
 

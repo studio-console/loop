@@ -142,9 +142,10 @@ class GUIEngineAIPopups:
         if self._ai is None:
             return
         if not getattr(self._ai, '_enabled', False):
+            _env_key = getattr(self._ai, '_env_key', 'ANTHROPIC_API_KEY')
             try:
                 dpg.configure_item("ai_status",
-                                   default_value="ai disabled — set ANTHROPIC_API_KEY",
+                                   default_value=f"ai disabled — set {_env_key}",
                                    color=(220, 80, 80, 255))
             except Exception:
                 pass
