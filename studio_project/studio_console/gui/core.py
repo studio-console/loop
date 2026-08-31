@@ -199,19 +199,45 @@ class GUIEngineCore:
         self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
         self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows fdr (page-1)*15+N
         self._fpg_last_win_size = (0, 0)
+    # Widget values (not window pos/size) that need to survive a restart —
+    # currently just the color picker's "live" checkbox, which was
+    # silently resetting to its default_value=True on every launch with
+    # no visible sign it had reset, reported as "changes the programmer
+    # even when live is unchecked" (it wasn't still unchecked by the time
+    # that was observed — it had reset back to checked since the last
+    # restart). Add more (tag, "value_key") pairs here if another toggle
+    # needs the same treatment.
+    _PERSISTED_CHECKBOXES = [("cpick_live", "cpick_live")]
     def _save_popup_layout(self):
         layout = {}
         for tag in self._POPUP_TAGS:
             try:
                 cfg = dpg.get_item_configuration(tag)
+                # 'pos' is NOT a get_item_configuration key for a window
+                # (confirmed: absent from its key set entirely) — using
+                # cfg.get("pos", [100, 100]) always silently returned the
+                # fallback, so every popup's real position was never once
+                # actually saved, only ever overwritten back to (100, 100)
+                # (or whatever a given popup's own hardcoded build-time
+                # default was, on whichever save happened to run first)
+                # on the next restore. dpg.get_item_pos() is the real
+                # (and only) way to read a window's current position.
                 layout[tag] = {
-                    "pos":    list(cfg.get("pos",    [100, 100])),
+                    "pos":    list(dpg.get_item_pos(tag)),
                     "width":  int(cfg.get("width",   700)),
                     "height": int(cfg.get("height",  400)),
                     "show":   bool(dpg.is_item_shown(tag)),
                 }
             except Exception:
                 pass
+        values = {}
+        for tag, key in self._PERSISTED_CHECKBOXES:
+            try:
+                values[key] = bool(dpg.get_value(tag))
+            except Exception:
+                pass
+        if values:
+            layout["__values__"] = values
         try:
             os.makedirs(os.path.dirname(self._POPUP_LAYOUT_FILE), exist_ok=True)
             with open(self._POPUP_LAYOUT_FILE, "w") as f:
@@ -222,9 +248,26 @@ class GUIEngineCore:
         try:
             with open(self._POPUP_LAYOUT_FILE) as f:
                 layout = json.load(f)
+            values = layout.pop("__values__", {})
+            for tag, key in self._PERSISTED_CHECKBOXES:
+                if key in values:
+                    try:
+                        dpg.set_value(tag, bool(values[key]))
+                    except Exception:
+                        pass
+            # Clamp restored positions to stay on-screen — belt-and-
+            # suspenders against whatever produces an off-screen saved
+            # position (DPI/scale mismatch between the save and load
+            # sessions, a different display arrangement, etc.): keep at
+            # least a corner of the window inside the current viewport
+            # rather than trusting the saved coordinates blindly.
+            max_x = max(0, int(getattr(self, '_vp_w', 1920)) - 100)
+            max_y = max(0, int(getattr(self, '_vp_h', 1040)) - 60)
             for tag, cfg in layout.items():
                 try:
-                    dpg.configure_item(tag, pos=cfg["pos"],
+                    pos = [min(max(0, int(cfg["pos"][0])), max_x),
+                           min(max(0, int(cfg["pos"][1])), max_y)]
+                    dpg.configure_item(tag, pos=pos,
                                        width=cfg["width"], height=cfg["height"])
                     if cfg.get("show"):
                         refresh = self._POPUP_REFRESH.get(tag)
