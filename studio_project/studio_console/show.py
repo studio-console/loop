@@ -76,6 +76,7 @@ class ShowFile:
     CONTROL   = os.path.join(DATA_DIR, "control_pool.json")
     GDTF_DIR  = os.path.join(DATA_DIR, "gdtf")
     STATE     = os.path.join(DATA_DIR, "state.json")
+    PROGRAMMER   = os.path.join(DATA_DIR, "programmer.json")
     FADER_PAGES   = os.path.join(DATA_DIR, "fader_pages.json")
     FADERS    = os.path.join(DATA_DIR, "faders.json")
     CHANGELOG    = os.path.join(DATA_DIR, "changelog.json")
@@ -366,6 +367,64 @@ class ShowFile:
             fader_dim[0] = float(doc["fader_dim"])
         print(f"  Loaded state    — master={output_state.master_level:.0%} "
               f"active_exec={active_fader[0] if active_fader else '?'}")
+        return True
+
+    @staticmethod
+    def save_programmer(prog):
+        """Save the live programmer — selection, active parameters (.data,
+        which includes any live/typed FX defs under each fixture's 'fx'
+        key), and disabled/removed parameters (.disabled). None of this
+        was ever persisted before: a restart always started with an empty
+        programmer, dropping unrecorded work in progress along with the
+        current selection and any live-preview FX. .data/.disabled are
+        already {fixture_id_str: {channel: value}} dicts — the same shape
+        used throughout (cue.data, etc.) — so they're saved as-is.
+        Selection is MasterFixture/SubFixture objects, not serializable
+        directly; saved as their .fixture_id strings ("3" or "3.12") and
+        resolved back through the patch on load."""
+        doc = {
+            "version":    ShowFile.VERSION,
+            "fx_scale":   ShowFile.FX_SCALE,
+            "selection":  [str(f.fixture_id) for f in prog.selection],
+            "data":       prog.data,
+            "disabled":   prog.disabled,
+        }
+        _write_file(ShowFile.PROGRAMMER, doc)
+
+    @staticmethod
+    def load_programmer(prog, patch):
+        """Restore the live programmer saved by save_programmer(). Returns
+        True if anything was loaded. Fixtures no longer in the patch (repatched
+        since the save) are silently skipped in selection resolution rather
+        than failing the whole load."""
+        doc = _read_file(ShowFile.PROGRAMMER)
+        if not doc:
+            return False
+        needs_migration = doc.get("fx_scale", 1) < ShowFile.FX_SCALE
+        data = doc.get("data", {})
+        if needs_migration:
+            ShowFile._migrate_fx_scale(data)
+        prog.data     = data
+        prog.disabled = doc.get("disabled", {})
+        resolved = []
+        for key in doc.get("selection", []):
+            if '.' in key:
+                m_str, s_str = key.split('.', 1)
+                try:
+                    f = patch.get_sub(int(m_str), int(s_str))
+                except (ValueError, TypeError):
+                    f = None
+            else:
+                try:
+                    f = patch.get(int(key))
+                except (ValueError, TypeError):
+                    f = None
+            if f:
+                resolved.append(f)
+        prog.selection = resolved
+        n_fx = sum(1 for vals in data.values() if 'fx' in vals)
+        print(f"  Loaded programmer — {len(data)} fixture(s), "
+              f"{len(resolved)} selected{f', {n_fx} with live fx' if n_fx else ''}")
         return True
 
     # ── Load ────────────────────────────────────────────────

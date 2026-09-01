@@ -250,6 +250,12 @@ ShowFile.load_osc_targets(osc)
 ShowFile.load_macros(macro_pool)
 ShowFile.load_state(output_state, fader_pool, stack_pool, active_fader,
                     prog_time=_prog_time, fader_dim=_fader_dim)
+# Restores prog.data/.disabled/.selection (unrecorded programmer edits,
+# selection, and any live-preview FX defs) — data only here; the live FX
+# *engine layers* themselves are rebuilt from this once the GUI exists
+# (gui/core.py's _tick_first_sync — _prog_fx_rebuild isn't safely
+# reachable from this module, see that method's comment).
+ShowFile.load_programmer(prog, patch)
 
 # ── Fixture defaults ────────────────────────────────────────────────────
 # Loaded from defaults.json; applied to programmer_layer so every fixture
@@ -841,6 +847,7 @@ def save_show():
     ShowFile.save_osc_targets(osc)
     ShowFile.save_state(output_state, fader_pool, active_fader,
                         prog_time=_prog_time, fader_dim=_fader_dim[0])
+    ShowFile.save_programmer(prog)
 
 
 def save_show_as(name):

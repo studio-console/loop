@@ -587,6 +587,22 @@ class GUIEngineCore:
             except Exception as _e:
                 self._log(f"auto-reload error: {_e}")
 
+            # Restore any live-preview programmer FX. ShowFile.load_programmer()
+            # (called during state.py's boot, before the GUI/run_command even
+            # exist) already restored prog.data — including any per-fixture
+            # 'fx' entries — but that's just the *definition*; nothing yet
+            # told fx_engine to actually start the oscillating layer. Same
+            # "data restored correctly but not actually running" shape as
+            # the fader DMX-on-restart bug above, same fix idea: do the one
+            # rebuild call once the whole app is wired.
+            try:
+                from __main__ import _prog_fx_rebuild
+                if self._prog and any('fx' in v for v in self._prog.data.values()):
+                    _prog_fx_rebuild()
+                    self._log("↺  programmer fx restored")
+            except Exception as _e:
+                self._log(f"programmer fx restore error: {_e}")
+
     def _tick_deferred_maintenance(self):
         # Consume deferred MIDI table rebuild (must be on main thread)
         if self._pending_table_refresh:
