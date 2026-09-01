@@ -55,7 +55,14 @@ class GUIEngineCore:
     }
     _W          = 1920
     _H          = 1080
-    _H_MAIN     = 512   # main 3-col area — tall enough for all left-col FX controls
+    # Right column's numpad (4 rows of digit buttons below the log/input/
+    # quick-action rows) was landing a few px past 512, clipping its
+    # bottom row (⌫/0/.) against right_col's no_scrollbar child_window —
+    # the outer "main" window already scrolls as a fallback if any
+    # column's content ever runs long (see build()'s own comment on
+    # that), so a little slack here is cheap and safe for the other two
+    # columns too, not just a fix scoped to the numpad specifically.
+    _H_MAIN     = 530   # main 3-col area — tall enough for all left-col FX controls
     _H_P1       = 182   # pool row 1: 4×30btn + 3×5gap + header + 12WP ≈ 170px content
     _H_P2       = 182   # pool row 2
     _H_FORMS    =  56   # forms single row (unused — _build_forms_panel computes own height)
@@ -880,7 +887,7 @@ class GUIEngineCore:
                 tag = f"exec_fader_{eid}"
                 try:
                     if not dpg.is_item_active(tag):
-                        dpg.set_value(tag, round(ex.level * 255))
+                        dpg.set_value(tag, round(ex.level * 100))
                 except Exception:
                     pass
                 # Fade progress bar
@@ -1087,12 +1094,24 @@ class GUIEngineCore:
                         dpg.unhighlight_table_row(tbl_tag, idx)
                 except Exception:
                     pass
-            # Auto-scroll the cue list so the active cue stays visible
+            # Auto-scroll the cue list so the active cue stays visible.
+            # row_h is an estimate (real row height = text line height +
+            # 2×CellPadding.y, theme.py) — close but not exact, and any
+            # per-row error compounds over a long cue list, underscrolling
+            # for a cue near the end (reported: "not scrolling down
+            # enough"). Clamping to the real, DPG-measured scroll max
+            # means a cue near the end always reaches the true bottom
+            # regardless of how accurate the per-row estimate is — the
+            # estimate only has to be "close enough" for cues in the
+            # middle of a long list, not pixel-perfect anywhere.
             if cur is not None:
                 try:
                     cur_idx = list(sorted_nums).index(cur) if cur in sorted_nums else 0
-                    row_h   = 22   # approximate table row height with padding
+                    row_h   = 23   # approximate table row height with padding
                     target  = max(0, cur_idx * row_h - 44)
+                    scroll_max = dpg.get_y_scroll_max("cue_list_scroll")
+                    if scroll_max:
+                        target = min(target, scroll_max)
                     dpg.set_y_scroll("cue_list_scroll", target)
                 except Exception:
                     pass

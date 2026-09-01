@@ -320,17 +320,36 @@ class GUIEngineFaderPage:
                 if ex and ex.stack:
                     _cs   = ex.stack
                     _cur  = _cs.current
-                    _items, _sel = [], None
-                    for _cn in sorted(_cs.cues.keys()):
+                    _items, _sel, _sel_idx = [], None, 0
+                    for _row_i, _cn in enumerate(sorted(_cs.cues.keys())):
                         _c   = _cs.cues[_cn]
                         _lbl = f"{'▶' if _cn == _cur else ' '}{_cn:.0f} {_c.name}"
                         _items.append(_lbl)
                         if _cn == _cur:
                             _sel = _lbl
+                            _sel_idx = _row_i
                     dpg.configure_item(f"fpg_cuelist_{n}",
                                        items=_items if _items else ["—"])
                     if _sel:
                         dpg.set_value(f"fpg_cuelist_{n}", _sel)
+                        # add_listbox doesn't auto-scroll to the selected
+                        # item on set_value() the way a native OS listbox
+                        # would — same manual scroll-to-current-cue this
+                        # window's own cue_list_scroll needs (core.py),
+                        # clamped to the real scroll max for the same
+                        # reason: the row-height estimate only has to be
+                        # close for cues mid-list, not exact anywhere,
+                        # since a cue near the end always reaches the true
+                        # bottom regardless.
+                        try:
+                            _row_h = self._FPG_CUELIST_ROW_H
+                            _target = max(0, _sel_idx * _row_h - 2 * _row_h)
+                            _smax = dpg.get_y_scroll_max(f"fpg_cuelist_{n}")
+                            if _smax:
+                                _target = min(_target, _smax)
+                            dpg.set_y_scroll(f"fpg_cuelist_{n}", _target)
+                        except Exception:
+                            pass
                 else:
                     dpg.configure_item(f"fpg_cuelist_{n}", items=["—"])
 
@@ -557,13 +576,16 @@ class GUIEngineFaderPage:
                                    width=40, height=20,
                                    callback=self._on_exec_slot_btn,
                                    user_data=(ex.fdr_id, _slot))
-            # fader level row
+            # fader level row — 0-100 (%), matching the fader page's own
+            # faders (shown as a separate "N%" text there rather than the
+            # slider's own number, but the same 0-100 scale) instead of
+            # this one baring the raw 0-255 DMX-style value.
             dpg.add_slider_int(
                 tag=f"exec_fader_{ex.fdr_id}",
-                default_value=int(ex.level * 255),
-                min_value=0, max_value=255,
+                default_value=int(ex.level * 100),
+                min_value=0, max_value=100,
                 width=-1, height=16,
-                format="%d",
+                format="%d%%",
                 callback=self._on_exec_fader,
                 user_data=ex.fdr_id,
                 parent="playbacks_list")
@@ -633,5 +655,5 @@ class GUIEngineFaderPage:
         if self._fader_pool:
             ex = self._fader_pool.faders.get(int(user_data))
             if ex:
-                ex.level = max(0.0, min(1.0, float(value) / 255.0))
+                ex.level = max(0.0, min(1.0, float(value) / 100.0))
                 _exec_fader_mode_hook(ex)

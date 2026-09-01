@@ -517,7 +517,14 @@ class GUIEnginePoolsPanel:
         _FORMS_COLS  = 12
         _PANEL_TOTAL = 3 * self._PANEL_W + 2 * 6           # 1890 + 12 = 1902
         _FORMS_BTN_W = (_PANEL_TOTAL - 2 - 16 - (_FORMS_COLS - 1) * 6) // _FORMS_COLS
-        _FORMS_H     = 32 + 2 * (self._BTN_H + 4) # header + 2 button rows
+        # header text (~20) + separator (~6) + 2 button rows (_BTN_H each)
+        # + 3 ItemSpacing.y(5) gaps between the 4 top-level rows + the
+        # child_window's own top+bottom WindowPadding.y(6 each) — the old
+        # "32 + 2*(BTN_H+4)" flat estimate came out ~13px short of this
+        # (real ItemSpacing.y is 5, not the 4 baked into that formula,
+        # and it didn't separately account for WindowPadding at all),
+        # clipping the second button row's bottom edge.
+        _FORMS_H     = 20 + 6 + 2 * self._BTN_H + 3 * 5 + 2 * 6
         with dpg.child_window(tag="pool_forms", width=_PANEL_TOTAL,
                               height=_FORMS_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
