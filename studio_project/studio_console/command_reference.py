@@ -476,7 +476,7 @@ COMMAND_REFERENCE = [
         ("ai button",             "open the AI prompt pool (only shown when an AI provider key is set)"),
         ("log button",            "open the changelog popup (studio_data/changelog.json)"),
         ("spd button",            "open the speed master panel (16 live BPM faders, MA-style)"),
-        ("fdrs button",           "open the 15-slot fader page panel — ◀/▶ page through banks of 15 faders (page 2 = faders 16-30, etc.)"),
+        ("fdrs button",           "open the 10-slot fader page panel — ◀/▶ page through banks of 10 faders (page 2 = faders 11-20, etc.)"),
         ("color button",          "open the HSV colour wheel for RGB control"),
         ("audio button",          "open the audio reactive panel (device, capture, mapping, gain, live meters)"),
     ]),

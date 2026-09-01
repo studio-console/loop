@@ -428,16 +428,16 @@ def test_smoke_full_pipeline(subtests):
             assert ("built-in" in r_cp_form_builtin.lower())
 
         # Fader-page paging — GUIEngine._fpg_exec_for_slot/_fpg_slot_for_exec map
-        # a fixed 15-slot panel onto banks of faders (page 2 slot 1 = fdr 16).
+        # a fixed 10-slot panel onto banks of faders (page 2 slot 1 = fdr 11).
         # Pure functions, no dpg context needed, so they're smoke-testable headless.
         with subtests.test(msg="fpg slot->fdr page 1 slot 1 == fdr 1"):
             assert (GUIEngine._fpg_exec_for_slot(1, 1) == 1)
-        with subtests.test(msg="fpg slot->fdr page 2 slot 1 == fdr 16"):
-            assert (GUIEngine._fpg_exec_for_slot(2, 1) == 16)
-        with subtests.test(msg="fpg slot->fdr page 3 slot 15 == fdr 45"):
-            assert (GUIEngine._fpg_exec_for_slot(3, 15) == 45)
+        with subtests.test(msg="fpg slot->fdr page 2 slot 1 == fdr 11"):
+            assert (GUIEngine._fpg_exec_for_slot(2, 1) == 11)
+        with subtests.test(msg="fpg slot->fdr page 3 slot 10 == fdr 30"):
+            assert (GUIEngine._fpg_exec_for_slot(3, 10) == 30)
         with subtests.test(msg="fpg fdr->slot inverse holds for on-page fdr"):
-            assert (GUIEngine._fpg_slot_for_exec(2, 16) == 1)
+            assert (GUIEngine._fpg_slot_for_exec(2, 11) == 1)
         with subtests.test(msg="fpg fdr->slot returns None for off-page fdr"):
             assert (GUIEngine._fpg_slot_for_exec(1, 16) is None)
         # _fpg_step_page is the pure half of _on_fpg_page_prev/next (the dpg-

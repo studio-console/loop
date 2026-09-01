@@ -96,9 +96,15 @@ class GUIEngineCore:
     # both the slot's near-full width, stacked (not side by side) — every
     # cue is readable, and the fader is still a proper touch-width strip,
     # without the two competing for the same horizontal space.
-    _FPG_SLOTS        = 15
-    _FPG_SLOT_W       = 120    # initial slot width (reflow updates dynamically)
-    _FPG_BTN_W        = 108    # initial button width
+    # Banks of 10 (was 15) — fewer slots per page means each one gets a
+    # bigger share of the window width, which is the actual point: the A/B/
+    # C buttons and the cue list were cramped at 15-per-page. _FPG_SLOT_W/
+    # _FPG_BTN_W are chosen so the *initial* window width comes out close to
+    # the old 15-slot one (1882px) rather than just shrinking the window —
+    # _fpg_reflow() then keeps everything proportional on any resize.
+    _FPG_SLOTS        = 10
+    _FPG_SLOT_W       = 182    # initial slot width (reflow updates dynamically)
+    _FPG_BTN_W        = 170    # initial button width
     _FPG_BTN_H        = 40     # button height — real touch target (was 24)
     _FPG_BADGE_H      = 30     # priority/output-mode badge height (was hardcoded 18)
     _FPG_CUELIST_ITEMS = 6     # visible cue rows before the listbox scrolls

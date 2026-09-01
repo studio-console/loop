@@ -29,7 +29,7 @@ class GUIEngineFaderPage:
         slot = int(fdr_id) - (int(page) - 1) * GUIEngine._FPG_SLOTS
         return slot if 1 <= slot <= GUIEngine._FPG_SLOTS else None
     def _build_fader_page_popup(self):
-        """15-slot MA-style fader page — floating, hidden by default."""
+        """10-slot MA-style fader page — floating, hidden by default."""
         _win_w = self._FPG_SLOTS * (self._FPG_SLOT_W + 4) + 22
         _win_h = self._FPG_SLOT_H + 80
 

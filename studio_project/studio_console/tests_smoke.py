@@ -340,16 +340,16 @@ def run_smoke_test(gui):
                "built-in" in r_cp_form_builtin.lower())
 
         # Fader-page paging — GUIEngine._fpg_exec_for_slot/_fpg_slot_for_exec map
-        # a fixed 15-slot panel onto banks of faders (page 2 slot 1 = fdr 16).
+        # a fixed 10-slot panel onto banks of faders (page 2 slot 1 = fdr 11).
         # Pure functions, no dpg context needed, so they're smoke-testable headless.
         _check("fpg slot->fdr page 1 slot 1 == fdr 1",
                GUIEngine._fpg_exec_for_slot(1, 1) == 1)
-        _check("fpg slot->fdr page 2 slot 1 == fdr 16",
-               GUIEngine._fpg_exec_for_slot(2, 1) == 16)
-        _check("fpg slot->fdr page 3 slot 15 == fdr 45",
-               GUIEngine._fpg_exec_for_slot(3, 15) == 45)
+        _check("fpg slot->fdr page 2 slot 1 == fdr 11",
+               GUIEngine._fpg_exec_for_slot(2, 1) == 11)
+        _check("fpg slot->fdr page 3 slot 10 == fdr 30",
+               GUIEngine._fpg_exec_for_slot(3, 10) == 30)
         _check("fpg fdr->slot inverse holds for on-page fdr",
-               GUIEngine._fpg_slot_for_exec(2, 16) == 1)
+               GUIEngine._fpg_slot_for_exec(2, 11) == 1)
         _check("fpg fdr->slot returns None for off-page fdr",
                GUIEngine._fpg_slot_for_exec(1, 16) is None)
         # _fpg_step_page is the pure half of _on_fpg_page_prev/next (the dpg-
