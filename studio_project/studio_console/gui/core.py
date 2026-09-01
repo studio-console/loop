@@ -390,6 +390,24 @@ class GUIEngineCore:
             for _k, _lo, _hi in _letter_keys:
                 dpg.add_key_press_handler(_k, callback=self._on_global_char,
                                           user_data=(_lo, _hi))
+            # Physical numpad digits are their own DPG keycodes
+            # (mvKey_NumPad0-9), entirely separate from the top-row
+            # mvKey_0-9 registered above — the loop above never covered
+            # them, so numpad digits did nothing outside a natively-
+            # focused cmd_input (reported as "doesn't work in command
+            # line" — the common case, since cmd_input isn't focused most
+            # of the time by design; see the comment above _letter_keys).
+            # No shift variant needed, and NumPad Decimal joins Period for
+            # typing decimal cue numbers (e.g. "1.5") from the numpad too.
+            _numpad_digit_keys = [
+                (dpg.mvKey_NumPad0,'0'),(dpg.mvKey_NumPad1,'1'),(dpg.mvKey_NumPad2,'2'),
+                (dpg.mvKey_NumPad3,'3'),(dpg.mvKey_NumPad4,'4'),(dpg.mvKey_NumPad5,'5'),
+                (dpg.mvKey_NumPad6,'6'),(dpg.mvKey_NumPad7,'7'),(dpg.mvKey_NumPad8,'8'),
+                (dpg.mvKey_NumPad9,'9'),(dpg.mvKey_Decimal,'.'),
+            ]
+            for _k, _ch in _numpad_digit_keys:
+                dpg.add_key_press_handler(_k, callback=self._on_global_char,
+                                          user_data=(_ch, _ch))
             dpg.add_key_press_handler(dpg.mvKey_Back,
                                       callback=self._on_global_backspace)
             dpg.add_key_press_handler(dpg.mvKey_Return,
