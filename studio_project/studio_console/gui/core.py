@@ -8,6 +8,7 @@ multiple inheritance.
 import os
 import json
 import time
+import signal
 
 import threading
 
@@ -1328,6 +1329,24 @@ class GUIEngineCore:
         self.start_update_loop()
         self._load_popup_layout()   # restore saved popup positions/sizes
         dpg.focus_item("cmd_input")
+        # Ctrl+C (SIGINT) in the terminal used to raise KeyboardInterrupt
+        # straight out of the blocking dpg.start_dearpygui() call below,
+        # skipping every line after it — including the popup-layout and
+        # save_show() calls a few lines down, which is the same shutdown
+        # code the "close" header button and a normal window-close both
+        # rely on. That meant a Ctrl+C exit silently lost whatever
+        # changed since the last save, with no error or warning — the
+        # console would come back up next launch showing stale state,
+        # not "how it was when I last turned it off". Routing SIGINT
+        # through dpg.stop_dearpygui() instead makes Ctrl+C take the
+        # exact same graceful path as every other way of closing the
+        # app, so it's covered by the same save logic (and the same
+        # force-exit watchdog in studio_project.py, if driver shutdown
+        # itself hangs afterward).
+        try:
+            signal.signal(signal.SIGINT, lambda *_: dpg.stop_dearpygui())
+        except Exception:
+            pass   # signal.signal only works from the main thread; run() always is, but stay defensive
         dpg.start_dearpygui()
         self._running = False   # signal update thread before destroying context
         time.sleep(0.1)         # give thread one tick to see the flag
