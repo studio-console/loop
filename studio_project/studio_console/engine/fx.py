@@ -331,10 +331,13 @@ class FXLayer:
         #       regardless of patch order, if those are two Groups.
         #   mirror     — folds whatever buckets resulted from block_size/
         #       cluster above symmetrically: bucket b and bucket
-        #       (n-1-b) share a phase-step, so the pattern runs from both
-        #       ends inward (center outward with direction='reverse').
-        #       Independent of block_size/cluster — combine a block size,
-        #       or a cluster grouping, with the fold on top of either.
+        #       (n-1-b) share a phase-step, with the center bucket(s)
+        #       first (phase 0) and the outer edges last — the wave
+        #       starts in the middle and travels outward toward both
+        #       ends together (edges-first/converging-to-center with
+        #       direction='reverse'). Independent of block_size/cluster —
+        #       combine a block size, or a cluster grouping, with the
+        #       fold on top of either.
         #   order      — 'linear' (patch/bucket order) or 'random'
         #       (buckets shuffled once, stable per fx_id) — applies after
         #       block_size/cluster/mirror, independent of both.
@@ -492,10 +495,17 @@ class FXLayer:
         if self.mirror:
             # Fold the bucket sequence symmetrically: bucket b and bucket
             # (num_groups-1-b) share a phase-step — works the same whether
-            # the buckets came from cluster or block_size chunking.
-            fold_of    = [min(b, num_groups - 1 - b) for b in range(num_groups)]
-            group_of   = [fold_of[g] for g in group_of]
-            num_groups = max(group_of) + 1
+            # the buckets came from cluster or block_size chunking. The
+            # center buckets get phase 0 (fire first) and the outer edges
+            # get the highest phase (fire last), so the wave starts in the
+            # middle and travels outward toward both ends together — a
+            # plain min(b, n-1-b) fold gives the opposite (edges first,
+            # meeting in the middle last), which read as "backwards".
+            dist_from_edge = [min(b, num_groups - 1 - b) for b in range(num_groups)]
+            max_dist       = max(dist_from_edge)
+            fold_of        = [max_dist - d for d in dist_from_edge]
+            group_of       = [fold_of[g] for g in group_of]
+            num_groups     = max(group_of) + 1
 
         positions = list(range(num_groups))
         if self.order == 'random':
