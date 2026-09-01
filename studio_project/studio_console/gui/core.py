@@ -551,6 +551,20 @@ class GUIEngineCore:
                             try:
                                 ex.reload(self._patch, self._fade)
                                 ex.is_active = True
+                                # Without this, the fader's cue data is
+                                # fully correct but invisible in real DMX
+                                # output: OutputState.active_layers() only
+                                # merges faders present in
+                                # FaderPool._fire_order (LTP priority
+                                # order), which starts empty every launch
+                                # and is never restored from saved state —
+                                # a fader only enters it via bump_priority.
+                                # The manual RELOAD command's cue_reload()
+                                # already calls this; auto-reload silently
+                                # didn't, which is exactly why typing
+                                # RELOAD by hand "fixed" it and restarting
+                                # kept losing that fix again.
+                                self._fader_pool.bump_priority(ex.fdr_id)
                                 reloaded += 1
                             finally:
                                 (ex.time_override_on,
