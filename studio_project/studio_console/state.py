@@ -794,6 +794,11 @@ ai = AIEngine(
     dim_pool   = dim_pool,
     group_pool = group_pool,
     fx_pool    = fx_pool,
+    attr_pools = _attr_pools,
+    rate_pool  = rate_pool,
+    size_pool  = size_pool,
+    spread_pool = spread_pool,
+    form_pool  = form_pool,
     # cmd_fn and log_fn wired after run_command / GUIEngine are defined below
 )
 

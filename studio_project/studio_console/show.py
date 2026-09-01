@@ -26,7 +26,7 @@ from studio_console.paths import DATA_DIR, SAVES_DIR, _LEGACY_FILE
 from studio_console.engine.fx import _fx_grouping_compat
 from __main__ import (
     Cue, Stack, Group, ColorPreset, DimmerPreset, FXPreset, FormPreset,
-    RatePreset, SizePreset, SpreadPreset, SpeedMaster,
+    RatePreset, SizePreset, SpreadPreset, SpeedMaster, AttributePreset,
 )
 
 def _write_file(path, doc):

@@ -101,25 +101,34 @@ Rules:
     }
 
     # Section titles pulled from command_reference.py's COMMAND_REFERENCE
-    # to build the AI's preset/pool cheat-sheet (see _build_preset_ref) —
-    # the ones actually relevant to saving/recalling pools, not the whole
-    # 435-row manual (most of it — network/OSC/macros/patch/DMX — has
-    # nothing to do with "make it look nice" prompts and would just be
-    # dead weight on every single request).
-    _PRESET_REF_SECTIONS = [
-        "selection", "colour & dim", "fx", "record (saving presets/pools)",
-        "attribute pools",
+    # to build the AI's full command-vocabulary reference (see
+    # _build_command_ref). Everything that's actually a *command* the AI
+    # could put in a "prog" action — i.e. everything the operator can do
+    # from the command line — so "be an expert at this program, do/save/
+    # recall/rename anything it's capable of" has a real vocabulary to
+    # draw from instead of guessing. Deliberately excludes the sections
+    # that only describe GUI buttons/panels/keyboard shortcuts, not
+    # commands (network/sacn, osc, ai control, keyboard, status bar &
+    # quick controls, fixture dim panel) — those don't help construct a
+    # valid prog command and would just be dead weight on every request.
+    _AI_COMMAND_REF_SECTIONS = [
+        "selection", "colour & dim", "programmer math (AT verbs)",
+        "moving lights / attributes", "fx", "list / inspect",
+        "record (saving presets/pools)", "rename / copy / delete",
+        "stack go/back", "faders & pages", "attribute pools", "programmer",
+        "direct dmx", "patch commands", "macros", "speed masters",
+        "midi clock", "audio reactive",
     ]
 
     @classmethod
-    def _build_preset_ref(cls):
-        """Condensed preset/pool cheat-sheet, pulled straight from
+    def _build_command_ref(cls):
+        """Full command-vocabulary reference, pulled straight from
         command_reference.py (the same manual the ? popup shows) so it
         can't drift out of sync with the real command set. Built once —
         called from __init__, not per-request."""
         lines = []
         by_title = dict(COMMAND_REFERENCE)
-        for title in cls._PRESET_REF_SECTIONS:
+        for title in cls._AI_COMMAND_REF_SECTIONS:
             rows = by_title.get(title)
             if not rows:
                 continue
@@ -131,6 +140,8 @@ Rules:
     def __init__(self, patch, prog, output_state, fx_engine, fade_engine,
                  stack_pool=None, fader_pool=None,
                  color_pool=None, dim_pool=None, group_pool=None, fx_pool=None,
+                 attr_pools=None, rate_pool=None, size_pool=None,
+                 spread_pool=None, form_pool=None,
                  cmd_fn=None, log_fn=None, model=None):
         provider = os.environ.get("AI_PROVIDER", "anthropic").strip().lower()
         if provider not in self._PROVIDERS:
@@ -161,19 +172,26 @@ Rules:
         self._dim_pool       = dim_pool
         self._group_pool     = group_pool
         self._fx_pool        = fx_pool
+        self._attr_pools     = attr_pools or {}   # {name: AttributePool} — position/gobo/zoom/focus/beam/control
+        self._rate_pool      = rate_pool
+        self._size_pool      = size_pool
+        self._spread_pool    = spread_pool
+        self._form_pool      = form_pool
         self._cmd            = cmd_fn    # run_command — full console command parser
         self._log            = log_fn    # GUI log callback
         self._enabled        = True
         self._last_fade      = None      # pending fade_time override, consumed by the next cue fire
         self._cmd_history    = []        # last N commands for context
         self._token_cb       = None      # optional callback(in_tok, out_tok) for GUI
-        # Read the command manual once at startup (see _build_preset_ref) —
+        # Read the command manual once at startup (see _build_command_ref) —
         # was reported as "working but isn't great at saving pools, calling
-        # pools/fx into the programmer": the AI only ever saw a small fixed
-        # ACTION_SCHEMA with no RECORD/COLOR/DIM PRESET/GROUP/FIRE FX verbs
-        # in it at all, even though "prog" could already run any of them —
-        # it just never knew that. Cached once, not rebuilt per ask().
-        self._preset_ref     = self._build_preset_ref()
+        # pools/fx into the programmer", then "I want it to be an expert at
+        # this program, do/save/recall/rename anything and everything it's
+        # capable of" — the AI only ever saw a small fixed ACTION_SCHEMA
+        # with no RECORD/RENAME/COPY/DELETE/FADER/PATCH/etc verbs in it at
+        # all, even though "prog" could already run any of them — it just
+        # never knew that. Cached once, not rebuilt per ask().
+        self._command_ref    = self._build_command_ref()
         print(f"  AI Engine: ready ({provider}: {self._model})")
 
     def push_cmd_history(self, cmd_str):
@@ -265,7 +283,13 @@ Rules:
             "dim":   _pool_names(self._dim_pool),
             "group": _pool_names(self._group_pool, items_attr='groups'),
             "fx":    _pool_names(self._fx_pool),
+            "rate":   _pool_names(self._rate_pool),
+            "size":   _pool_names(self._size_pool),
+            "spread": _pool_names(self._spread_pool),
+            "form":   _pool_names(self._form_pool, items_attr='forms'),
         }
+        for _attr_name, _attr_pool in self._attr_pools.items():
+            pools[_attr_name] = _pool_names(_attr_pool)
         return {
             "fixtures": fixtures,
             "stacks": stacks,
@@ -296,23 +320,33 @@ Rules:
             "Available channels: red, green, blue. "
             "programmer commands use MA3-style syntax: "
             "'FIXTURE_ID AT VALUE', 'R 255 G 0 B 0', 'AT FULL', 'AT OUT'.\n\n"
-            "The \"prog\" action is NOT limited to that AT-value syntax — its "
+            "You are an expert operator of this specific console — you should "
+            "be able to do, save, recall, rename, copy, or delete anything the "
+            "program itself is capable of, not just apply colours and run FX. "
+            "The \"prog\" action is NOT limited to AT-value syntax — its "
             "\"cmd\" field is a full passthrough to the real console command "
             "parser, so it can run ANY command in the reference below verbatim: "
             "recording the current programmer into a saved preset (RECORD "
-            "COLOR/DIM/GROUP/FX/POSITION/...), recalling a saved preset back "
-            "into the programmer (COLOR n, DIM PRESET n, GROUP n, FIRE FX n, "
-            "POSITION n, ...), LIST commands to inspect a pool, and everything "
-            "else in the reference. Prefer a saved preset over improvising raw "
-            "values when the state's \"pools\" section already has one that "
-            "fits what the user asked for — reuse it (COLOR 3, FIRE FX 2, ...) "
+            "COLOR/DIM/GROUP/FX/POSITION/RATE/...), recalling one back into the "
+            "programmer (COLOR n, DIM PRESET n, GROUP n, FIRE FX n, POSITION n, "
+            "...), renaming/copying/deleting any preset or cue (RENAME COLOR n "
+            "Name, COPY FX n TO m, DELETE FORM n, CLEAR GROUP n, ...), stack/"
+            "fader playback control (GO, BACK, GOTO n, FADER n LEVEL/MODE/"
+            "OUTPUT/ASSIGN, PAGE ...), macros, patch edits, direct DMX, LIST "
+            "commands to inspect a pool, and everything else in the reference "
+            "below — there is no dedicated action type for most of this, prog "
+            "covers it. Prefer a saved preset over improvising raw values when "
+            "the state's \"pools\" section already has one that fits what the "
+            "user asked for — reuse it (COLOR 3, FIRE FX 2, POSITION 1, ...) "
             "instead of re-deriving the same look with prog/fx_start actions. "
-            "If the user asks to save/record the current look, use a prog "
-            "action with a RECORD command — there is no dedicated action type "
-            "for saving, prog covers it.\n\n"
-            "PRESET / POOL COMMAND REFERENCE (saving into and recalling from "
-            "pools — read this before assuming a capability doesn't exist):\n"
-            + self._preset_ref + "\n\n"
+            "Be cautious with clearly destructive, hard-to-undo commands "
+            "(PATCH REMOVE, DELETE FORM/RATE/SIZEP/SPREADP, CLEAR <pool> n, "
+            "stk N CLEAR) — only use those when the user explicitly asked for "
+            "that specific removal, never as an improvised part of a creative "
+            "lighting request.\n\n"
+            "FULL COMMAND REFERENCE (this is the real command vocabulary — "
+            "read it before assuming a capability doesn't exist):\n"
+            + self._command_ref + "\n\n"
             "The console state includes recent_commands — the last few commands the "
             "operator ran. Use them to resolve pronouns and implicit references: "
             "if the user says 'them', 'those', 'it', or 'same fixtures', infer "
@@ -421,6 +455,24 @@ Rules:
             self._log(f"  → {msg}")
         return msg
 
+    def _run_cmd(self, cmd_str):
+        """Run a command string through the real parser, exactly the way
+        every self._cmd(...) call site in execute() below needs to: log
+        the result (was silently discarded before -- if the model's
+        generated command had a typo or hit a "usage: ..." error, nothing
+        showed up anywhere, no feedback for the operator or a chance for
+        a follow-up prompt to course-correct) and push it into
+        _cmd_history so a follow-up prompt in the same conversation
+        ("now make it slower") sees what the AI itself just did, not just
+        whatever the operator last typed by hand."""
+        if not self._cmd:
+            return None
+        result = self._cmd(cmd_str)
+        self.push_cmd_history(cmd_str)
+        if result and self._log:
+            self._log(f"  → {result}")
+        return result
+
     def execute(self, actions):
         """Run a list of action dicts on the console."""
         for a in actions:
@@ -428,7 +480,7 @@ Rules:
                 act = a.get("action", "")
                 if act == "prog":
                     if self._cmd:
-                        self._cmd(a["cmd"])
+                        self._run_cmd(a["cmd"])
                     else:
                         self._prog.execute(a["cmd"])
                 elif act == "goto_cue":
@@ -469,7 +521,7 @@ Rules:
                     sp  = float(a.get("spread", 0.0))
                     cmd = f"FX {wf} {ch} BPM {bpm:.1f} SIZE {sz:.0f} SPREAD {sp:.1f}"
                     if self._cmd:
-                        self._cmd(cmd)
+                        self._run_cmd(cmd)
                     else:
                         all_s = [s for m in self._patch.all_fixtures()
                                  for s in m.all_subs()]
@@ -484,16 +536,16 @@ Rules:
                         self._fire(ex, ex.goto, float(a["num"]), self._patch, self._fade)
                 elif act == "group_select":
                     if self._cmd:
-                        self._cmd(f"GROUP {a['group']}")
+                        self._run_cmd(f"GROUP {a['group']}")
                 elif act == "fx_stop":
                     ch = a.get("channel")
                     if self._cmd:
-                        self._cmd(f"FX CLEAR {ch.upper()}" if ch else "FX CLEAR")
+                        self._run_cmd(f"FX CLEAR {ch.upper()}" if ch else "FX CLEAR")
                     else:
                         self._fx.clear()
                 elif act == "exec_level":
                     if self._fader_pool and self._cmd:
-                        self._cmd(f"FADER {a.get('fdr', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
+                        self._run_cmd(f"FADER {a.get('fdr', 1)} LEVEL {float(a.get('level', 1.0)) * 100:.0f}")
                 elif act == "fx_clear":
                     # Route through the real FX CLEAR handler — it both stops
                     # the FX engine layers *and* clears the programmer's
@@ -502,7 +554,7 @@ Rules:
                     # it also wiped fader-owned cue FX layers whose ids
                     # are tracked separately in ex._fx_ids.
                     if self._cmd:
-                        self._cmd("FX CLEAR")
+                        self._run_cmd("FX CLEAR")
                     else:
                         self._fx.clear()
                 elif act == "fade_time":
