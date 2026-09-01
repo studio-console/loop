@@ -114,6 +114,31 @@ class GUIEngineFXEditor:
                                      callback=self._on_fx_spread)
                 dpg.add_text("", tag="fxed_linked_lbl", color=_C_DIM)
 
+            # Distribution controls for the ●-linked row (same row the
+            # sliders above edit) — big, always-visible, not buried in the
+            # scrolling layer table. Editor-only: unlike rate/size/spread
+            # above, there's no live "adjust every running FX's low/pattern"
+            # command to also drive, so these only ever touch the selected
+            # preset-editor row (and, bidirectionally, that row's own cells
+            # in the table below).
+            with dpg.group(horizontal=True):
+                dpg.add_slider_float(label="low", tag="fxed_sel_low",
+                                     default_value=0.0, min_value=0.0,
+                                     max_value=100.0, width=180,
+                                     callback=self._on_fxed_sel_low)
+                dpg.add_text("pattern", color=_C_DIM)
+                dpg.add_combo(tag="fxed_sel_pat", label="", width=90,
+                              items=self._FX_GROUPINGS, default_value='none',
+                              callback=self._on_fxed_sel_pat)
+                dpg.add_text("block", color=_C_DIM)
+                dpg.add_input_int(tag="fxed_sel_block", label="", width=60,
+                                  default_value=1, min_value=1, max_value=999,
+                                  step=0, callback=self._on_fxed_sel_block)
+                dpg.add_text("dir", color=_C_DIM)
+                dpg.add_combo(tag="fxed_sel_dir", label="", width=70,
+                              items=self._FX_DIRECTIONS, default_value='fwd',
+                              callback=self._on_fxed_sel_dir)
+
             dpg.add_separator()
 
             # ── Layer list ────────────────────────────────────
@@ -398,11 +423,16 @@ class GUIEngineFXEditor:
 
                 # Floor for the oscillation range — waveform swings between
                 # low and size instead of 0 and size (e.g. low=40 size=70
-                # keeps a dim/strobe sync between 40% and 70%).
+                # keeps a dim/strobe sync between 40% and 70%). Callbacks
+                # below mirror edits into the big fxed_sel_* controls above
+                # when this is the ●-linked row — same link direction as
+                # bpm/size/spread's _fxed_on_row_val_change.
                 dpg.add_input_float(tag=f"fxed_r{i}_low", label="", width=50,
                                     default_value=ld.get('low', 0.0),
                                     min_value=0.0, max_value=100.0,
-                                    step=0, format="%.0f")
+                                    step=0, format="%.0f",
+                                    callback=self._fxed_on_row_dist_change,
+                                    user_data=(i, 'low'))
                 dpg.set_value(f"fxed_r{i}_low", ld.get('low', 0.0))
 
                 # Distribution pattern across targets — see _FX_GROUPINGS'
@@ -411,17 +441,23 @@ class GUIEngineFXEditor:
                 # the right, not a separate selector of its own.
                 _pat_val = ld.get('grouping') or 'none'
                 dpg.add_combo(tag=f"fxed_r{i}_pat", label="", width=78,
-                              items=self._FX_GROUPINGS, default_value=_pat_val)
+                              items=self._FX_GROUPINGS, default_value=_pat_val,
+                              callback=self._fxed_on_row_dist_change,
+                              user_data=(i, 'pat'))
                 dpg.set_value(f"fxed_r{i}_pat", _pat_val)
 
                 dpg.add_input_int(tag=f"fxed_r{i}_block", label="", width=44,
                                   default_value=ld.get('block_size', 1),
-                                  min_value=1, max_value=999, step=0)
+                                  min_value=1, max_value=999, step=0,
+                                  callback=self._fxed_on_row_dist_change,
+                                  user_data=(i, 'block'))
                 dpg.set_value(f"fxed_r{i}_block", ld.get('block_size', 1))
 
                 _dir_val = self._FX_DIR_FROM_INTERNAL.get(ld.get('direction', 'forward'), 'fwd')
                 dpg.add_combo(tag=f"fxed_r{i}_dir", label="", width=58,
-                              items=self._FX_DIRECTIONS, default_value=_dir_val)
+                              items=self._FX_DIRECTIONS, default_value=_dir_val,
+                              callback=self._fxed_on_row_dist_change,
+                              user_data=(i, 'dir'))
                 dpg.set_value(f"fxed_r{i}_dir", _dir_val)
 
                 _gval = self._fxed_id_to_label(_gid, self._groups,  'groups',  'name')
@@ -509,6 +545,11 @@ class GUIEngineFXEditor:
             dpg.set_value("fx_rate",   ld.get('bpm',    60.0))
             dpg.set_value("fx_size",   ld.get('size',  100.0))
             dpg.set_value("fx_spread", ld.get('spread',  0.0))
+            dpg.set_value("fxed_sel_low",   ld.get('low', 0.0))
+            dpg.set_value("fxed_sel_pat",   ld.get('grouping') or 'none')
+            dpg.set_value("fxed_sel_block", ld.get('block_size', 1))
+            dpg.set_value("fxed_sel_dir",
+                          self._FX_DIR_FROM_INTERNAL.get(ld.get('direction', 'forward'), 'fwd'))
             dpg.set_value("fxed_linked_lbl", f"↔ linked to row {idx + 1}")
         except Exception:
             pass
@@ -550,6 +591,69 @@ class GUIEngineFXEditor:
         layers[idx][field] = value
         try:
             dpg.set_value(f"fxed_r{idx}_{field}", value)
+        except Exception:
+            pass
+    def _fxed_on_row_dist_change(self, _sender, app_data, user_data):
+        """A layer row's own low/pattern/block/dir field was edited directly
+        in the table. Same idea as _fxed_on_row_val_change (bpm/size/spread)
+        but for the distribution controls, which have no live-running-FX
+        command to also drive — so this only ever mirrors into the big
+        fxed_sel_* controls above when this is the ●-linked row, never into
+        anything else."""
+        i, kind = user_data
+        if not (0 <= i < len(self._fx_ed_layers)):
+            return
+        if kind == 'low':
+            self._fx_ed_layers[i]['low'] = app_data
+        elif kind == 'pat':
+            self._fx_ed_layers[i]['grouping'] = None if app_data == 'none' else app_data
+        elif kind == 'block':
+            self._fx_ed_layers[i]['block_size'] = app_data
+        elif kind == 'dir':
+            self._fx_ed_layers[i]['direction'] = self._FX_DIR_TO_INTERNAL.get(app_data, 'forward')
+        if i == self._fx_ed_selected_row:
+            _sel_tag = {'low': 'fxed_sel_low', 'pat': 'fxed_sel_pat',
+                        'block': 'fxed_sel_block', 'dir': 'fxed_sel_dir'}[kind]
+            try:
+                dpg.set_value(_sel_tag, app_data)
+            except Exception:
+                pass
+    def _on_fxed_sel_low(self, _sender, app_data, _user_data=None):
+        """Big 'low' slider (selected row) — the other half of the link
+        with _fxed_on_row_dist_change."""
+        idx = self._fx_ed_selected_row
+        if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
+            return
+        self._fx_ed_layers[idx]['low'] = app_data
+        try:
+            dpg.set_value(f"fxed_r{idx}_low", app_data)
+        except Exception:
+            pass
+    def _on_fxed_sel_pat(self, _sender, app_data, _user_data=None):
+        idx = self._fx_ed_selected_row
+        if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
+            return
+        self._fx_ed_layers[idx]['grouping'] = None if app_data == 'none' else app_data
+        try:
+            dpg.set_value(f"fxed_r{idx}_pat", app_data)
+        except Exception:
+            pass
+    def _on_fxed_sel_block(self, _sender, app_data, _user_data=None):
+        idx = self._fx_ed_selected_row
+        if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
+            return
+        self._fx_ed_layers[idx]['block_size'] = app_data
+        try:
+            dpg.set_value(f"fxed_r{idx}_block", app_data)
+        except Exception:
+            pass
+    def _on_fxed_sel_dir(self, _sender, app_data, _user_data=None):
+        idx = self._fx_ed_selected_row
+        if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
+            return
+        self._fx_ed_layers[idx]['direction'] = self._FX_DIR_TO_INTERNAL.get(app_data, 'forward')
+        try:
+            dpg.set_value(f"fxed_r{idx}_dir", app_data)
         except Exception:
             pass
     def _fxed_add_layer(self, *_):
