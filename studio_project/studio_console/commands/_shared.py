@@ -24,7 +24,9 @@ from studio_console.state import (
     cue_pool, fx_engine, active_fx, _prog_fx_ids, _fx_params,
     _apply_timing_edit, _on_cue_fire, save_show,
 )
-from studio_console.engine.fx import _bucket_fx_defs, _expand_color_fx, _expand_group_fx
+from studio_console.engine.fx import (
+    _bucket_fx_defs, _expand_color_fx, _expand_group_fx, _fx_grouping_compat,
+)
 
 
 def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
@@ -211,6 +213,7 @@ def _prog_fx_start(fx_defs_by_fid):
     expanded = _expand_color_fx(fx_defs_by_fid, color_pool)
     expanded = _expand_group_fx(expanded, patch, group_pool)
     for ld, targets in _bucket_fx_defs(expanded, patch):
+        _mirror, _cluster, _order = _fx_grouping_compat(ld)
         fxid = max(_prog_fx_ids, default=8999) + 1
         layer = fx_engine.add(
             fxid,
@@ -230,9 +233,10 @@ def _prog_fx_start(fx_defs_by_fid):
             dim_id       = ld.get('dim_id'),
             speed_id     = ld.get('speed_id'),
             block_size   = ld.get('block_size',      1),
-            order        = ld.get('order',    'linear'),
+            order        = _order,
             direction    = ld.get('direction','forward'),
-            grouping     = ld.get('grouping'),
+            mirror       = _mirror,
+            cluster      = _cluster,
             low          = ld.get('low', 0.0),
         )
         _prog_fx_ids.append(fxid)

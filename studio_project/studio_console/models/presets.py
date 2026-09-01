@@ -21,6 +21,7 @@ import copy
 import time
 
 from studio_console.models.fixtures import MasterFixture
+from studio_console.engine.fx import _fx_grouping_compat
 
 # ============================================================
 # Blocks 4 & 5: Presets, Pools, Groups
@@ -776,6 +777,7 @@ class Fader:
             fxid = self.fdr_id * 10000 + self._fx_counter
             # Use default_infade (cue fade time) when the FX def has no explicit infade
             infade = ld['infade'] if 'infade' in ld else default_infade
+            _mirror, _cluster, _order = _fx_grouping_compat(ld)
             self.fx_engine.add(
                 fxid, ld.get('waveform', 'sine'), ch,
                 rate_bpm     = ld.get('bpm',          60.0),
@@ -792,9 +794,10 @@ class Fader:
                 infade       = infade,
                 outfade      = ld.get('outfade',       0.0),
                 block_size   = ld.get('block_size',      1),
-                order        = ld.get('order',    'linear'),
+                order        = _order,
                 direction    = ld.get('direction','forward'),
-                grouping     = ld.get('grouping'),
+                mirror       = _mirror,
+                cluster      = _cluster,
                 low          = ld.get('low', 0.0),
             )
             self._fx_ids.append(fxid)
@@ -1016,7 +1019,7 @@ class FXPreset:
                   form_id=None, rate_id=None, size_id=None, spread_id=None, bpm=None,
                   dim_id=None, color_id=None, group_id=None, speed_id=None,
                   phase_offset=0.0, block_size=1, order='linear', direction='forward',
-                  grouping=None, low=0.0, target_scope=None,
+                  mirror=False, cluster=False, low=0.0, target_scope=None,
                   infade=0.0, outfade=0.0):
         self.layers.append({
             'waveform':      waveform.lower(),
@@ -1039,7 +1042,8 @@ class FXPreset:
             'block_size':    block_size,
             'order':         order,
             'direction':     direction,
-            'grouping':      grouping,
+            'mirror':        bool(mirror),
+            'cluster':       bool(cluster),
             'target_scope':  target_scope,
         })
 
@@ -1047,6 +1051,7 @@ class FXPreset:
         """Start all layers in this preset without clearing other running FX."""
         fired = []
         for i, ld in enumerate(self.layers, 1):
+            _mirror, _cluster, _order = _fx_grouping_compat(ld)
             layer = fx_engine.add(
                 base_id + i,
                 ld['waveform'],
@@ -1065,9 +1070,10 @@ class FXPreset:
                 dim_id       = ld.get('dim_id'),
                 speed_id     = ld.get('speed_id'),
                 block_size   = ld.get('block_size', 1),
-                order        = ld.get('order', 'linear'),
+                order        = _order,
                 direction    = ld.get('direction', 'forward'),
-                grouping     = ld.get('grouping'),
+                mirror       = _mirror,
+                cluster      = _cluster,
                 low          = ld.get('low', 0.0),
             )
             fired.append(layer)
@@ -1106,7 +1112,8 @@ class FXPool:
                 rate_id   = layer._rate_id,
                 size_id   = layer._size_id,
                 spread_id = layer._spread_id,
-                grouping  = layer.grouping,
+                mirror    = layer.mirror,
+                cluster   = layer.cluster,
                 low       = layer.low,
                 infade    = layer.infade,
                 outfade   = layer.outfade,

@@ -88,7 +88,7 @@ class GUIEngineLeftColumn:
                 continue
             out.append((fxid, layer.waveform, layer.channel, round(layer.rate_bpm, 1),
                         round(layer.size, 1), round(layer.spread, 1), round(layer.low, 1),
-                        layer.grouping, len(layer.targets)))
+                        layer.mirror, layer.cluster, layer.block_size, len(layer.targets)))
         return tuple(out)
     def _rebuild_prog_fx_list(self):
         """Rebuild the live-programmer-FX list (left column). Detail view for
@@ -114,8 +114,12 @@ class GUIEngineLeftColumn:
             extras = []
             if layer.low:
                 extras.append(f"low {layer.low:.0f}")
-            if layer.grouping:
-                extras.append(layer.grouping)
+            if layer.cluster:
+                extras.append("cluster")
+            if layer.mirror:
+                extras.append("mirror")
+            if layer.block_size != 1:
+                extras.append(f"block {layer.block_size}")
             extra_s = f"  [{' '.join(extras)}]" if extras else ""
             line = (f"{layer.waveform} {layer.channel}  {layer.rate_bpm:.0f}bpm  "
                     f"sz{layer.size:.0f}  spr{layer.spread:.0f}  "

@@ -59,6 +59,7 @@ from studio_console.engine.fx import (
     Waveform, FormPreset, FormPool, RatePreset, RatePool, SizePreset,
     SizePool, SpreadPreset, SpreadPool, SpeedMaster, SpeedMasterPool, FXLayer,
     FXEngine, _bucket_fx_defs, _expand_color_fx, _expand_group_fx,
+    _fx_grouping_compat,
 )
 
 from studio_console.drivers.network import NetworkEngine
@@ -409,7 +410,7 @@ def cmd_039_fx_main(t0, tokens, raw):
             return "\n".join(lines)
 
         # fx [add] <waveform|form n|COLOR n> [channel] [bpm n] [size n] [LOW n] [SPREAD n]
-        #   [group n] [dimref n] [BLOCK n] [GROUPING BLOCK|MIRROR|CLUSTER|RANDOM]
+        #   [group n] [dimref n] [BLOCK n] [MIRROR] [CLUSTER] [ORDER RANDOM]
         #   [DIRECTION FWD|REV|BOUNCE] [PIXEL|FIXTURE]
         #
         # Tree references:
@@ -420,13 +421,16 @@ def cmd_039_fx_main(t0, tokens, raw):
         #              waveform swings between LOW and SIZE instead of 0 and
         #              SIZE, e.g. LOW 40 SIZE 70 keeps a dim/strobe sync
         #              between 40% and 70% instead of ever going fully dark.
+        #   MIRROR / CLUSTER / BLOCK n / ORDER RANDOM / DIRECTION — all
+        #              independent and combine freely; see the comment
+        #              further down where they're parsed.
         add_mode = (sub == 'ADD')
         base_idx = 2 if add_mode else 1
 
         if base_idx >= len(tokens):
             return ("usage: fx [add] <waveform|form n|COLOR n> [channel] "
                     "[bpm n] [size n] [low n] [SPREAD n] [group n] [dimref n] "
-                    "[BLOCK n] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE]")
+                    "[BLOCK n] [MIRROR] [CLUSTER] [ORDER RANDOM] [DIRECTION FWD|REV|BOUNCE]")
 
         form_id  = None
         color_id = None
@@ -514,20 +518,31 @@ def cmd_039_fx_main(t0, tokens, raw):
         elif dir_word in ('FWD', 'FORWARD'):
             direction = 'forward'
 
-        # GROUPING <BLOCK|MIRROR|CLUSTER|RANDOM|NONE> — selects the algorithm
-        # that buckets targets into phase-steps (see FXLayer's grouping
-        # comments in engine/fx.py for what each does). Distinct from the
-        # bare GROUP n above, which selects the target *fixtures* — this
-        # picks the chase *pattern* across whatever targets end up in play.
-        grouping = None
+        # MIRROR / CLUSTER — independent, combinable distribution toggles
+        # (see FXLayer's distribution comments in engine/fx.py). Distinct
+        # from the bare GROUP n above, which selects the target *fixtures*
+        # — these pick the chase *pattern* across whatever targets end up
+        # in play, and combine freely with each other, with BLOCK n, with
+        # ORDER RANDOM, and with DIRECTION: e.g.
+        #   FX SINE RED BLOCK 3 MIRROR RANDOM
+        # blocks of 3, folded symmetrically, then shuffled.
+        mirror  = 'MIRROR'  in up_tokens
+        cluster = 'CLUSTER' in up_tokens
+
+        # Backward compat: the old single-mode "GROUPING <BLOCK|MIRROR|
+        # CLUSTER|RANDOM|NONE>" still parses, translated onto today's
+        # independent toggles instead of the mutually-exclusive mode it
+        # used to select.
         grouping_m = _re.search(r'\bGROUPING\s+(\w+)', up)
         if grouping_m:
             _gw = grouping_m.group(1)
-            grouping = {
-                'BLOCK': 'block', 'MIRROR': 'mirror',
-                'CLUSTER': 'cluster', 'RANDOM': 'random',
-                'NONE': None,
-            }.get(_gw)
+            if _gw == 'MIRROR':
+                mirror = True
+            elif _gw == 'CLUSTER':
+                cluster = True
+            elif _gw == 'RANDOM':
+                order = 'random'
+            # BLOCK / NONE need no action — already today's default state
 
         target_scope = None
         if 'PIXEL' in up_tokens:
@@ -559,7 +574,8 @@ def cmd_039_fx_main(t0, tokens, raw):
             'block_size':   block_size,
             'order':        order,
             'direction':    direction,
-            'grouping':     grouping,
+            'mirror':       mirror,
+            'cluster':      cluster,
             'target_scope': target_scope,
         }
 
@@ -633,6 +649,7 @@ def cmd_040_record_fx(t0, tokens, raw):
         name = " ".join(t.capitalize() for t in tokens[3:]) if len(tokens) > 3 else ""
         preset = FXPreset(fx_n, name or f"FX {fx_n}")
         for ld in defs:
+            _mirror, _cluster, _order = _fx_grouping_compat(ld)
             preset.add_layer(
                 ld['waveform'], ld['channel'],
                 bpm          = ld.get('bpm',    60.0),
@@ -650,9 +667,10 @@ def cmd_040_record_fx(t0, tokens, raw):
                 group_id     = ld.get('group_id'),
                 speed_id     = ld.get('speed_id'),
                 block_size   = ld.get('block_size',      1),
-                order        = ld.get('order',    'linear'),
+                order        = _order,
                 direction    = ld.get('direction','forward'),
-                grouping     = ld.get('grouping'),
+                mirror       = _mirror,
+                cluster      = _cluster,
                 low          = ld.get('low', 0.0),
                 target_scope = ld.get('target_scope'),
             )

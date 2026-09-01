@@ -23,6 +23,7 @@ import copy
 import shutil as _shutil
 
 from studio_console.paths import DATA_DIR, SAVES_DIR, _LEGACY_FILE
+from studio_console.engine.fx import _fx_grouping_compat
 from __main__ import (
     Cue, Stack, Group, ColorPreset, DimmerPreset, FXPreset, FormPreset,
     RatePreset, SizePreset, SpreadPreset, SpeedMaster,
@@ -535,7 +536,8 @@ class ShowFile:
                     'block_size':   ld.get('block_size', 1),
                     'order':        ld.get('order', 'linear'),
                     'direction':    ld.get('direction', 'forward'),
-                    'grouping':     ld.get('grouping'),
+                    'mirror':       ld.get('mirror', False),
+                    'cluster':      ld.get('cluster', False),
                     'low':          ld.get('low', 0.0),
                     'target_scope': ld.get('target_scope'),
                 })
@@ -555,6 +557,7 @@ class ShowFile:
             for ld in pdata.get("layers", []):
                 if needs_migration:
                     ShowFile._migrate_fx_ld(ld)
+                _mirror, _cluster, _order = _fx_grouping_compat(ld)
                 preset.add_layer(
                     ld["waveform"], ld["channel"],
                     bpm          = ld.get("bpm", ld.get("rate_bpm", 60.0)),
@@ -572,9 +575,10 @@ class ShowFile:
                     group_id     = ld.get("group_id"),
                     speed_id     = ld.get("speed_id"),
                     block_size   = ld.get("block_size",     1),
-                    order        = ld.get("order",   "linear"),
+                    order        = _order,
                     direction    = ld.get("direction","forward"),
-                    grouping     = ld.get("grouping"),
+                    mirror       = _mirror,
+                    cluster      = _cluster,
                     low          = ld.get("low", 0.0),
                     target_scope = ld.get("target_scope"),
                 )

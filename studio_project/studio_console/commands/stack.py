@@ -59,6 +59,7 @@ from studio_console.engine.fx import (
     Waveform, FormPreset, FormPool, RatePreset, RatePool, SizePreset,
     SizePool, SpreadPreset, SpreadPool, SpeedMaster, SpeedMasterPool, FXLayer,
     FXEngine, _bucket_fx_defs, _expand_color_fx, _expand_group_fx,
+    _fx_grouping_compat,
 )
 
 from studio_console.drivers.network import NetworkEngine
@@ -1211,6 +1212,7 @@ def cmd_125_update_main(t0, tokens, raw):
             name = existing.name if existing else f"fx {upd_id}"
             preset = FXPreset(upd_id, name)
             for ld in defs:
+                _mirror, _cluster, _order = _fx_grouping_compat(ld)
                 preset.add_layer(
                     ld.get('waveform','sine'), ld.get('channel','red'),
                     bpm=ld.get('bpm',60.0), size=ld.get('size',100.0),
@@ -1219,9 +1221,9 @@ def cmd_125_update_main(t0, tokens, raw):
                     size_id=ld.get('size_id'), spread_id=ld.get('spread_id'),
                     dim_id=ld.get('dim_id'), color_id=ld.get('color_id'),
                     group_id=ld.get('group_id'), speed_id=ld.get('speed_id'),
-                    block_size=ld.get('block_size',1), order=ld.get('order','linear'),
+                    block_size=ld.get('block_size',1), order=_order,
                     direction=ld.get('direction','forward'),
-                    grouping=ld.get('grouping'),
+                    mirror=_mirror, cluster=_cluster,
                     low=ld.get('low', 0.0),
                     target_scope=ld.get('target_scope'),
                 )

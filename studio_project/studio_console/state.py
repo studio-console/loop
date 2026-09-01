@@ -47,6 +47,7 @@ from studio_console.engine.playback import OutputState, FadeEngine
 from studio_console.engine.fx import (
     FormPool, RatePool, SizePool, SpreadPool, SpeedMasterPool, FXEngine,
     FormPreset, RatePreset, SizePreset, SpreadPreset, SpeedMaster,
+    _fx_grouping_compat,
 )
 from studio_console.drivers.network import NetworkEngine
 from studio_console.drivers.midi import MIDIEngine
@@ -1040,6 +1041,7 @@ def import_presets(path):
             pid    = int(pid_s)
             preset = FXPreset(pid, pdata.get("name", f"FX {pid}"))
             for ld in pdata.get("layers", []):
+                _mirror, _cluster, _order = _fx_grouping_compat(ld)
                 preset.add_layer(
                     ld["waveform"], ld["channel"],
                     bpm=ld.get("bpm", ld.get("rate_bpm", 60.0)),
@@ -1050,8 +1052,8 @@ def import_presets(path):
                     dim_id=ld.get("dim_id"), color_id=ld.get("color_id"),
                     group_id=ld.get("group_id"), speed_id=ld.get("speed_id"),
                     block_size=ld.get("block_size", 1),
-                    order=ld.get("order", "linear"), direction=ld.get("direction", "forward"),
-                    grouping=ld.get("grouping"),
+                    order=_order, direction=ld.get("direction", "forward"),
+                    mirror=_mirror, cluster=_cluster,
                     low=ld.get("low", 0.0),
                     target_scope=ld.get("target_scope"),
                 )

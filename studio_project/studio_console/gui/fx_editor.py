@@ -117,19 +117,30 @@ class GUIEngineFXEditor:
             # Distribution controls for the ●-linked row (same row the
             # sliders above edit) — big, always-visible, not buried in the
             # scrolling layer table. Editor-only: unlike rate/size/spread
-            # above, there's no live "adjust every running FX's low/pattern"
+            # above, there's no live "adjust every running FX's low/dist"
             # command to also drive, so these only ever touch the selected
             # preset-editor row (and, bidirectionally, that row's own cells
             # in the table below).
+            #
+            # mirror/cluster/random are independent, combinable toggles
+            # (not a single mutually-exclusive mode) — check any subset of
+            # them together with a block size and a direction to build a
+            # chase pattern, the same way MA's own effect-grouping knobs
+            # compose. See FXLayer's distribution comment in engine/fx.py.
             with dpg.group(horizontal=True):
                 dpg.add_slider_float(label="low", tag="fxed_sel_low",
                                      default_value=0.0, min_value=0.0,
                                      max_value=100.0, width=180,
                                      callback=self._on_fxed_sel_low)
-                dpg.add_text("pattern", color=_C_DIM)
-                dpg.add_combo(tag="fxed_sel_pat", label="", width=90,
-                              items=self._FX_GROUPINGS, default_value='none',
-                              callback=self._on_fxed_sel_pat)
+                dpg.add_checkbox(label="mirror", tag="fxed_sel_mirror",
+                                 default_value=False,
+                                 callback=self._on_fxed_sel_mirror)
+                dpg.add_checkbox(label="cluster", tag="fxed_sel_cluster",
+                                 default_value=False,
+                                 callback=self._on_fxed_sel_cluster)
+                dpg.add_checkbox(label="random", tag="fxed_sel_random",
+                                 default_value=False,
+                                 callback=self._on_fxed_sel_random)
                 dpg.add_text("block", color=_C_DIM)
                 dpg.add_input_int(tag="fxed_sel_block", label="", width=60,
                                   default_value=1, min_value=1, max_value=999,
@@ -164,7 +175,9 @@ class GUIEngineFXEditor:
                     dpg.add_table_column(label="spread",   width_fixed=True, init_width_or_weight=59)
                     dpg.add_table_column(label="phase",    width_fixed=True, init_width_or_weight=59)
                     dpg.add_table_column(label="low",      width_fixed=True, init_width_or_weight=55)
-                    dpg.add_table_column(label="pattern",  width_fixed=True, init_width_or_weight=84)
+                    dpg.add_table_column(label="mirror",   width_fixed=True, init_width_or_weight=54)
+                    dpg.add_table_column(label="cluster",  width_fixed=True, init_width_or_weight=54)
+                    dpg.add_table_column(label="random",   width_fixed=True, init_width_or_weight=54)
                     dpg.add_table_column(label="block",    width_fixed=True, init_width_or_weight=48)
                     dpg.add_table_column(label="dir",      width_fixed=True, init_width_or_weight=64)
                     dpg.add_table_column(label="group",    width_fixed=True, init_width_or_weight=96)
@@ -214,9 +227,9 @@ class GUIEngineFXEditor:
                 dpg.add_input_float(tag="fxed_add_low", label="", width=55,
                                     default_value=0.0, min_value=0.0, max_value=100.0,
                                     step=0, format="%.0f")
-                dpg.add_text("pattern", color=_C_DIM)
-                dpg.add_combo(tag="fxed_add_pat", label="", width=84,
-                              items=self._FX_GROUPINGS, default_value='none')
+                dpg.add_checkbox(label="mirror", tag="fxed_add_mirror", default_value=False)
+                dpg.add_checkbox(label="cluster", tag="fxed_add_cluster", default_value=False)
+                dpg.add_checkbox(label="random", tag="fxed_add_random", default_value=False)
                 dpg.add_text("block", color=_C_DIM)
                 dpg.add_input_int(tag="fxed_add_block", label="", width=48,
                                   default_value=1, min_value=1, max_value=999, step=0)
@@ -435,16 +448,25 @@ class GUIEngineFXEditor:
                                     user_data=(i, 'low'))
                 dpg.set_value(f"fxed_r{i}_low", ld.get('low', 0.0))
 
-                # Distribution pattern across targets — see _FX_GROUPINGS'
-                # comment (core.py) for the block/mirror/cluster/random
-                # naming. 'cluster' buckets by the "group" ref column to
-                # the right, not a separate selector of its own.
-                _pat_val = ld.get('grouping') or 'none'
-                dpg.add_combo(tag=f"fxed_r{i}_pat", label="", width=78,
-                              items=self._FX_GROUPINGS, default_value=_pat_val,
-                              callback=self._fxed_on_row_dist_change,
-                              user_data=(i, 'pat'))
-                dpg.set_value(f"fxed_r{i}_pat", _pat_val)
+                # Distribution toggles — independent and combinable (see
+                # FXLayer's distribution comment in engine/fx.py): any
+                # subset of mirror/cluster/random can be checked together.
+                # 'cluster' buckets by the "group" ref column to the right.
+                dpg.add_checkbox(tag=f"fxed_r{i}_mirror",
+                                 default_value=bool(ld.get('mirror')),
+                                 callback=self._fxed_on_row_dist_change,
+                                 user_data=(i, 'mirror'))
+                dpg.set_value(f"fxed_r{i}_mirror", bool(ld.get('mirror')))
+                dpg.add_checkbox(tag=f"fxed_r{i}_cluster",
+                                 default_value=bool(ld.get('cluster')),
+                                 callback=self._fxed_on_row_dist_change,
+                                 user_data=(i, 'cluster'))
+                dpg.set_value(f"fxed_r{i}_cluster", bool(ld.get('cluster')))
+                dpg.add_checkbox(tag=f"fxed_r{i}_random",
+                                 default_value=(ld.get('order') == 'random'),
+                                 callback=self._fxed_on_row_dist_change,
+                                 user_data=(i, 'random'))
+                dpg.set_value(f"fxed_r{i}_random", ld.get('order') == 'random')
 
                 dpg.add_input_int(tag=f"fxed_r{i}_block", label="", width=44,
                                   default_value=ld.get('block_size', 1),
@@ -545,8 +567,10 @@ class GUIEngineFXEditor:
             dpg.set_value("fx_rate",   ld.get('bpm',    60.0))
             dpg.set_value("fx_size",   ld.get('size',  100.0))
             dpg.set_value("fx_spread", ld.get('spread',  0.0))
-            dpg.set_value("fxed_sel_low",   ld.get('low', 0.0))
-            dpg.set_value("fxed_sel_pat",   ld.get('grouping') or 'none')
+            dpg.set_value("fxed_sel_low",     ld.get('low', 0.0))
+            dpg.set_value("fxed_sel_mirror",  bool(ld.get('mirror')))
+            dpg.set_value("fxed_sel_cluster", bool(ld.get('cluster')))
+            dpg.set_value("fxed_sel_random",  ld.get('order') == 'random')
             dpg.set_value("fxed_sel_block", ld.get('block_size', 1))
             dpg.set_value("fxed_sel_dir",
                           self._FX_DIR_FROM_INTERNAL.get(ld.get('direction', 'forward'), 'fwd'))
@@ -594,25 +618,30 @@ class GUIEngineFXEditor:
         except Exception:
             pass
     def _fxed_on_row_dist_change(self, _sender, app_data, user_data):
-        """A layer row's own low/pattern/block/dir field was edited directly
-        in the table. Same idea as _fxed_on_row_val_change (bpm/size/spread)
-        but for the distribution controls, which have no live-running-FX
-        command to also drive — so this only ever mirrors into the big
-        fxed_sel_* controls above when this is the ●-linked row, never into
-        anything else."""
+        """A layer row's own low/mirror/cluster/random/block/dir field was
+        edited directly in the table. Same idea as _fxed_on_row_val_change
+        (bpm/size/spread) but for the distribution controls, which have no
+        live-running-FX command to also drive — so this only ever mirrors
+        into the big fxed_sel_* controls above when this is the ●-linked
+        row, never into anything else."""
         i, kind = user_data
         if not (0 <= i < len(self._fx_ed_layers)):
             return
         if kind == 'low':
             self._fx_ed_layers[i]['low'] = app_data
-        elif kind == 'pat':
-            self._fx_ed_layers[i]['grouping'] = None if app_data == 'none' else app_data
+        elif kind == 'mirror':
+            self._fx_ed_layers[i]['mirror'] = app_data
+        elif kind == 'cluster':
+            self._fx_ed_layers[i]['cluster'] = app_data
+        elif kind == 'random':
+            self._fx_ed_layers[i]['order'] = 'random' if app_data else 'linear'
         elif kind == 'block':
             self._fx_ed_layers[i]['block_size'] = app_data
         elif kind == 'dir':
             self._fx_ed_layers[i]['direction'] = self._FX_DIR_TO_INTERNAL.get(app_data, 'forward')
         if i == self._fx_ed_selected_row:
-            _sel_tag = {'low': 'fxed_sel_low', 'pat': 'fxed_sel_pat',
+            _sel_tag = {'low': 'fxed_sel_low', 'mirror': 'fxed_sel_mirror',
+                        'cluster': 'fxed_sel_cluster', 'random': 'fxed_sel_random',
                         'block': 'fxed_sel_block', 'dir': 'fxed_sel_dir'}[kind]
             try:
                 dpg.set_value(_sel_tag, app_data)
@@ -629,13 +658,31 @@ class GUIEngineFXEditor:
             dpg.set_value(f"fxed_r{idx}_low", app_data)
         except Exception:
             pass
-    def _on_fxed_sel_pat(self, _sender, app_data, _user_data=None):
+    def _on_fxed_sel_mirror(self, _sender, app_data, _user_data=None):
         idx = self._fx_ed_selected_row
         if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
             return
-        self._fx_ed_layers[idx]['grouping'] = None if app_data == 'none' else app_data
+        self._fx_ed_layers[idx]['mirror'] = app_data
         try:
-            dpg.set_value(f"fxed_r{idx}_pat", app_data)
+            dpg.set_value(f"fxed_r{idx}_mirror", app_data)
+        except Exception:
+            pass
+    def _on_fxed_sel_cluster(self, _sender, app_data, _user_data=None):
+        idx = self._fx_ed_selected_row
+        if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
+            return
+        self._fx_ed_layers[idx]['cluster'] = app_data
+        try:
+            dpg.set_value(f"fxed_r{idx}_cluster", app_data)
+        except Exception:
+            pass
+    def _on_fxed_sel_random(self, _sender, app_data, _user_data=None):
+        idx = self._fx_ed_selected_row
+        if idx is None or not (0 <= idx < len(self._fx_ed_layers)):
+            return
+        self._fx_ed_layers[idx]['order'] = 'random' if app_data else 'linear'
+        try:
+            dpg.set_value(f"fxed_r{idx}_random", app_data)
         except Exception:
             pass
     def _on_fxed_sel_block(self, _sender, app_data, _user_data=None):
@@ -658,7 +705,6 @@ class GUIEngineFXEditor:
             pass
     def _fxed_add_layer(self, *_):
         self._fxed_sync_rows()   # save any edits in existing rows first
-        _add_pat = dpg.get_value("fxed_add_pat")
         _add_scope = dpg.get_value("fxed_add_scope")
         self._fx_ed_layers.append({
             'waveform':     dpg.get_value("fxed_add_wave"),
@@ -668,7 +714,9 @@ class GUIEngineFXEditor:
             'spread':       dpg.get_value("fxed_add_spread"),
             'phase_offset': dpg.get_value("fxed_add_phase"),
             'low':          dpg.get_value("fxed_add_low"),
-            'grouping':     None if _add_pat == 'none' else _add_pat,
+            'mirror':       dpg.get_value("fxed_add_mirror"),
+            'cluster':      dpg.get_value("fxed_add_cluster"),
+            'order':        'random' if dpg.get_value("fxed_add_random") else 'linear',
             'block_size':   dpg.get_value("fxed_add_block"),
             'direction':    self._FX_DIR_TO_INTERNAL.get(dpg.get_value("fxed_add_dir"), 'forward'),
             'target_scope': None if _add_scope == 'default' else _add_scope,
@@ -701,8 +749,10 @@ class GUIEngineFXEditor:
                 self._fx_ed_layers[i]['spread']        = dpg.get_value(f"fxed_r{i}_spread")
                 self._fx_ed_layers[i]['phase_offset']  = dpg.get_value(f"fxed_r{i}_phase")
                 self._fx_ed_layers[i]['low']           = dpg.get_value(f"fxed_r{i}_low")
-                _pat = dpg.get_value(f"fxed_r{i}_pat")
-                self._fx_ed_layers[i]['grouping']      = None if _pat == 'none' else _pat
+                self._fx_ed_layers[i]['mirror']        = dpg.get_value(f"fxed_r{i}_mirror")
+                self._fx_ed_layers[i]['cluster']       = dpg.get_value(f"fxed_r{i}_cluster")
+                self._fx_ed_layers[i]['order']         = (
+                    'random' if dpg.get_value(f"fxed_r{i}_random") else 'linear')
                 self._fx_ed_layers[i]['block_size']    = dpg.get_value(f"fxed_r{i}_block")
                 self._fx_ed_layers[i]['direction']     = self._FX_DIR_TO_INTERNAL.get(
                     dpg.get_value(f"fxed_r{i}_dir"), 'forward')
@@ -736,7 +786,9 @@ class GUIEngineFXEditor:
                 spread       = ld.get('spread',         1.0),
                 phase_offset = ld.get('phase_offset',   0.0),
                 low          = ld.get('low',             0.0),
-                grouping     = ld.get('grouping'),
+                mirror       = ld.get('mirror',       False),
+                cluster      = ld.get('cluster',      False),
+                order        = ld.get('order',    'linear'),
                 block_size   = ld.get('block_size',       1),
                 direction    = ld.get('direction', 'forward'),
                 infade       = ld.get('infade',          0.0),
