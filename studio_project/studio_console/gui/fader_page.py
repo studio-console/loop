@@ -184,11 +184,26 @@ class GUIEngineFaderPage:
 
         slot_h      = max(260, win_h - _H_HDR)
         slot_w      = max(90,  (win_w - _W_EDGE) // self._FPG_SLOTS - _W_GAP)
-        fader_h     = max(80,  slot_h - self._FPG_FIXED_ROWS_H)
+        # _FPG_FIXED_ROWS_H's per-row heights (badge/name/level-text/
+        # separator rows) are close estimates, not exact widget heights —
+        # a small safety margin here is what keeps the last row (trigger
+        # badge) from landing a few px past the bottom of the fixed
+        # slot_h and getting silently clipped by no_scrollbar=True.
+        fader_h     = max(80,  slot_h - self._FPG_FIXED_ROWS_H - self._FPG_ROW_SAFETY)
         fader_w     = max(60,  slot_w - 16)   # full-width fader, not a sliver
         cuelist_w   = max(60,  slot_w - 16)
-        btn_w       = max(36,  slot_w - 12)
-        badge_w     = max(24,  (slot_w - 20) // 2 - 2)
+        # Full-width single-child rows only need the child_window's own
+        # left+right WindowPadding (8px each, theme.py) subtracted once.
+        btn_w       = max(36,  slot_w - 16)
+        # Row 1 (fdr# text + pri badge + out badge, horizontal) instead has
+        # THREE children sharing the row: WindowPadding (16 total) + the
+        # "{n}" slot-number text (~20px, generous for 2 digits) + two
+        # ItemSpacing.x gaps (6px each, theme.py) between the three items,
+        # before what's left splits between the two badges. The previous
+        # formula didn't account for the text or the spacing at all, so
+        # the row quietly ran ~20-25px wider than the slot — exactly what
+        # clipped the (rightmost) output-mode badge off the visible edge.
+        badge_w     = max(24,  (slot_w - 16 - 20 - 12) // 2)
 
         for n in range(1, self._FPG_SLOTS + 1):
             try:

@@ -125,8 +125,17 @@ class GUIEngineCore:
                           + 20                                  # level %
                           + _FPG_BTN_H * 3 + 6 + _FPG_BTN_H      # A/B/C, sep, trig
                           ) + 5 * 9 + 6 * 2
+    # The badge/name/level-text/separator terms above are close estimates
+    # of real widget heights, not exact — reported as the bottom-most
+    # widget (trigger badge) not quite fully fitting, i.e. the estimate
+    # was running a bit short of the real total. Reserved here rather
+    # than folded into _FPG_FIXED_ROWS_H itself so it's visible as a
+    # deliberate safety margin, not one more unexplained number in that
+    # sum. Both the initial build (_FPG_FADER_H below) and _fpg_reflow
+    # subtract it, so they can't drift apart from each other either.
+    _FPG_ROW_SAFETY = 24
     _FPG_SLOT_H  = 600    # initial slot height (reflow updates dynamically)
-    _FPG_FADER_H = max(80, _FPG_SLOT_H - _FPG_FIXED_ROWS_H)  # initial fader h
+    _FPG_FADER_H = max(80, _FPG_SLOT_H - _FPG_FIXED_ROWS_H - _FPG_ROW_SAFETY)  # initial fader h
     _AI_CHIPS = [
         ("warm wash",    "warm amber golden wash on all fixtures, moderate brightness"),
         ("strobe",       "fast white strobe on all fixtures"),
