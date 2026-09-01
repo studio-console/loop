@@ -15,27 +15,46 @@ class GUIEngineHeader:
             dpg.add_text("STUDIO", color=_C_ACCENT)
             dpg.add_text("v0.21", color=_C_DIM)
             dpg.add_spacer(width=8)
+
+            # cluster: window — min / close. The app starts fullscreen (no
+            # OS title bar), so these are the only way to minimize or quit
+            # without a keyboard shortcut. Deliberately placed first, right
+            # after the title — not at the far end of the row — so nothing
+            # that grows later in this row (a long cue name, an FX status
+            # string, ...) can ever push it out past the edge of the
+            # viewport; everything downstream of it is free to overflow or
+            # get clipped instead, which is the much lower-stakes failure.
+            # "close" runs the same dpg.stop_dearpygui() the OS window-close
+            # button would have triggered, flowing into run()'s normal
+            # shutdown path (popup layout + show autosave), not a hard kill.
+            dpg.add_button(label="min", tag="hdr_minimize_btn", width=46, height=24,
+                           callback=lambda: dpg.minimize_viewport())
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="close", tag="hdr_close_btn", width=56, height=24,
+                           callback=lambda: dpg.stop_dearpygui())
+            dpg.add_spacer(width=8)
+            dpg.add_text("│", color=_C_BORDER)
+            dpg.add_spacer(width=6)
+
             # Fixed-width, clipping containers around every status text whose
             # content length varies at runtime (cue name, fx waveform/bpm,
-            # clock, dim%). Without this, a long cue name or an active FX
-            # layer growing "fx: off" into "fx: sine 128bpm" reflows every
-            # widget after it in this horizontal row — including the win
-            # (minimize/close) cluster at the far end, pushing it off the
-            # visible viewport. A too-long value just clips instead of
-            # resizing anything, so the row width (and the win cluster's
-            # position) never moves regardless of live state.
-            with dpg.child_window(width=280, height=24, border=False,
+            # clock, dim%) — a long value clips instead of resizing, so
+            # nothing to the right of this block ever shifts because of it.
+            # Sized to the actual expected content, not padded — the min/close
+            # buttons above no longer depend on this budget being exact (see
+            # comment above), so this just keeps the rest of the row tidy.
+            with dpg.child_window(width=210, height=24, border=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("▶", tag="hdr_cue", color=_C_TEXT)
             dpg.add_spacer(width=6)
-            with dpg.child_window(width=160, height=24, border=False,
+            with dpg.child_window(width=90, height=24, border=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("fx: off", tag="hdr_fx", color=_C_DIM)
             dpg.add_spacer(width=6)
-            with dpg.child_window(width=70, height=24, border=False,
+            with dpg.child_window(width=55, height=24, border=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("", tag="hdr_clock", color=_C_DIM)
-            with dpg.child_window(width=90, height=24, border=False,
+            with dpg.child_window(width=70, height=24, border=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("dim: --", tag="hdr_dim", color=_C_TEXT)
             dpg.add_spacer(width=10)
@@ -109,23 +128,6 @@ class GUIEngineHeader:
                            callback=self._on_save)
             dpg.add_spacer(width=6)
             dpg.add_text("", tag="hdr_save_status", color=_C_DIM)
-            dpg.add_spacer(width=8)
-            dpg.add_text("│", color=_C_BORDER)
-            dpg.add_spacer(width=6)
-
-            # cluster: window — min / close. The app starts fullscreen
-            # (no OS title bar), so these are the only way to minimize or
-            # quit without a keyboard shortcut. "close" runs the same
-            # dpg.stop_dearpygui() the OS window-close button would have
-            # triggered, which flows into run()'s normal shutdown path
-            # (popup layout + show autosave) — not a hard process kill.
-            dpg.add_text("win", color=_C_DIM)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="min", tag="hdr_minimize_btn", width=46, height=24,
-                           callback=lambda: dpg.minimize_viewport())
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="close", tag="hdr_close_btn", width=56, height=24,
-                           callback=lambda: dpg.stop_dearpygui())
 
         dpg.add_separator()
         # ── Status bar: programmer state + mode pills + selection ─

@@ -137,6 +137,12 @@ def cmd_074_group(t0, tokens, raw):
                 member_strs.append(f"{fid}:{m.name}" if m else str(fid))
             return (f"group {gid}: {g.name}\n"
                     f"  members ({len(g.members)}): {', '.join(member_strs) or '(empty)'}")
+        # group_pool.recall() calls prog.select(...) directly — bypasses
+        # programmer's self-undoing setters entirely, so nothing was ever on
+        # the undo stack to reverse a group recall. Push before, not inside
+        # recall(), since a not-found group below shouldn't waste a slot.
+        if group_pool.get(gid):
+            prog._push_undo()
         group_pool.recall(gid, prog)
         g = group_pool.get(gid)
         return f"group {gid} recalled" if g else f"group {gid} not found"
@@ -169,6 +175,11 @@ def cmd_076_color(t0, tokens, raw):
         p = color_pool.get(pid)
         if not p:
             return f"color preset {pid} is empty  (use: record color {pid} red)"
+        # ColorPreset.apply() writes programmer.data[fid][...] directly and
+        # calls the *fixture's* set_rgb (channels, for DMX output) — not
+        # programmer's own self-undoing set_rgb — so nothing was ever
+        # pushed to the undo stack for a color preset recall.
+        prog._push_undo()
         p.apply(prog)
         return f"applied: {p}"
 
@@ -216,6 +227,10 @@ def cmd_078_dim(t0, tokens, raw):
             p = dim_pool.get(pid)
             if not p:
                 return f"dim preset {pid} is empty  (use: record dim {pid} full)"
+            # Same gap as ColorPreset.apply(): writes programmer.data
+            # directly + the fixture's own set_dimmer, bypassing
+            # programmer's self-undoing set_dimmer entirely.
+            prog._push_undo()
             p.apply(prog)
             return f"applied: {p}"
         # bare DIM <val> → raw dimmer value (AT DIM <val>)
@@ -292,6 +307,9 @@ def cmd_082_attr_bare(t0, tokens, raw):
         p = pool.get(pid)
         if not p:
             return f"{pool_key} preset {pid} is empty  (use: record {pool_key} {pid} Name)"
+        # AttributePreset.apply() does programmer.data[fid].update(...)
+        # directly, same self-undoing-setter bypass as color/dim presets.
+        prog._push_undo()
         p.apply(prog)
         return f"applied: {p}"
 
