@@ -15,12 +15,29 @@ class GUIEngineHeader:
             dpg.add_text("STUDIO", color=_C_ACCENT)
             dpg.add_text("v0.21", color=_C_DIM)
             dpg.add_spacer(width=8)
-            dpg.add_text("▶", tag="hdr_cue", color=_C_TEXT)
+            # Fixed-width, clipping containers around every status text whose
+            # content length varies at runtime (cue name, fx waveform/bpm,
+            # clock, dim%). Without this, a long cue name or an active FX
+            # layer growing "fx: off" into "fx: sine 128bpm" reflows every
+            # widget after it in this horizontal row — including the win
+            # (minimize/close) cluster at the far end, pushing it off the
+            # visible viewport. A too-long value just clips instead of
+            # resizing anything, so the row width (and the win cluster's
+            # position) never moves regardless of live state.
+            with dpg.child_window(width=280, height=24, border=False,
+                                  no_scrollbar=True, no_scroll_with_mouse=True):
+                dpg.add_text("▶", tag="hdr_cue", color=_C_TEXT)
             dpg.add_spacer(width=6)
-            dpg.add_text("fx: off", tag="hdr_fx", color=_C_DIM)
+            with dpg.child_window(width=160, height=24, border=False,
+                                  no_scrollbar=True, no_scroll_with_mouse=True):
+                dpg.add_text("fx: off", tag="hdr_fx", color=_C_DIM)
             dpg.add_spacer(width=6)
-            dpg.add_text("", tag="hdr_clock", color=_C_DIM)
-            dpg.add_text("dim: --", tag="hdr_dim", color=_C_TEXT)
+            with dpg.child_window(width=70, height=24, border=False,
+                                  no_scrollbar=True, no_scroll_with_mouse=True):
+                dpg.add_text("", tag="hdr_clock", color=_C_DIM)
+            with dpg.child_window(width=90, height=24, border=False,
+                                  no_scrollbar=True, no_scroll_with_mouse=True):
+                dpg.add_text("dim: --", tag="hdr_dim", color=_C_TEXT)
             dpg.add_spacer(width=10)
             dpg.add_text("│", color=_C_BORDER)
             dpg.add_spacer(width=6)

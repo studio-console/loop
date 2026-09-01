@@ -14,6 +14,7 @@ class GUIEngineLeftColumn:
         self._displayed_fader  = None
         self._displayed_cs_name   = None
         self._last_playbacks_hash = None
+        self._last_prog_fx_hash   = None
         _W = self._W_LEFT
         with dpg.child_window(tag="left_col", width=_W, height=self._H_MAIN,
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
@@ -52,6 +53,23 @@ class GUIEngineLeftColumn:
                                   border=False, no_scrollbar=False, no_scroll_with_mouse=False):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
 
+            # ── Live programmer FX ───────────────
+            # Moved out of the header bar (was crammed into "fx: <waveform>
+            # <bpm>bpm" text there) — a long-enough FX description used to
+            # reflow the whole header row, pushing the win (minimize/close)
+            # cluster off the edge of the viewport whenever an effect went
+            # live. The header now shows a fixed, clipped summary; this list
+            # is the actual detail view, with room for more than one layer.
+            with dpg.group(horizontal=True):
+                dpg.add_text("› live fx (programmer)", color=_C_ACCENT)
+                dpg.add_spacer(width=4)
+                dpg.add_button(label="kill", width=50, height=22,
+                               callback=lambda: self._cmd("FX CLEAR") if self._cmd else None)
+            dpg.add_separator()
+            with dpg.child_window(tag="prog_fx_list", width=-1, height=70,
+                                  border=False, no_scrollbar=False, no_scroll_with_mouse=False):
+                dpg.add_text("— none live", tag="prog_fx_empty", color=_C_DIM)
+
             # FX live controls (tap/rate/size/spread/kill fx/rsp pool) moved
             # into the fx editor window — see _build_fx_editor_popup in
             # fx_editor.py. Kept out of the main window to declutter it;
@@ -59,6 +77,50 @@ class GUIEngineLeftColumn:
             # so _tick_fx_header's live sync is unaffected by the move —
             # DPG widgets are addressed by tag regardless of which window
             # currently contains them.
+    def _prog_fx_state_hash(self):
+        """Compact snapshot of live programmer FX — used to detect changes."""
+        if not self._prog_fx_ids or not self._fx:
+            return ()
+        out = []
+        for fxid in self._prog_fx_ids:
+            layer = self._fx._layers.get(fxid)
+            if not layer:
+                continue
+            out.append((fxid, layer.waveform, layer.channel, round(layer.rate_bpm, 1),
+                        round(layer.size, 1), round(layer.spread, 1), round(layer.low, 1),
+                        layer.grouping, len(layer.targets)))
+        return tuple(out)
+    def _rebuild_prog_fx_list(self):
+        """Rebuild the live-programmer-FX list (left column). Detail view for
+        what's actually running, now that the header only shows a short,
+        fixed-width summary — see _build_header's comment on why."""
+        try:
+            dpg.delete_item("prog_fx_list", children_only=True)
+        except Exception:
+            return
+        layers = []
+        if self._fx:
+            for fxid in self._prog_fx_ids:
+                layer = self._fx._layers.get(fxid)
+                if layer:
+                    layers.append(layer)
+        if not layers:
+            dpg.add_text("— none live", tag="prog_fx_empty",
+                         color=_C_DIM, parent="prog_fx_list")
+            return
+        for i, layer in enumerate(layers):
+            if i > 0:
+                dpg.add_separator(parent="prog_fx_list")
+            extras = []
+            if layer.low:
+                extras.append(f"low {layer.low:.0f}")
+            if layer.grouping:
+                extras.append(layer.grouping)
+            extra_s = f"  [{' '.join(extras)}]" if extras else ""
+            line = (f"{layer.waveform} {layer.channel}  {layer.rate_bpm:.0f}bpm  "
+                    f"sz{layer.size:.0f}  spr{layer.spread:.0f}  "
+                    f"{len(layer.targets)} tgt{extra_s}")
+            dpg.add_text(line, color=_C_ACCENT, parent="prog_fx_list")
     def _numpad_append(self, sender, app_data, user_data):
         """Append a string to the command input field."""
         try:

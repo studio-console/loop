@@ -137,7 +137,7 @@ class GUIEngineCore:
                  speed_master_pool=None,
                  attr_pools=None, osc=None,
                  library=None, save_patch_fn=None, fx_params=None,
-                 audio_engine=None, audio_mapper=None):
+                 audio_engine=None, audio_mapper=None, prog_fx_ids=None):
         self._midi       = midi
         self._fx         = fx_engine
         self._fade       = fade_engine
@@ -172,6 +172,7 @@ class GUIEngineCore:
         self._cmd         = cmd_fn          # cmd_fn(str) → result str
         self._audio_engine = audio_engine   # AudioEngine — capture + level/band analysis
         self._audio_mapper = audio_mapper   # AudioMapper — level/band → output_state.audio_layer
+        self._prog_fx_ids  = prog_fx_ids if prog_fx_ids is not None else []  # live-tracked list, shared by reference with state.py
 
         self._cmd_log     = []         # command history lines
         self._cmd_history = []         # entered commands for ↑↓ recall
@@ -783,6 +784,16 @@ class GUIEngineCore:
             except Exception:
                 pass
 
+        # Live programmer FX list — rebuild when the set of running layers
+        # (or their live-tracked params) changes.
+        fxh = self._prog_fx_state_hash()
+        if fxh != self._last_prog_fx_hash:
+            self._last_prog_fx_hash = fxh
+            try:
+                self._rebuild_prog_fx_list()
+            except Exception:
+                pass
+
         # Sync fader fader sliders and fade progress bars
         if self._fader_pool:
             for eid, ex in self._fader_pool.faders.items():
@@ -1009,12 +1020,16 @@ class GUIEngineCore:
                     pass
 
     def _tick_fx_header(self):
-        # Header: FX
+        # Header: FX — kept short and bounded on purpose (see _build_header's
+        # comment): a variable-length "fx: <waveform> <bpm>bpm" string used
+        # to reflow the whole header row when it grew, pushing the win
+        # (minimize/close) cluster off-screen. Full detail lives in the
+        # "live fx (programmer)" list in the left column instead.
         layers = list(self._fx._layers.values())
         if layers:
             l = layers[0]
-            dpg.set_value("hdr_fx",
-                          f"fx: {l.waveform.lower()} {l.rate_bpm:.0f}bpm")
+            n = len(layers)
+            dpg.set_value("hdr_fx", f"fx: on ({n})" if n > 1 else "fx: on")
             dpg.configure_item("hdr_fx", color=_C_ACCENT)
             # Sync sliders to actual FX state
             dpg.set_value("fx_rate",   l.rate_bpm)

@@ -177,6 +177,7 @@ gui = GUIEngine(
     fx_params        = _fx_params,
     audio_engine     = audio_engine,
     audio_mapper     = audio_mapper,
+    prog_fx_ids      = _prog_fx_ids,
 )
 # Wire run_command and GUI log into AI engine (both defined after ai was created)
 if getattr(ai, '_enabled', False):

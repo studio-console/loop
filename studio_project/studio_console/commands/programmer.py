@@ -50,6 +50,7 @@ from studio_console.models.presets import (
     Group, GroupPool, Cue, Stack, CuePool, StackPool,
     Fader, FaderPool, FXPreset, FXPool, Fade,
 )
+from studio_console.commands._shared import _prog_fx_rebuild
 
 from studio_console.engine.playback import (
     FadeEngine, OutputState, _resolve_cue_refs, _vfade_apply, _exec_fader_mode_hook, _stack_fire_cue,
@@ -453,7 +454,16 @@ def cmd_113_clear_len1(t0, tokens, raw):
 
 def cmd_114_undo(t0, tokens, raw):
     if t0 == 'UNDO':
-        return prog.undo()
+        result = prog.undo()
+        # prog.undo() only restores prog.data/.disabled/.selection — it has
+        # no idea the live fx_engine layers exist. Every FX-mutating command
+        # (FX ..., FX CLEAR, FIRE FX, ...) ends by calling _prog_fx_rebuild()
+        # to resync fx_engine._layers from prog.data['fx'] entries; undo was
+        # the one path that skipped this, so restoring prog.data to a state
+        # with the FX def removed still left the old layer running live
+        # (e.g. select fixtures, STROBE, Backspace — strobe kept going).
+        _prog_fx_rebuild()
+        return result
 
 
 def cmd_115_programmer_show(t0, tokens, raw):
