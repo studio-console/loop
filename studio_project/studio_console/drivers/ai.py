@@ -27,6 +27,8 @@ import os
 import json
 import anthropic
 
+from studio_console.command_reference import COMMAND_REFERENCE
+
 
 class AIEngine:
     """
@@ -98,9 +100,38 @@ Rules:
         },
     }
 
+    # Section titles pulled from command_reference.py's COMMAND_REFERENCE
+    # to build the AI's preset/pool cheat-sheet (see _build_preset_ref) —
+    # the ones actually relevant to saving/recalling pools, not the whole
+    # 435-row manual (most of it — network/OSC/macros/patch/DMX — has
+    # nothing to do with "make it look nice" prompts and would just be
+    # dead weight on every single request).
+    _PRESET_REF_SECTIONS = [
+        "selection", "colour & dim", "fx", "record (saving presets/pools)",
+        "attribute pools",
+    ]
+
+    @classmethod
+    def _build_preset_ref(cls):
+        """Condensed preset/pool cheat-sheet, pulled straight from
+        command_reference.py (the same manual the ? popup shows) so it
+        can't drift out of sync with the real command set. Built once —
+        called from __init__, not per-request."""
+        lines = []
+        by_title = dict(COMMAND_REFERENCE)
+        for title in cls._PRESET_REF_SECTIONS:
+            rows = by_title.get(title)
+            if not rows:
+                continue
+            lines.append(f"# {title}")
+            for cmd, desc in rows:
+                lines.append(f"  {cmd}  —  {desc}")
+        return "\n".join(lines)
+
     def __init__(self, patch, prog, output_state, fx_engine, fade_engine,
-                 stack_pool=None, fader_pool=None, cmd_fn=None, log_fn=None,
-                 model=None):
+                 stack_pool=None, fader_pool=None,
+                 color_pool=None, dim_pool=None, group_pool=None, fx_pool=None,
+                 cmd_fn=None, log_fn=None, model=None):
         provider = os.environ.get("AI_PROVIDER", "anthropic").strip().lower()
         if provider not in self._PROVIDERS:
             provider = "anthropic"
@@ -122,16 +153,27 @@ Rules:
         self._output         = output_state
         self._fx             = fx_engine
         self._fade           = fade_engine
-        # Live pool reference (not a snapshot) so newly created/loaded
-        # stacks are visible without re-constructing the AI engine.
+        # Live pool references (not snapshots) so newly created/loaded
+        # stacks/presets are visible without re-constructing the AI engine.
         self._stack_pool     = stack_pool
         self._fader_pool  = fader_pool
+        self._color_pool     = color_pool
+        self._dim_pool       = dim_pool
+        self._group_pool     = group_pool
+        self._fx_pool        = fx_pool
         self._cmd            = cmd_fn    # run_command — full console command parser
         self._log            = log_fn    # GUI log callback
         self._enabled        = True
         self._last_fade      = None      # pending fade_time override, consumed by the next cue fire
         self._cmd_history    = []        # last N commands for context
         self._token_cb       = None      # optional callback(in_tok, out_tok) for GUI
+        # Read the command manual once at startup (see _build_preset_ref) —
+        # was reported as "working but isn't great at saving pools, calling
+        # pools/fx into the programmer": the AI only ever saw a small fixed
+        # ACTION_SCHEMA with no RECORD/COLOR/DIM PRESET/GROUP/FIRE FX verbs
+        # in it at all, even though "prog" could already run any of them —
+        # it just never knew that. Cached once, not rebuilt per ask().
+        self._preset_ref     = self._build_preset_ref()
         print(f"  AI Engine: ready ({provider}: {self._model})")
 
     def push_cmd_history(self, cmd_str):
@@ -171,13 +213,27 @@ Rules:
                                "bpm": layer.rate_bpm,
                                "size": layer.size,
                                "spread": layer.spread})
-        # programmer contents (what's currently edited, not yet stored in a cue)
+        # programmer contents (what's currently edited, not yet stored in a
+        # cue). Values aren't all numeric — 'fx' is a list of layer-def
+        # dicts, *_ref fields are preset ids — round() on those raised and
+        # (wrapped in a single try/except around the whole loop) silently
+        # dropped ALL programmer visibility for every fixture the moment
+        # any one of them had live FX, which is exactly the situation
+        # "calling fx into the programmer" prompts most need this for.
+        def _jsonable(v):
+            if isinstance(v, float):
+                return round(v, 3)
+            if isinstance(v, list):
+                return [_jsonable(x) for x in v]
+            if isinstance(v, dict):
+                return {k: _jsonable(x) for k, x in v.items()}
+            return v
         prog_data = {}
-        try:
-            for fid, vals in self._prog.data.items():
-                prog_data[fid] = {k: round(v, 3) for k, v in vals.items()}
-        except Exception:
-            pass
+        for fid, vals in self._prog.data.items():
+            try:
+                prog_data[fid] = {k: _jsonable(v) for k, v in vals.items()}
+            except Exception:
+                continue
         # Active faders
         active_execs = []
         if self._fader_pool:
@@ -193,12 +249,30 @@ Rules:
                         "level": round(ex.level, 2),
                         "priority": Fader.PRIORITY_LABELS.get(ex.priority, 'NRM'),
                     })
+        # What's already saved in each pool — so the AI can reference an
+        # existing preset by name/number ("use the Amber color preset")
+        # instead of guessing blind or re-recording a duplicate. Names
+        # only, not full contents (RGB/level/etc. is a COLOR n / DIM n
+        # command away and isn't worth the tokens for every slot on every
+        # request).
+        def _pool_names(pool, items_attr='presets'):
+            if not pool:
+                return {}
+            return {str(pid): getattr(p, 'name', str(pid))
+                    for pid, p in getattr(pool, items_attr).items()}
+        pools = {
+            "color": _pool_names(self._color_pool),
+            "dim":   _pool_names(self._dim_pool),
+            "group": _pool_names(self._group_pool, items_attr='groups'),
+            "fx":    _pool_names(self._fx_pool),
+        }
         return {
             "fixtures": fixtures,
             "stacks": stacks,
             "fx": fx_active,
             "programmer": prog_data,
             "active_faders": active_execs,
+            "pools": pools,
             "recent_commands": list(self._cmd_history),
         }
 
@@ -221,7 +295,24 @@ Rules:
             "Available waveforms: sine, ramp, pulse, square. "
             "Available channels: red, green, blue. "
             "programmer commands use MA3-style syntax: "
-            "'FIXTURE_ID AT VALUE', 'R 255 G 0 B 0', 'AT FULL', 'AT OUT'.\n"
+            "'FIXTURE_ID AT VALUE', 'R 255 G 0 B 0', 'AT FULL', 'AT OUT'.\n\n"
+            "The \"prog\" action is NOT limited to that AT-value syntax — its "
+            "\"cmd\" field is a full passthrough to the real console command "
+            "parser, so it can run ANY command in the reference below verbatim: "
+            "recording the current programmer into a saved preset (RECORD "
+            "COLOR/DIM/GROUP/FX/POSITION/...), recalling a saved preset back "
+            "into the programmer (COLOR n, DIM PRESET n, GROUP n, FIRE FX n, "
+            "POSITION n, ...), LIST commands to inspect a pool, and everything "
+            "else in the reference. Prefer a saved preset over improvising raw "
+            "values when the state's \"pools\" section already has one that "
+            "fits what the user asked for — reuse it (COLOR 3, FIRE FX 2, ...) "
+            "instead of re-deriving the same look with prog/fx_start actions. "
+            "If the user asks to save/record the current look, use a prog "
+            "action with a RECORD command — there is no dedicated action type "
+            "for saving, prog covers it.\n\n"
+            "PRESET / POOL COMMAND REFERENCE (saving into and recalling from "
+            "pools — read this before assuming a capability doesn't exist):\n"
+            + self._preset_ref + "\n\n"
             "The console state includes recent_commands — the last few commands the "
             "operator ran. Use them to resolve pronouns and implicit references: "
             "if the user says 'them', 'those', 'it', or 'same fixtures', infer "

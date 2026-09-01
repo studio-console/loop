@@ -790,6 +790,10 @@ ai = AIEngine(
     fade_engine   = fade_engine,
     stack_pool = stack_pool,
     fader_pool = fader_pool,
+    color_pool = color_pool,
+    dim_pool   = dim_pool,
+    group_pool = group_pool,
+    fx_pool    = fx_pool,
     # cmd_fn and log_fn wired after run_command / GUIEngine are defined below
 )
 
