@@ -830,6 +830,8 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
         for ld in defs:
             scope = ld.get('target_scope') or 'pixel'
             _mirror, _cluster, _order = _fx_grouping_compat(ld)
+            _subs = ld.get('sub_indices')
+            _subs_key = tuple(sorted(_subs)) if _subs else None
             key = (ld.get('waveform', 'sine'), ld.get('channel'),
                    round(ld.get('bpm',    60.0), 3),
                    round(ld.get('size',  100.0), 2),
@@ -845,7 +847,8 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
                    _order,
                    ld.get('direction',  'forward'),
                    _mirror, _cluster,
-                   ld.get('infade', 0.0), ld.get('outfade', 0.0))
+                   ld.get('infade', 0.0), ld.get('outfade', 0.0),
+                   _subs_key)
             if key not in buckets:
                 buckets[key] = (ld, scope, [])
             buckets[key][2].append(master)
@@ -853,7 +856,13 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
     grouped = []
     for ld, scope, masters in buckets.values():
         if scope == 'pixel':
-            targets = [sub for m in masters for sub in m.all_subs()]
+            _subs = ld.get('sub_indices')
+            if _subs:
+                _subs_set = set(_subs)
+                targets = [sub for m in masters for sub in m.all_subs()
+                           if sub.sub_index in _subs_set]
+            else:
+                targets = [sub for m in masters for sub in m.all_subs()]
         else:
             targets = masters
         grouped.append((ld, targets))

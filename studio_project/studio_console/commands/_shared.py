@@ -27,6 +27,50 @@ from studio_console.state import (
 from studio_console.engine.fx import (
     _bucket_fx_defs, _expand_color_fx, _expand_group_fx, _fx_grouping_compat,
 )
+from studio_console.models.fixtures import MasterFixture
+
+
+def _resolve_fx_selection_targets():
+    """Resolve prog.selection into (sel_fids, sub_indices_by_fid) for FX
+    targeting — shared by the FX-apply command (cmd_039_fx_main) and
+    FIRE FX (cmd_041_fire_fx), which both used to independently collapse
+    every selected SubFixture down to its master's plain fixture_id and
+    lose the sub-selection entirely: selecting only some pixels of a
+    fixture (e.g. "1.1 THRU 1.10" on a 54-pixel fixture) still applied FX
+    to the whole fixture, because prog.data's 'fx' entries only ever live
+    under the master's id and _bucket_fx_defs always expanded via
+    master.all_subs() with no way to restrict it.
+
+    sel_fids       — master fixture ids to apply FX to, patch order.
+    sub_indices_by_fid — {master_id: [sub_index, ...]}, present ONLY for a
+        fixture whose selection is a genuine partial sub-selection (some
+        but not all of its subs, with the master itself never selected —
+        selecting the MasterFixture auto-expands to every sub via
+        programmer.select(), which is "the whole fixture", not partial).
+        A fixture absent from this dict means "apply to the whole
+        fixture", exactly like before this existed.
+    """
+    seen_m, sel_fids = [], []
+    masters_selected = set()
+    subs_by_master = {}
+    for f in prog.selection:
+        if isinstance(f, MasterFixture):
+            mid = f.fixture_id
+            masters_selected.add(mid)
+        else:
+            mid = f.master_id
+            subs_by_master.setdefault(mid, set()).add(f.sub_index)
+        if mid not in seen_m:
+            seen_m.append(mid)
+            sel_fids.append(mid)
+    sub_indices_by_fid = {}
+    for mid, subs in subs_by_master.items():
+        if mid in masters_selected:
+            continue
+        master = patch.get(mid)
+        if master and len(subs) < len(master.all_subs()):
+            sub_indices_by_fid[mid] = sorted(subs)
+    return sel_fids, sub_indices_by_fid
 
 
 def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
@@ -263,4 +307,5 @@ def _prog_fx_rebuild():
         _prog_fx_start(all_fx)
 
 
-__all__ = ["_record_cue_into", "_prog_fx_stop", "_prog_fx_start", "_prog_fx_rebuild"]
+__all__ = ["_record_cue_into", "_prog_fx_stop", "_prog_fx_start", "_prog_fx_rebuild",
+           "_resolve_fx_selection_targets"]

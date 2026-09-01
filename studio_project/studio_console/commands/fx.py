@@ -68,7 +68,10 @@ from studio_console.drivers.osc import OSCEngine
 from studio_console.drivers.audio import AudioEngine, AudioMapper
 from studio_console.drivers.ai import AIEngine
 from studio_console.show import ShowFile, _write_file, _read_file
-from studio_console.commands._shared import _record_cue_into, _prog_fx_stop, _prog_fx_start, _prog_fx_rebuild
+from studio_console.commands._shared import (
+    _record_cue_into, _prog_fx_stop, _prog_fx_start, _prog_fx_rebuild,
+    _resolve_fx_selection_targets,
+)
 
 # GUIEngine hasn't been extracted yet as its own importable module —
 # defined in studio_project.py, which imports this package. Deferred
@@ -328,7 +331,16 @@ def cmd_039_fx_main(t0, tokens, raw):
             # FX CLEAR            → clear all FX (programmer + all running faders)
             # FX CLEAR <channel>  → clear only that channel in programmer
             # Both scope to selection when fixtures are selected.
-            _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
+            # 'fx' entries always live under the MASTER fixture's id
+            # (never a sub-fixture's own "1.1"-style id) — resolving
+            # through _resolve_fx_selection_targets() rather than using
+            # each selected object's own .fixture_id directly is what
+            # makes CLEAR actually find anything when the selection is
+            # sub-fixtures (a bare {f.fixture_id ...} set of "1.1"/"1.2"/
+            # ... never matched the "1" key the fx data was ever stored
+            # under, so CLEAR silently did nothing).
+            _sel_fids = ({str(fid) for fid in _resolve_fx_selection_targets()[0]}
+                        if prog.selection else None)
 
             if len(tokens) >= 3 and tokens[2].upper() in _CHANNELS:
                 ch = tokens[2].upper().lower()
@@ -580,6 +592,7 @@ def cmd_039_fx_main(t0, tokens, raw):
         }
 
         # Resolve target fixtures — GROUP n overrides programmer selection
+        sub_indices_by_fid = {}
         if group_id is not None:
             grp = group_pool.get(group_id)
             if not grp:
@@ -588,24 +601,26 @@ def cmd_039_fx_main(t0, tokens, raw):
             if not sel_fids:
                 return f"group {group_id} is empty"
         elif prog.selection:
-            seen_m, sel_fids = set(), []
-            for f in prog.selection:
-                mid = f.fixture_id if isinstance(f, MasterFixture) else getattr(f, 'master_id', None)
-                if mid and mid not in seen_m:
-                    seen_m.add(mid)
-                    sel_fids.append(mid)
+            sel_fids, sub_indices_by_fid = _resolve_fx_selection_targets()
         else:
             sel_fids = [m.fixture_id for m in patch.all_fixtures()]
 
         # Write into programmer data (master entries).
         # Each fixture gets its own copy of fx_def so per-fixture edits
         # (e.g. changing BPM on just one fixture) don't bleed to others.
+        # A fixture selected as only some of its own sub-fixtures (see
+        # _resolve_fx_selection_targets) gets its own 'sub_indices' so
+        # _bucket_fx_defs restricts targets to just those subs instead of
+        # every sub-fixture on the fixture.
         for fid in sel_fids:
             entry = prog.data.setdefault(str(fid), {})
+            this_def = dict(fx_def)
+            if fid in sub_indices_by_fid:
+                this_def['sub_indices'] = sub_indices_by_fid[fid]
             if not add_mode:
-                entry['fx'] = [dict(fx_def)]
+                entry['fx'] = [this_def]
             else:
-                entry.setdefault('fx', []).append(dict(fx_def))
+                entry.setdefault('fx', []).append(this_def)
 
         # Live preview — rebuild ALL programmer FX so other fixtures keep their effects
         _prog_fx_rebuild()
@@ -695,18 +710,14 @@ def cmd_041_fire_fx(t0, tokens, raw):
         fire_grp_m = _re_fire.search(r'\bGROUP\s+(\d+)', raw.upper())
         fire_group_id = int(fire_grp_m.group(1)) if fire_grp_m else None
 
+        sub_indices_by_fid = {}
         if fire_group_id is not None:
             grp = group_pool.get(fire_group_id)
             if not grp:
                 return f"FIRE FX: group {fire_group_id} not found"
             sel_fids = [m.fixture_id for m in grp.recall(patch)]
         elif prog.selection:
-            seen_m, sel_fids = set(), []
-            for f in prog.selection:
-                mid = f.fixture_id if isinstance(f, MasterFixture) else getattr(f, 'master_id', None)
-                if mid and mid not in seen_m:
-                    seen_m.add(mid)
-                    sel_fids.append(mid)
+            sel_fids, sub_indices_by_fid = _resolve_fx_selection_targets()
         else:
             sel_fids = [m.fixture_id for m in patch.all_fixtures()]
 
@@ -731,6 +742,13 @@ def cmd_041_fire_fx(t0, tokens, raw):
             if fire_group_id is not None:
                 for d in fired_defs:
                     d['group_id'] = fire_group_id
+            # Restrict to only the sub-fixtures actually selected on this
+            # fixture, if it was a partial sub-selection (see
+            # _resolve_fx_selection_targets) — otherwise firing a preset
+            # onto "1.1 THRU 1.10" still lit up the whole fixture.
+            if fid in sub_indices_by_fid:
+                for d in fired_defs:
+                    d['sub_indices'] = sub_indices_by_fid[fid]
             entry['fx'] = kept + fired_defs
 
         _prog_fx_rebuild()
@@ -744,8 +762,17 @@ def cmd_108_kill_fx(t0, tokens, raw):
         # Write fx_kill flag into programmer master data for selected (or all) fixtures.
         # The FX engine keeps running; the flag suppresses FX in the output merge.
         # CLEAR removes this flag so cue FX resumes automatically.
-        masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
-        if not masters:
+        # fx_kill is a master-level flag (no sub-fixture granularity is
+        # meaningful for it), but the fixtures it applies to still need
+        # to come from the actual selection — including a sub-fixture-
+        # only selection, which used to leave `masters` empty here and
+        # silently fall through to "every patched fixture", killing FX
+        # rig-wide instead of just on the selected fixture.
+        if prog.selection:
+            _fids = _resolve_fx_selection_targets()[0]
+            masters = [patch.get(fid) for fid in _fids]
+            masters = [m for m in masters if m]
+        else:
             masters = list(patch.all_fixtures())
         prog._push_undo()
         _prog_fx_stop()
@@ -760,7 +787,12 @@ def cmd_108_kill_fx(t0, tokens, raw):
 
 def cmd_110_clear_fx(t0, tokens, raw):
     if t0 == 'CLEAR' and len(tokens) == 2 and tokens[1] == 'FX':
-        _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
+        # fx/fx_kill always live under the MASTER fixture's id — resolve
+        # through _resolve_fx_selection_targets() so a sub-fixture-only
+        # selection (e.g. "1.1 THRU 1.10") maps to "1", not the dead-end
+        # "1.1"/"1.2"/... keys that used to make this a no-op.
+        _sel_fids = ({str(fid) for fid in _resolve_fx_selection_targets()[0]}
+                    if prog.selection else None)
         _targets  = _sel_fids or set(prog.data.keys())
         prog._push_undo()
         n_masters = 0
