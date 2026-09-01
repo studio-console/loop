@@ -104,6 +104,24 @@ class GUIEngineLeftColumn:
             return ('Input' in t or 'Combo' in t)
         except Exception:
             return False
+    def _other_field_has_focus(self):
+        """True when a text/number widget OTHER than cmd_input has real
+        keyboard focus (e.g. editing a cue name or a numeric popup field).
+
+        Unlike _cmd_input_needs_focus(), this deliberately excludes cmd_input
+        itself: dpg.focus_item("cmd_input") is called after every command
+        execution, so cmd_input legitimately holds real focus most of the
+        time, and that alone shouldn't count as "hands off cmd_input"."""
+        try:
+            focused = dpg.get_focused_item()
+            if focused == 0:
+                return False
+            if dpg.get_item_alias(focused) == "cmd_input":
+                return False
+            t = dpg.get_item_info(focused).get('type', '')
+            return ('Input' in t or 'Combo' in t)
+        except Exception:
+            return False
     def _on_hist_up(self, *_):
         """↑ arrow: scroll backward through command history."""
         if self._cmd_input_needs_focus():
@@ -220,11 +238,23 @@ class GUIEngineLeftColumn:
         UNDO (same as Ctrl+Z) — a quick, single-key way to reverse the
         last programmer change with no modifier needed, but only once
         there's nothing left to delete, so it can never fire mid-typo-fix
-        while actually typing a command."""
-        if self._cmd_input_needs_focus():
+        while actually typing a command.
+
+        The empty-triggers-UNDO branch uses _other_field_has_focus() rather
+        than _cmd_input_needs_focus(): dpg.focus_item("cmd_input") runs after
+        every command, so cmd_input holds real DPG focus most of the time —
+        gating UNDO on "cmd_input doesn't have focus" made it nearly
+        unreachable in practice. The delete branch still checks whether
+        cmd_input itself has native focus, since DPG's own widget already
+        deletes a character natively in that case and a manual set_value
+        here would double-delete."""
+        if self._other_field_has_focus():
             return
         v = dpg.get_value("cmd_input")
         if v:
+            focused = dpg.get_focused_item()
+            if focused != 0 and dpg.get_item_alias(focused) == "cmd_input":
+                return
             dpg.set_value("cmd_input", v[:-1])
         elif self._cmd:
             result = self._cmd("UNDO")
