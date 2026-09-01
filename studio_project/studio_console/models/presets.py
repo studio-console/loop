@@ -265,32 +265,64 @@ class AttributePool:
 
 class Group:
     """
-    A named selection of master fixtures.
-    Sub-fixtures are NOT stored — they auto-expand from the master on recall.
+    A named selection of fixtures and/or specific sub-fixtures — a group
+    can mix whole fixtures with individual pixels of other fixtures (e.g.
+    "all the .1s across a rig" alongside a couple of complete fixtures).
     """
     def __init__(self, group_id, name=""):
         self.group_id = group_id
         self.name     = name or f"group {group_id}"
-        self.members  = []   # [ ("master", fixture_id_int), ... ]
+        # [ ("master", fixture_id_int) | ("sub", "master.sub"_str), ... ]
+        # A "master" entry auto-expands to every one of that fixture's
+        # subs on recall (via programmer.select()'s own MasterFixture
+        # handling) — recording one whenever the WHOLE fixture was
+        # selected, rather than every individual sub, keeps the group
+        # resilient to the fixture's pixel count changing later and
+        # keeps a plain "select fixture, record group" the same one-line
+        # entry it always was.
+        self.members  = []
 
     def record(self, programmer):
-        self.members = []
+        masters_selected = []
+        seen_masters = set()
+        subs_by_master = {}
         for f in programmer.selection:
             if isinstance(f, MasterFixture):
-                self.members.append(("master", f.fixture_id))
+                if f.fixture_id not in seen_masters:
+                    seen_masters.add(f.fixture_id)
+                    masters_selected.append(f.fixture_id)
+            else:
+                subs_by_master.setdefault(f.master_id, []).append(f)
+        self.members = [("master", mid) for mid in masters_selected]
+        for mid, subs in subs_by_master.items():
+            if mid in seen_masters:
+                continue  # whole fixture already covers these subs
+            for sub in subs:
+                self.members.append(("sub", sub.fixture_id))
         print(f"recorded: {self}")
 
     def recall(self, patch):
-        """Return list of MasterFixture objects for this group."""
+        """Return list of MasterFixture/SubFixture objects for this group."""
         fixtures = []
         for _type, fid in self.members:
-            m = patch.get(int(fid))
-            if m:
-                fixtures.append(m)
+            f = None
+            if _type == 'sub':
+                try:
+                    m_str, s_str = str(fid).split('.', 1)
+                    f = patch.get_sub(int(m_str), int(s_str))
+                except (ValueError, IndexError):
+                    f = None
+            else:
+                try:
+                    f = patch.get(int(fid))
+                except (ValueError, TypeError):
+                    f = None
+            if f:
+                fixtures.append(f)
         return fixtures
 
     def __repr__(self):
-        return f"[group {self.group_id}] \"{self.name}\" ({len(self.members)} fixture(s))"
+        return f"[group {self.group_id}] \"{self.name}\" ({len(self.members)} member(s))"
 
 
 class GroupPool:

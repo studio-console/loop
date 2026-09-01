@@ -84,57 +84,89 @@ _ATTR_POOL_MAP = {
 }
 
 
+def _parse_group_member_token(token, require_patched=True):
+    """Parse a GROUP ADD/REMOVE token ("7" or "7.5") into a Group.members
+    entry: ("master", fixture_id_int) for a whole fixture, or
+    ("sub", "master.sub"_str) for a specific sub-fixture/pixel. Returns
+    (entry, error_message) — error_message is None on success.
+    require_patched=False skips the "must currently be in the patch"
+    check, for REMOVE — a stale reference (fixture since unpatched)
+    should still be removable from the group."""
+    if '.' in token:
+        parts = token.split('.')
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            return None, f"bad sub-fixture id '{token}'"
+        m_id, s_idx = int(parts[0]), int(parts[1])
+        if require_patched:
+            master = patch.get(m_id)
+            sub = master.get_sub(s_idx) if master else None
+            if not sub:
+                return None, f"sub-fixture {token} not in patch"
+        return ("sub", f"{m_id}.{s_idx}"), None
+    try:
+        fid = int(token)
+    except ValueError:
+        return None, f"bad fixture id '{token}'"
+    if require_patched and not patch.get(fid):
+        return None, f"fixture {fid} not in patch"
+    return ("master", fid), None
+
+
 def cmd_074_group(t0, tokens, raw):
     if t0 == 'GROUP' and len(tokens) > 1:
         try:
             gid = int(tokens[1])
         except ValueError:
             return f"GROUP: bad id '{tokens[1]}'"
-        # GROUP <n> ADD <fid> — add a master fixture to the group
+        # GROUP <n> ADD <fid|fid.sub> — add a whole fixture OR a specific
+        # sub-fixture/pixel to the group (e.g. "GROUP 2 ADD 1.5")
         if len(tokens) >= 4 and tokens[2].upper() == 'ADD':
             g = group_pool.get(gid)
             if not g:
                 return f"group {gid} not found"
-            try:
-                add_fid = int(tokens[3])
-            except ValueError:
-                return f"GROUP ADD: bad fixture id '{tokens[3]}'"
-            if not patch.get(add_fid):
-                return f"GROUP ADD: fixture {add_fid} not in patch"
-            if any(entry[1] == add_fid for entry in g.members if isinstance(entry, tuple)):
-                return f"GROUP ADD: fixture {add_fid} already in group {gid}"
-            g.members.append(("master", add_fid))
+            add_token = tokens[3]
+            entry, err = _parse_group_member_token(add_token)
+            if err:
+                return f"GROUP ADD: {err}"
+            if entry in g.members:
+                return f"GROUP ADD: {add_token} already in group {gid}"
+            g.members.append(entry)
             save_show()
-            return f"group {gid}: added fixture {add_fid} ({len(g.members)} member(s))"
+            return f"group {gid}: added {add_token} ({len(g.members)} member(s))"
 
-        # GROUP <n> REMOVE <fid> — remove a master fixture from the group
+        # GROUP <n> REMOVE <fid|fid.sub> — remove a whole fixture OR a
+        # specific sub-fixture/pixel from the group
         if len(tokens) >= 4 and tokens[2].upper() == 'REMOVE':
             g = group_pool.get(gid)
             if not g:
                 return f"group {gid} not found"
-            try:
-                rm_fid = int(tokens[3])
-            except ValueError:
-                return f"GROUP REMOVE: bad fixture id '{tokens[3]}'"
+            rm_token = tokens[3]
+            entry, err = _parse_group_member_token(rm_token, require_patched=False)
+            if err:
+                return f"GROUP REMOVE: {err}"
             before = len(g.members)
-            g.members = [e for e in g.members
-                         if not (isinstance(e, tuple) and e[1] == rm_fid)]
+            g.members = [e for e in g.members if e != entry]
             if len(g.members) == before:
-                return f"GROUP REMOVE: fixture {rm_fid} not in group {gid}"
+                return f"GROUP REMOVE: {rm_token} not in group {gid}"
             save_show()
-            return f"group {gid}: removed fixture {rm_fid} ({len(g.members)} member(s) remaining)"
+            return f"group {gid}: removed {rm_token} ({len(g.members)} member(s) remaining)"
 
         # GROUP <n> INFO/STATUS — show group members
         if len(tokens) >= 3 and tokens[2] in ('INFO', 'STATUS', 'SHOW'):
             g = group_pool.get(gid)
             if not g:
                 return f"group {gid} not found"
-            # Resolve member fixture IDs to names; members are ("master", fid) tuples
+            # Resolve members to names; entries are ("master", fid_int) or
+            # ("sub", "master.sub"_str) tuples.
             member_strs = []
-            for entry in g.members:
-                fid = entry[1] if isinstance(entry, tuple) else int(entry)
-                m = patch.get(fid)
-                member_strs.append(f"{fid}:{m.name}" if m else str(fid))
+            for _type, fid in g.members:
+                if _type == 'sub':
+                    m_str, s_str = str(fid).split('.', 1)
+                    m = patch.get(int(m_str))
+                    member_strs.append(f"{fid}:{m.name}.{s_str}" if m else str(fid))
+                else:
+                    m = patch.get(int(fid))
+                    member_strs.append(f"{fid}:{m.name}" if m else str(fid))
             return (f"group {gid}: {g.name}\n"
                     f"  members ({len(g.members)}): {', '.join(member_strs) or '(empty)'}")
         # group_pool.recall() calls prog.select(...) directly — bypasses

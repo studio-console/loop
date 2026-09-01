@@ -520,27 +520,44 @@ class FXLayer:
 
     def _cluster_indices(self):
         """Bucket targets by GroupPool membership instead of raw list
-        order — targets whose containing fixture is in the same Group
-        step together (grouped by group_id order; a target whose fixture
-        isn't in any group falls into one trailing shared bucket)."""
+        order — targets whose containing fixture (or, for a group that
+        lists a specific sub-fixture rather than the whole fixture, that
+        exact sub) is in the same Group step together (grouped by
+        group_id order; a target that matches no group falls into one
+        trailing shared bucket).
+
+        A group's members are ("master", fid_int) — matches any target
+        belonging to that whole fixture — or ("sub", "fid.sub"_str) —
+        matches only that one specific sub-fixture target. A sub-fixture
+        match is checked first (more specific) before falling back to
+        whether the target's master fixture is in a whole-fixture entry.
+        """
         n = len(self.targets)
         if not self._group_pool:
             return [0] * n
-        fids = []
-        for t in self.targets:
-            fid = getattr(t, 'master_id', None)
-            if fid is None:
-                fid = getattr(t, 'fixture_id', None)
-            fids.append(fid)
         group_ids_sorted = sorted(self._group_pool.groups.keys())
-        fid_to_bucket = {}
+        master_to_bucket = {}
+        sub_to_bucket = {}
         for bucket_idx, gid in enumerate(group_ids_sorted):
             grp = self._group_pool.groups[gid]
             for _type, member_fid in grp.members:
-                if member_fid not in fid_to_bucket:
-                    fid_to_bucket[member_fid] = bucket_idx
+                dest = sub_to_bucket if _type == 'sub' else master_to_bucket
+                if member_fid not in dest:
+                    dest[member_fid] = bucket_idx
         ungrouped_bucket = len(group_ids_sorted)
-        return [fid_to_bucket.get(fid, ungrouped_bucket) for fid in fids]
+        result = []
+        for t in self.targets:
+            t_fid = getattr(t, 'fixture_id', None)   # sub's own "m.s" string, or a master's int id
+            m_fid = getattr(t, 'master_id', None)     # only present on sub-fixtures
+            if t_fid in sub_to_bucket:
+                result.append(sub_to_bucket[t_fid])
+            elif m_fid is not None and m_fid in master_to_bucket:
+                result.append(master_to_bucket[m_fid])
+            elif t_fid in master_to_bucket:
+                result.append(master_to_bucket[t_fid])
+            else:
+                result.append(ungrouped_bucket)
+        return result
 
     def get_values(self, now):
         if not self.is_active or not self.targets:

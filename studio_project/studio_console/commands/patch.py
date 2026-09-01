@@ -208,13 +208,15 @@ def cmd_092_fixture_groups(t0, tokens, raw):
         containing = []
         for gid in sorted(group_pool.groups):
             g = group_pool.groups[gid]
-            for entry in g.members:
-                if isinstance(entry, tuple) and entry[1] == fid:
-                    containing.append(f"  group {gid}: {g.name}")
+            for _type, member_fid in g.members:
+                if _type == 'master' and member_fid == fid:
+                    containing.append(f"  group {gid}: {g.name} (whole fixture)")
                     break
+                if _type == 'sub' and str(member_fid).split('.', 1)[0] == str(fid):
+                    containing.append(f"  group {gid}: {g.name} (sub-fixture {member_fid})")
         if not containing:
             return f"fixture {fid} '{master.name}' is not in any group"
-        lines = [f"Fixture {fid} '{master.name}' appears in {len(containing)} group(s):"]
+        lines = [f"Fixture {fid} '{master.name}' appears in {len(containing)} group entry/entries:"]
         lines.extend(containing)
         return "\n".join(lines)
 
