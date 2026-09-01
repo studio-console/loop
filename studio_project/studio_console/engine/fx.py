@@ -331,12 +331,10 @@ class FXLayer:
         #       regardless of patch order, if those are two Groups.
         #   mirror     — folds whatever buckets resulted from block_size/
         #       cluster above symmetrically: bucket b and bucket
-        #       (n-1-b) share a phase-step, with the center bucket(s)
-        #       first (phase 0) and the outer edges last — the wave
-        #       starts in the middle and travels outward toward both
-        #       ends together (edges-first/converging-to-center with
-        #       direction='reverse'). Independent of block_size/cluster —
-        #       combine a block size, or a cluster grouping, with the
+        #       (n-1-b) share a phase-step, so the pattern runs from both
+        #       ends inward (center outward with direction='reverse').
+        #       Independent of block_size/cluster — combine a block size,
+        #       or a cluster grouping, with the
         #       fold on top of either.
         #   order      — 'linear' (patch/bucket order) or 'random'
         #       (buckets shuffled once, stable per fx_id) — applies after
@@ -495,17 +493,20 @@ class FXLayer:
         if self.mirror:
             # Fold the bucket sequence symmetrically: bucket b and bucket
             # (num_groups-1-b) share a phase-step — works the same whether
-            # the buckets came from cluster or block_size chunking. The
-            # center buckets get phase 0 (fire first) and the outer edges
-            # get the highest phase (fire last), so the wave starts in the
-            # middle and travels outward toward both ends together — a
-            # plain min(b, n-1-b) fold gives the opposite (edges first,
-            # meeting in the middle last), which read as "backwards".
-            dist_from_edge = [min(b, num_groups - 1 - b) for b in range(num_groups)]
-            max_dist       = max(dist_from_edge)
-            fold_of        = [max_dist - d for d in dist_from_edge]
-            group_of       = [fold_of[g] for g in group_of]
-            num_groups     = max(group_of) + 1
+            # the buckets came from cluster or block_size chunking.
+            #
+            # Reverted the "center fires first" inversion tried here
+            # previously — reported as making it worse on real hardware,
+            # not better, so back to edges-first/meet-in-the-middle-last
+            # while a different approach gets worked out. Both directions
+            # are the same coordinate-space fold either way (proven: a
+            # symmetric min(b, n-1-b) fold is invariant under reversing
+            # the input order), so the real fix likely isn't a fold-
+            # direction flip at all — see the conversation for the next
+            # idea to try.
+            fold_of    = [min(b, num_groups - 1 - b) for b in range(num_groups)]
+            group_of   = [fold_of[g] for g in group_of]
+            num_groups = max(group_of) + 1
 
         positions = list(range(num_groups))
         if self.order == 'random':
