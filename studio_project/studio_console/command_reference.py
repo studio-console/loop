@@ -14,6 +14,8 @@ COMMAND_REFERENCE = [
     ("selection", [
         ("1",                     "select fixture 1"),
         ("1 THRU 6",              "select fixtures 1 through 6"),
+        ("1 THRU 10 - 3",         "select 1 through 10, excluding fixture 3 ('-' deselects the next fixture/range, mirrors '+')"),
+        ("1.1 THRU 1.20 - 1.5 THRU 1.10", "sub-fixture range minus a sub-range within it"),
         ("1.5",                   "select only pixel/sub-fixture 5 of fixture 1 (not the whole fixture)"),
         ("1.1 THRU 1.20",         "select a range of pixels within fixture 1 (subs 1-20 of however many it has)"),
         ("ALL",                   "select every patched fixture"),
