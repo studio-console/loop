@@ -265,11 +265,14 @@ def cmd_051_highlight(t0, tokens, raw):
             return "HIGHLIGHT OFF"
         else:
             output_state.highlight_mode = True
-            output_state.highlight_fids = {
-                f.fixture_id for f in prog.selection
-                if isinstance(f, MasterFixture)
-            }
-            fids = sorted(output_state.highlight_fids)
+            # Every selected object's own .fixture_id, master or sub —
+            # MasterFixture's is a plain int (whole fixture); SubFixture's
+            # is already the "master.sub" composite string (a specific
+            # pixel). Filtering to MasterFixture only (as this used to)
+            # meant a sub-fixture-only selection (e.g. "1.1 THRU 1.10")
+            # produced an empty set and highlighted nothing at all.
+            output_state.highlight_fids = {f.fixture_id for f in prog.selection}
+            fids = sorted(output_state.highlight_fids, key=str)
             return f"HIGHLIGHT ON — fixtures {fids} at full white"
 
 

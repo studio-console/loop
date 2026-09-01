@@ -6,7 +6,6 @@ multiple inheritance.
 """
 
 from studio_console.gui.theme import *  # noqa: F401,F403
-from studio_console.models.fixtures import MasterFixture
 
 
 class GUIEngineRightColumn:
@@ -164,10 +163,11 @@ class GUIEngineRightColumn:
         else:
             self._log("> highlight off")
     def _sync_highlight_selection(self):
-        """Push the current programmer selection into the output engine's highlight set."""
+        """Push the current programmer selection into the output engine's
+        highlight set. Every selected object's own .fixture_id, master or
+        sub — see commands/programmer.py's cmd_051_highlight for why the
+        old MasterFixture-only filter left a sub-fixture-only selection
+        (e.g. "1.1 THRU 1.10") highlighting nothing."""
         if not self._out or not self._prog:
             return
-        self._out.highlight_fids = {
-            f.fixture_id for f in self._prog.selection
-            if isinstance(f, MasterFixture)
-        }
+        self._out.highlight_fids = {f.fixture_id for f in self._prog.selection}

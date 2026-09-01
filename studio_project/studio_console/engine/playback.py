@@ -438,7 +438,10 @@ class OutputState:
         self.master_level     = 1.0   # grand master fader (0.0–1.0)
         self.blind            = False  # when True, programmer layer is suppressed from DMX output
         self.highlight_mode   = False  # when True, selected fixtures go full-white at 100%
-        self.highlight_fids   = set()  # set of master fixture_id ints to highlight
+        self.highlight_fids   = set()  # mixed set: master fixture_id ints (whole fixture)
+                                        # and/or "master.sub" strings (SubFixture.fixture_id,
+                                        # a specific pixel) — a fixture is highlighted if
+                                        # EITHER its own id or the current sub's own id is in here
         self.direct_dmx       = {}    # {universe: {address(1-512): value(0-255)}}
         self.freeze_mode      = False  # when True, frozen_dmx is output verbatim
         self.frozen_dmx       = {}    # {universe: tuple(512)} — snapshot at FREEZE time
@@ -569,7 +572,8 @@ class OutputState:
 
                     gm        = self.master_level
                     highlight = (self.highlight_mode and
-                                 master.fixture_id in self.highlight_fids)
+                                 (master.fixture_id in self.highlight_fids
+                                  or fid in self.highlight_fids))
 
                     # Build resolved values for all profile channels on this sub.
                     # Colour channels: FX envelope-blend + dimmer applied.

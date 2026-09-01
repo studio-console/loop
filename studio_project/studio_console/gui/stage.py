@@ -166,7 +166,9 @@ class GUIEngineStage:
                     g = max(0, min(255, int(g * dim * gm)))
                     b = max(0, min(255, int(b * dim * gm)))
             hl_active = (self._out and self._out.highlight_mode and
-                         master.fixture_id in self._out.highlight_fids)
+                         (master.fixture_id in self._out.highlight_fids
+                          or any(str(s.fixture_id) in self._out.highlight_fids
+                                 for s in master.all_subs())))
             if hl_active:
                 fill = (255, 255, 255, 255)
             elif r or g or b:
