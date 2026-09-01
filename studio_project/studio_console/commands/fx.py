@@ -137,6 +137,7 @@ def cmd_033_bpm(t0, tokens, raw):
         except ValueError:
             return f"BPM: expected a number, got '{tokens[1]}'"
         val = max(10.0, min(480.0, val))
+        prog._push_undo()
         _fx_params['rate_bpm'] = val
         now = time.monotonic()
         for layer in fx_engine._layers.values():
@@ -196,6 +197,7 @@ def cmd_035_size(t0, tokens, raw):
         except ValueError:
             return f"SIZE: expected a number, got '{tokens[1]}'"
         val = max(0.0, min(100.0, val))
+        prog._push_undo()
         _fx_params['size'] = val
         for layer in fx_engine._layers.values():
             if layer.fx_id >= 10000:  # skip fader (cue) FX
@@ -220,6 +222,7 @@ def cmd_036_spread(t0, tokens, raw):
         except ValueError:
             return f"SPREAD: expected a number, got '{tokens[1]}'"
         val = max(0.0, min(100.0, val))
+        prog._push_undo()
         _fx_params['spread'] = val
         for layer in fx_engine._layers.values():
             if layer.fx_id >= 10000:  # skip fader (cue) FX
@@ -279,6 +282,17 @@ def cmd_038_rainbow(t0, tokens, raw):
 def cmd_039_fx_main(t0, tokens, raw):
     if t0 == 'FX' and len(tokens) >= 2:
         sub = tokens[1]
+        # Pushed once here rather than at each of this function's several
+        # prog.data mutation points (FX FORM, FX COLOR, the main
+        # waveform-apply path) — undo's snapshot/restore already covers FX
+        # correctly since FX defs live inside prog.data itself (see
+        # programmer._push_undo/.undo in models/fixtures.py); this command
+        # was simply never calling it, so there was nothing to undo *to*.
+        # A malformed sub-command below still wastes one undo slot on a
+        # no-op snapshot (immediately identical to the one below it) —
+        # accepted in exchange for not needing to track every mutation
+        # site in a function this size individually.
+        prog._push_undo()
 
         # FX FORM <n>  — set form on all running layers + store as pending in programmer
         if sub == 'FORM' and len(tokens) == 3:
@@ -687,6 +701,7 @@ def cmd_041_fire_fx(t0, tokens, raw):
             else:
                 new_channels.add(ld['channel'])
 
+        prog._push_undo()
         for fid in sel_fids:
             entry = prog.data.setdefault(str(fid), {})
             kept  = [ld for ld in entry.get('fx', [])
@@ -712,6 +727,7 @@ def cmd_108_kill_fx(t0, tokens, raw):
         masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
         if not masters:
             masters = list(patch.all_fixtures())
+        prog._push_undo()
         _prog_fx_stop()
         for master in masters:
             fid = str(master.fixture_id)
@@ -726,6 +742,7 @@ def cmd_110_clear_fx(t0, tokens, raw):
     if t0 == 'CLEAR' and len(tokens) == 2 and tokens[1] == 'FX':
         _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
         _targets  = _sel_fids or set(prog.data.keys())
+        prog._push_undo()
         n_masters = 0
         for fid in _targets:
             if '.' in fid:
