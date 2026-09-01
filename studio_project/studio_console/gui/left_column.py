@@ -298,6 +298,25 @@ class GUIEngineLeftColumn:
             return
         dpg.set_value("cmd_input",
                       dpg.get_value("cmd_input") + lo)
+    def _on_global_numpad_op(self, _sender, _app_data, user_data):
+        """Physical NumPad +/- — appends the SAME padded " + "/" - " string
+        the GUI numpad's own +/- buttons do (_numpad_append in
+        right_column.py), so the two behave identically. Unlike plain
+        _numpad_append (built for button clicks, which can't collide with
+        typing elsewhere), this checks the same other-field-focus guard
+        every other global key route uses, since a raw keypress can fire
+        while some other text field legitimately has focus."""
+        if self._cmd_input_needs_focus():
+            return
+        is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
+                   dpg.is_key_down(dpg.mvKey_RControl) or
+                   dpg.is_key_down(dpg.mvKey_ModSuper))
+        if is_ctrl:
+            return
+        try:
+            dpg.set_value("cmd_input", dpg.get_value("cmd_input") + user_data)
+        except Exception:
+            pass
     def _on_global_backspace(self, *_):
         """Route Backspace to cmd_input when no other text widget is active.
         Once the command line is already empty, Backspace instead triggers

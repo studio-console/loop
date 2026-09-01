@@ -408,20 +408,33 @@ class GUIEngineCore:
             # of the time by design; see the comment above _letter_keys).
             # No shift variant needed, and NumPad Decimal joins Period for
             # typing decimal cue numbers (e.g. "1.5") from the numpad too.
-            # NumPad Add/Subtract are also their own keycodes (distinct
-            # from the top-row Minus registered above) and matter for the
-            # same reason the digits do: '+'/'-' are real command syntax
-            # here (multi-select "1 + 3 + 5", relative "AT +10"/"AT -20").
             _numpad_digit_keys = [
                 (dpg.mvKey_NumPad0,'0'),(dpg.mvKey_NumPad1,'1'),(dpg.mvKey_NumPad2,'2'),
                 (dpg.mvKey_NumPad3,'3'),(dpg.mvKey_NumPad4,'4'),(dpg.mvKey_NumPad5,'5'),
                 (dpg.mvKey_NumPad6,'6'),(dpg.mvKey_NumPad7,'7'),(dpg.mvKey_NumPad8,'8'),
                 (dpg.mvKey_NumPad9,'9'),(dpg.mvKey_Decimal,'.'),
-                (dpg.mvKey_Add,'+'),(dpg.mvKey_Subtract,'-'),
             ]
             for _k, _ch in _numpad_digit_keys:
                 dpg.add_key_press_handler(_k, callback=self._on_global_char,
                                           user_data=(_ch, _ch))
+            # NumPad Add/Subtract are their own keycodes (distinct from the
+            # top-row Minus registered above) and are command *operators*
+            # here (multi-select "1 + 3 + 5", deselect "1 THRU 10 - 3"),
+            # not plain text — a bare unpadded '+'/'-' character (what
+            # _on_global_char above does for digits) breaks tokenization,
+            # since "1+3" isn't the same token stream as "1 + 3". Route
+            # through the padded-append helper instead, so the physical
+            # numpad's +/- key does exactly what clicking the GUI numpad's
+            # own +/- button already does (right_column.py's " + "/" - "
+            # _numpad_append calls) — same other-field-focus guard as
+            # every other global key route, which plain _numpad_append
+            # (built for button clicks, not raw keypresses) doesn't have.
+            dpg.add_key_press_handler(dpg.mvKey_Add,
+                                      callback=self._on_global_numpad_op,
+                                      user_data=" + ")
+            dpg.add_key_press_handler(dpg.mvKey_Subtract,
+                                      callback=self._on_global_numpad_op,
+                                      user_data=" - ")
             dpg.add_key_press_handler(dpg.mvKey_Back,
                                       callback=self._on_global_backspace)
             dpg.add_key_press_handler(dpg.mvKey_Return,

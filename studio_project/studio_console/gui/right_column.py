@@ -112,20 +112,21 @@ class GUIEngineRightColumn:
 
                 dpg.add_spacer(width=12)
 
-                # Right: keywords — 4 rows × (wide + narrow + narrow)
+                # Right: keywords — selection/structure keys only now; the
+                # pool/parameter quick-set buttons (dim, R, G, B, col) were
+                # removed as redundant with the color picker and pools
+                # panel. "-" mirrors "+" — deselect the next fixture/range
+                # instead of adding it (programmer._parse_selection),
+                # e.g. "1 THRU 10 - 3" = 1-10 except 3.
                 _kw_rows = [
                     [("thru", _KW, self._numpad_append, " THRU "),
                      (" +",   _NW, self._numpad_append, " + "),
-                     ("at",   _NW, self._numpad_append, " AT ")],
-                    [("full", _KW, self._numpad_exec,   "FULL"),
-                     ("out",  _NW, self._numpad_exec,   "OUT"),
-                     (" R ",  _NW, self._numpad_append, " R ")],
-                    [("dim",  _KW, self._numpad_append, " DIM "),
-                     (" G ",  _NW, self._numpad_append, " G "),
-                     (" B ",  _NW, self._numpad_append, " B ")],
+                     (" - ",  _NW, self._numpad_append, " - ")],
+                    [("at",   _KW, self._numpad_append, " AT "),
+                     ("full", _NW, self._numpad_exec,   "FULL"),
+                     ("out",  _NW, self._numpad_exec,   "OUT")],
                     [("clr", _KW, self._numpad_clear_input, None),
-                     ("grp",  _NW, self._numpad_append, "GROUP "),
-                     ("col",  _NW, self._numpad_append, "COLOR ")],
+                     ("grp",  _NW, self._numpad_append, "GROUP ")],
                 ]
                 with dpg.group():
                     for row in _kw_rows:

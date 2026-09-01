@@ -993,25 +993,46 @@ class programmer:
     def _parse_selection(self, tokens):
         selected = []
         i = 0
+        # '-' flips the NEXT single fixture or THRU-range from add to
+        # remove-from-`selected` (e.g. "1 THRU 10 - 3" = 1-10 except 3;
+        # "1 THRU 10 - 5 THRU 7" = 1-10 except 5-7) — mirrors '+', which
+        # was already just a no-op connector for chaining plain adds
+        # ("1 + 3 + 5"). Only applies to a following plain fixture/range;
+        # ALL/ODD/EVEN/NEXT/PREV/RANDOM/EVERY reset it unconsumed rather
+        # than supporting subtraction themselves (out of scope — those
+        # select a large/computed set, not "this one thing").
+        _subtract = False
+        def _remove_from_selected(fixtures):
+            _ids = {f.fixture_id for f in fixtures}
+            return [f for f in selected if f.fixture_id not in _ids]
         while i < len(tokens):
             token = tokens[i]
 
             if token == '+':
+                _subtract = False
+                i += 1
+                continue
+
+            if token == '-':
+                _subtract = True
                 i += 1
                 continue
 
             if token == 'ALL':
                 selected += list(self.patch.all_fixtures())
+                _subtract = False
                 i += 1
                 continue
 
             if token == 'ODD':
                 selected += [m for m in self.patch.all_fixtures() if m.fixture_id % 2 == 1]
+                _subtract = False
                 i += 1
                 continue
 
             if token == 'EVEN':
                 selected += [m for m in self.patch.all_fixtures() if m.fixture_id % 2 == 0]
+                _subtract = False
                 i += 1
                 continue
 
@@ -1030,6 +1051,7 @@ class programmer:
                     nxt = self.patch.get(_next_id)
                     if nxt:
                         selected.append(nxt)
+                _subtract = False
                 i += 1
                 continue
 
@@ -1044,6 +1066,7 @@ class programmer:
                 _n = min(_n, len(_pool))
                 if _n > 0:
                     selected += _rand.sample(_pool, _n)
+                _subtract = False
                 i += 1
                 continue
 
@@ -1063,18 +1086,29 @@ class programmer:
                         start_sub = int(s_parts[1])
                         end_sub   = int(e_parts[1])
                         master    = self.patch.get(master_id)
+                        range_fixtures = []
                         if master:
                             for idx in range(start_sub, end_sub + 1):
                                 sub = master.get_sub(idx)
                                 if sub:
-                                    selected.append(sub)
+                                    range_fixtures.append(sub)
+                        if _subtract:
+                            selected = _remove_from_selected(range_fixtures)
+                            _subtract = False
+                        else:
+                            selected += range_fixtures
                         i += 3
                         continue
 
                 elif start_token.isdigit() and end_token.isdigit():
-                    selected += self.patch.get_range(
+                    range_fixtures = self.patch.get_range(
                         int(start_token), int(end_token)
                     )
+                    if _subtract:
+                        selected = _remove_from_selected(range_fixtures)
+                        _subtract = False
+                    else:
+                        selected += range_fixtures
                     i += 3
                     continue
 
@@ -1083,12 +1117,17 @@ class programmer:
                 n = int(tokens[i + 1])
                 if n > 1 and selected:
                     selected = [f for idx, f in enumerate(selected) if idx % n == 0]
+                _subtract = False
                 i += 2
                 continue
 
             fixture = self._parse_token_to_fixture(token)
             if fixture:
-                selected.append(fixture)
+                if _subtract:
+                    selected = _remove_from_selected([fixture])
+                    _subtract = False
+                else:
+                    selected.append(fixture)
             i += 1
 
         return selected
