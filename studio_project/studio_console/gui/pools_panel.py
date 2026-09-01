@@ -164,6 +164,11 @@ class GUIEnginePoolsPanel:
     def _on_group_click(self, _sender, _app_data, user_data):
         n = user_data
         if self._groups and self._groups.get(n):
+            # This button bypasses run_command()/commands/presets.py entirely
+            # (calls GroupPool.recall() directly) — the undo push added there
+            # for typed "GROUP n" never covered this, the actual click path.
+            if self._prog:
+                self._prog._push_undo()
             self._groups.recall(n, self._prog)
             self._log(f"> GROUP {n}  recalled — {self._groups.get(n).name}")
         else:
@@ -177,6 +182,10 @@ class GUIEnginePoolsPanel:
         n = user_data
         if self._colors and self._colors.get(n):
             p = self._colors.get(n)
+            # Same bypass as _on_group_click — direct ColorPreset.apply()
+            # call, not routed through run_command()'s "COLOR n" branch.
+            if self._prog:
+                self._prog._push_undo()
             p.apply(self._prog)
             self._log(f"> COLOR {n}  applied — {p.name}")
         else:
@@ -190,6 +199,10 @@ class GUIEnginePoolsPanel:
         n = user_data
         if self._dims and self._dims.get(n):
             p = self._dims.get(n)
+            # Same bypass as _on_group_click — direct DimmerPreset.apply()
+            # call, not routed through run_command()'s "DIM PRESET n" branch.
+            if self._prog:
+                self._prog._push_undo()
             p.apply(self._prog)
             self._log(f"> DIM PRESET {n}  applied — {p.name}")
         else:
