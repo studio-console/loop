@@ -76,6 +76,16 @@ class GUIEngineCore:
         'zoom', 'focus', 'iris', 'shutter1',
         'color', 'prism', 'frost', 'animation', 'control', 'macro', 'dimmer',
     ]
+    # Display items for the FX editor's "pattern"/"dir" columns — see
+    # FXLayer's grouping/direction docstring in engine/fx.py for what each
+    # actually does. Deliberately renamed away from grandMA2/MA3's own
+    # terms for these concepts (block/wings/group/random-style effect
+    # grouping), per explicit instruction — 'none'/'block'/'mirror'/
+    # 'cluster'/'random' are this codebase's own names, not theirs.
+    _FX_GROUPINGS = ['none', 'block', 'mirror', 'cluster', 'random']
+    _FX_DIRECTIONS = ['fwd', 'rev', 'bounce']
+    _FX_DIR_TO_INTERNAL = {'fwd': 'forward', 'rev': 'reverse', 'bounce': 'bounce'}
+    _FX_DIR_FROM_INTERNAL = {'forward': 'fwd', 'reverse': 'rev', 'bounce': 'bounce'}
     _ERR_PREFIXES = ("Usage:", "Error:", "bad ", "not found", "unknown verb",
                      "Unknown", "invalid", "no stack", "no active", "not set",
                      "AI error")

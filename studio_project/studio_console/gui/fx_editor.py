@@ -29,7 +29,7 @@ class GUIEngineFXEditor:
         _FXED_BTN_W  = 108   # 8 × 108 + 7 × 6 spacing ≈ 906, fits in 940px window
         _FXED_BTN_H  = 28
         with dpg.window(tag="fx_editor_window", label="fx editor",
-                        width=1100, height=580, show=False,
+                        width=1320, height=580, show=False,
                         pos=(120, 100), no_collapse=False):
 
             # ── preset selector row ───────────────────────────
@@ -131,6 +131,10 @@ class GUIEngineFXEditor:
                     dpg.add_table_column(label="size",     width_fixed=True, init_width_or_weight=64)
                     dpg.add_table_column(label="spread",   width_fixed=True, init_width_or_weight=59)
                     dpg.add_table_column(label="phase",    width_fixed=True, init_width_or_weight=59)
+                    dpg.add_table_column(label="low",      width_fixed=True, init_width_or_weight=55)
+                    dpg.add_table_column(label="pattern",  width_fixed=True, init_width_or_weight=84)
+                    dpg.add_table_column(label="block",    width_fixed=True, init_width_or_weight=48)
+                    dpg.add_table_column(label="dir",      width_fixed=True, init_width_or_weight=64)
                     dpg.add_table_column(label="group",    width_fixed=True, init_width_or_weight=96)
                     dpg.add_table_column(label="color",    width_fixed=True, init_width_or_weight=96)
                     dpg.add_table_column(label="dim",      width_fixed=True, init_width_or_weight=96)
@@ -166,6 +170,20 @@ class GUIEngineFXEditor:
                                     step=0, format="%.3f")
                 dpg.add_button(label="add layer", width=90, height=22,
                                callback=self._fxed_add_layer)
+            with dpg.group(horizontal=True):
+                dpg.add_text("low", color=_C_DIM)
+                dpg.add_input_float(tag="fxed_add_low", label="", width=55,
+                                    default_value=0.0, min_value=0.0, max_value=100.0,
+                                    step=0, format="%.0f")
+                dpg.add_text("pattern", color=_C_DIM)
+                dpg.add_combo(tag="fxed_add_pat", label="", width=84,
+                              items=self._FX_GROUPINGS, default_value='none')
+                dpg.add_text("block", color=_C_DIM)
+                dpg.add_input_int(tag="fxed_add_block", label="", width=48,
+                                  default_value=1, min_value=1, max_value=999, step=0)
+                dpg.add_text("dir", color=_C_DIM)
+                dpg.add_combo(tag="fxed_add_dir", label="", width=64,
+                              items=self._FX_DIRECTIONS, default_value='fwd')
 
         self._fxed_refresh_slot_labels()
     def _refresh_fx_pool_buttons(self):
@@ -343,6 +361,34 @@ class GUIEngineFXEditor:
                                     step=0, format="%.3f")
                 dpg.set_value(f"fxed_r{i}_phase", ld.get('phase_offset', 0.0))
 
+                # Floor for the oscillation range — waveform swings between
+                # low and size instead of 0 and size (e.g. low=40 size=70
+                # keeps a dim/strobe sync between 40% and 70%).
+                dpg.add_input_float(tag=f"fxed_r{i}_low", label="", width=50,
+                                    default_value=ld.get('low', 0.0),
+                                    min_value=0.0, max_value=100.0,
+                                    step=0, format="%.0f")
+                dpg.set_value(f"fxed_r{i}_low", ld.get('low', 0.0))
+
+                # Distribution pattern across targets — see _FX_GROUPINGS'
+                # comment (core.py) for the block/mirror/cluster/random
+                # naming. 'cluster' buckets by the "group" ref column to
+                # the right, not a separate selector of its own.
+                _pat_val = ld.get('grouping') or 'none'
+                dpg.add_combo(tag=f"fxed_r{i}_pat", label="", width=78,
+                              items=self._FX_GROUPINGS, default_value=_pat_val)
+                dpg.set_value(f"fxed_r{i}_pat", _pat_val)
+
+                dpg.add_input_int(tag=f"fxed_r{i}_block", label="", width=44,
+                                  default_value=ld.get('block_size', 1),
+                                  min_value=1, max_value=999, step=0)
+                dpg.set_value(f"fxed_r{i}_block", ld.get('block_size', 1))
+
+                _dir_val = self._FX_DIR_FROM_INTERNAL.get(ld.get('direction', 'forward'), 'fwd')
+                dpg.add_combo(tag=f"fxed_r{i}_dir", label="", width=58,
+                              items=self._FX_DIRECTIONS, default_value=_dir_val)
+                dpg.set_value(f"fxed_r{i}_dir", _dir_val)
+
                 _gval = self._fxed_id_to_label(_gid, self._groups,  'groups',  'name')
                 dpg.add_combo(tag=f"fxed_r{i}_grp", label="", width=90,
                               items=_grp_items, default_value=_gval)
@@ -434,6 +480,7 @@ class GUIEngineFXEditor:
             pass
     def _fxed_add_layer(self, *_):
         self._fxed_sync_rows()   # save any edits in existing rows first
+        _add_pat = dpg.get_value("fxed_add_pat")
         self._fx_ed_layers.append({
             'waveform':     dpg.get_value("fxed_add_wave"),
             'channel':      dpg.get_value("fxed_add_ch"),
@@ -441,6 +488,10 @@ class GUIEngineFXEditor:
             'size':         dpg.get_value("fxed_add_size"),
             'spread':       dpg.get_value("fxed_add_spread"),
             'phase_offset': dpg.get_value("fxed_add_phase"),
+            'low':          dpg.get_value("fxed_add_low"),
+            'grouping':     None if _add_pat == 'none' else _add_pat,
+            'block_size':   dpg.get_value("fxed_add_block"),
+            'direction':    self._FX_DIR_TO_INTERNAL.get(dpg.get_value("fxed_add_dir"), 'forward'),
         })
         self._fxed_rebuild_rows()
     def _fxed_remove_layer(self, _s, _a, user_data):
@@ -467,6 +518,12 @@ class GUIEngineFXEditor:
                 self._fx_ed_layers[i]['size']          = dpg.get_value(f"fxed_r{i}_size")
                 self._fx_ed_layers[i]['spread']        = dpg.get_value(f"fxed_r{i}_spread")
                 self._fx_ed_layers[i]['phase_offset']  = dpg.get_value(f"fxed_r{i}_phase")
+                self._fx_ed_layers[i]['low']           = dpg.get_value(f"fxed_r{i}_low")
+                _pat = dpg.get_value(f"fxed_r{i}_pat")
+                self._fx_ed_layers[i]['grouping']      = None if _pat == 'none' else _pat
+                self._fx_ed_layers[i]['block_size']    = dpg.get_value(f"fxed_r{i}_block")
+                self._fx_ed_layers[i]['direction']     = self._FX_DIR_TO_INTERNAL.get(
+                    dpg.get_value(f"fxed_r{i}_dir"), 'forward')
                 self._fx_ed_layers[i]['group_id']      = _ref(dpg.get_value(f"fxed_r{i}_grp"))
                 self._fx_ed_layers[i]['color_id']      = _ref(dpg.get_value(f"fxed_r{i}_col"))
                 self._fx_ed_layers[i]['dim_id']        = _ref(dpg.get_value(f"fxed_r{i}_dim"))
@@ -488,6 +545,10 @@ class GUIEngineFXEditor:
                 size         = ld.get('size',         200.0),
                 spread       = ld.get('spread',         1.0),
                 phase_offset = ld.get('phase_offset',   0.0),
+                low          = ld.get('low',             0.0),
+                grouping     = ld.get('grouping'),
+                block_size   = ld.get('block_size',       1),
+                direction    = ld.get('direction', 'forward'),
                 group_id     = ld.get('group_id'),
                 color_id     = ld.get('color_id'),
                 dim_id       = ld.get('dim_id'),
