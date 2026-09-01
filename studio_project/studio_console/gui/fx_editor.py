@@ -118,8 +118,15 @@ class GUIEngineFXEditor:
 
             # ── Layer list ────────────────────────────────────
             dpg.add_text("layers:", color=_C_DIM)
+            # horizontal_scrollbar: the table is wider than the window fits
+            # comfortably (23 columns once the pool refs/scope/fade columns
+            # below are included) — the common fields (waveform..dir) stay
+            # in the first ~700px so no scrolling is needed for everyday
+            # editing; the less-common pool-reference/fade columns are a
+            # scroll away instead of forcing the window itself wider.
             with dpg.child_window(tag="fxed_layers_win",
-                                  width=-1, height=270, border=True):
+                                  width=-1, height=270, border=True,
+                                  horizontal_scrollbar=True):
                 with dpg.table(tag="fxed_layer_table", header_row=True,
                                borders_innerV=False, borders_outerV=False,
                                borders_innerH=False, borders_outerH=False,
@@ -139,6 +146,13 @@ class GUIEngineFXEditor:
                     dpg.add_table_column(label="color",    width_fixed=True, init_width_or_weight=96)
                     dpg.add_table_column(label="dim",      width_fixed=True, init_width_or_weight=96)
                     dpg.add_table_column(label="spd",      width_fixed=True, init_width_or_weight=50)
+                    dpg.add_table_column(label="form",     width_fixed=True, init_width_or_weight=90)
+                    dpg.add_table_column(label="rateP",    width_fixed=True, init_width_or_weight=70)
+                    dpg.add_table_column(label="sizeP",    width_fixed=True, init_width_or_weight=70)
+                    dpg.add_table_column(label="sprP",     width_fixed=True, init_width_or_weight=70)
+                    dpg.add_table_column(label="scope",    width_fixed=True, init_width_or_weight=68)
+                    dpg.add_table_column(label="infade",   width_fixed=True, init_width_or_weight=55)
+                    dpg.add_table_column(label="outfade",  width_fixed=True, init_width_or_weight=55)
                     dpg.add_table_column(label="",         width_fixed=True, init_width_or_weight=30)
 
             dpg.add_separator()
@@ -184,6 +198,18 @@ class GUIEngineFXEditor:
                 dpg.add_text("dir", color=_C_DIM)
                 dpg.add_combo(tag="fxed_add_dir", label="", width=64,
                               items=self._FX_DIRECTIONS, default_value='fwd')
+                dpg.add_text("scope", color=_C_DIM)
+                dpg.add_combo(tag="fxed_add_scope", label="", width=68,
+                              items=["default", "pixel", "fixture"],
+                              default_value='default')
+                dpg.add_text("infade", color=_C_DIM)
+                dpg.add_input_float(tag="fxed_add_infade", label="", width=50,
+                                    default_value=0.0, min_value=0.0, max_value=60.0,
+                                    step=0, format="%.1f")
+                dpg.add_text("outfade", color=_C_DIM)
+                dpg.add_input_float(tag="fxed_add_outfade", label="", width=50,
+                                    default_value=0.0, min_value=0.0, max_value=60.0,
+                                    step=0, format="%.1f")
 
         self._fxed_refresh_slot_labels()
     def _refresh_fx_pool_buttons(self):
@@ -299,15 +325,24 @@ class GUIEngineFXEditor:
             self._fx_ed_selected_row = 0
 
         _spd_items = ["—"] + [str(n) for n in range(1, SpeedMasterPool._DEFAULT_SLOTS + 1)]
-        _grp_items = self._fxed_named_items(self._groups,  'groups',  'name')
-        _col_items = self._fxed_named_items(self._colors,  'presets', 'name')
-        _dim_items = self._fxed_named_items(self._dims,    'presets', 'name')
+        _grp_items  = self._fxed_named_items(self._groups,     'groups',  'name')
+        _col_items  = self._fxed_named_items(self._colors,     'presets', 'name')
+        _dim_items  = self._fxed_named_items(self._dims,       'presets', 'name')
+        _form_items = self._fxed_named_items(self._form_pool,   'forms',   'name')
+        _rate_items = self._fxed_named_items(self._rate_pool,   'presets', 'name')
+        _szp_items  = self._fxed_named_items(self._size_pool,   'presets', 'name')
+        _sprp_items = self._fxed_named_items(self._spread_pool, 'presets', 'name')
+        _scope_items = ["default", "pixel", "fixture"]
 
         for i, ld in enumerate(self._fx_ed_layers):
             _gid = ld.get('group_id')
             _cid = ld.get('color_id')
             _did = ld.get('dim_id')
             _sid = ld.get('speed_id')
+            _fid = ld.get('form_id')
+            _rid = ld.get('rate_id')
+            _szid = ld.get('size_id')
+            _sprid = ld.get('spread_id')
 
             # DPG quirk: set_value() is called right after each widget so that
             # _fxed_sync_rows() reads the correct value even if the user never
@@ -407,6 +442,45 @@ class GUIEngineFXEditor:
                               default_value="—" if _sid is None else str(_sid))
                 dpg.set_value(f"fxed_r{i}_spd", "—" if _sid is None else str(_sid))
 
+                # Pool references — override the inline bpm/size/spread
+                # above (live-tracked: editing the referenced pool preset
+                # updates every layer pointing at it, same as color/dim/spd).
+                _fval = self._fxed_id_to_label(_fid, self._form_pool, 'forms', 'name')
+                dpg.add_combo(tag=f"fxed_r{i}_form", label="", width=84,
+                              items=_form_items, default_value=_fval)
+                dpg.set_value(f"fxed_r{i}_form", _fval)
+                _rval = self._fxed_id_to_label(_rid, self._rate_pool, 'presets', 'name')
+                dpg.add_combo(tag=f"fxed_r{i}_rate", label="", width=64,
+                              items=_rate_items, default_value=_rval)
+                dpg.set_value(f"fxed_r{i}_rate", _rval)
+                _szval = self._fxed_id_to_label(_szid, self._size_pool, 'presets', 'name')
+                dpg.add_combo(tag=f"fxed_r{i}_szp", label="", width=64,
+                              items=_szp_items, default_value=_szval)
+                dpg.set_value(f"fxed_r{i}_szp", _szval)
+                _sprval = self._fxed_id_to_label(_sprid, self._spread_pool, 'presets', 'name')
+                dpg.add_combo(tag=f"fxed_r{i}_sprp", label="", width=64,
+                              items=_sprp_items, default_value=_sprval)
+                dpg.set_value(f"fxed_r{i}_sprp", _sprval)
+
+                # target scope — PIXEL (per sub-fixture) vs FIXTURE (whole
+                # master) vs "default" (channel-dependent: colour defaults
+                # to pixel, dim defaults to fixture — see _bucket_fx_defs).
+                _scope_val = ld.get('target_scope') or 'default'
+                dpg.add_combo(tag=f"fxed_r{i}_scope", label="", width=62,
+                              items=_scope_items, default_value=_scope_val)
+                dpg.set_value(f"fxed_r{i}_scope", _scope_val)
+
+                dpg.add_input_float(tag=f"fxed_r{i}_infade", label="", width=50,
+                                    default_value=ld.get('infade', 0.0),
+                                    min_value=0.0, max_value=60.0,
+                                    step=0, format="%.1f")
+                dpg.set_value(f"fxed_r{i}_infade", ld.get('infade', 0.0))
+                dpg.add_input_float(tag=f"fxed_r{i}_outfade", label="", width=50,
+                                    default_value=ld.get('outfade', 0.0),
+                                    min_value=0.0, max_value=60.0,
+                                    step=0, format="%.1f")
+                dpg.set_value(f"fxed_r{i}_outfade", ld.get('outfade', 0.0))
+
                 dpg.add_button(label="x", width=24, height=20,
                                callback=self._fxed_remove_layer,
                                user_data=i)
@@ -481,6 +555,7 @@ class GUIEngineFXEditor:
     def _fxed_add_layer(self, *_):
         self._fxed_sync_rows()   # save any edits in existing rows first
         _add_pat = dpg.get_value("fxed_add_pat")
+        _add_scope = dpg.get_value("fxed_add_scope")
         self._fx_ed_layers.append({
             'waveform':     dpg.get_value("fxed_add_wave"),
             'channel':      dpg.get_value("fxed_add_ch"),
@@ -492,6 +567,9 @@ class GUIEngineFXEditor:
             'grouping':     None if _add_pat == 'none' else _add_pat,
             'block_size':   dpg.get_value("fxed_add_block"),
             'direction':    self._FX_DIR_TO_INTERNAL.get(dpg.get_value("fxed_add_dir"), 'forward'),
+            'target_scope': None if _add_scope == 'default' else _add_scope,
+            'infade':       dpg.get_value("fxed_add_infade"),
+            'outfade':      dpg.get_value("fxed_add_outfade"),
         })
         self._fxed_rebuild_rows()
     def _fxed_remove_layer(self, _s, _a, user_data):
@@ -528,6 +606,14 @@ class GUIEngineFXEditor:
                 self._fx_ed_layers[i]['color_id']      = _ref(dpg.get_value(f"fxed_r{i}_col"))
                 self._fx_ed_layers[i]['dim_id']        = _ref(dpg.get_value(f"fxed_r{i}_dim"))
                 self._fx_ed_layers[i]['speed_id']      = _ref(dpg.get_value(f"fxed_r{i}_spd"))
+                self._fx_ed_layers[i]['form_id']       = _ref(dpg.get_value(f"fxed_r{i}_form"))
+                self._fx_ed_layers[i]['rate_id']       = _ref(dpg.get_value(f"fxed_r{i}_rate"))
+                self._fx_ed_layers[i]['size_id']       = _ref(dpg.get_value(f"fxed_r{i}_szp"))
+                self._fx_ed_layers[i]['spread_id']     = _ref(dpg.get_value(f"fxed_r{i}_sprp"))
+                _scope = dpg.get_value(f"fxed_r{i}_scope")
+                self._fx_ed_layers[i]['target_scope']  = None if _scope == 'default' else _scope
+                self._fx_ed_layers[i]['infade']        = dpg.get_value(f"fxed_r{i}_infade")
+                self._fx_ed_layers[i]['outfade']       = dpg.get_value(f"fxed_r{i}_outfade")
             except Exception:
                 pass
     def _fxed_save(self, *_):
@@ -549,10 +635,17 @@ class GUIEngineFXEditor:
                 grouping     = ld.get('grouping'),
                 block_size   = ld.get('block_size',       1),
                 direction    = ld.get('direction', 'forward'),
+                infade       = ld.get('infade',          0.0),
+                outfade      = ld.get('outfade',         0.0),
+                target_scope = ld.get('target_scope'),
                 group_id     = ld.get('group_id'),
                 color_id     = ld.get('color_id'),
                 dim_id       = ld.get('dim_id'),
                 speed_id     = ld.get('speed_id'),
+                form_id      = ld.get('form_id'),
+                rate_id      = ld.get('rate_id'),
+                size_id      = ld.get('size_id'),
+                spread_id    = ld.get('spread_id'),
             )
         self._fx_pool.store(self._fx_ed_slot, preset)
         ShowFile.save_fx_pool(self._fx_pool)

@@ -1016,7 +1016,8 @@ class FXPreset:
                   form_id=None, rate_id=None, size_id=None, spread_id=None, bpm=None,
                   dim_id=None, color_id=None, group_id=None, speed_id=None,
                   phase_offset=0.0, block_size=1, order='linear', direction='forward',
-                  grouping=None, low=0.0, target_scope=None):
+                  grouping=None, low=0.0, target_scope=None,
+                  infade=0.0, outfade=0.0):
         self.layers.append({
             'waveform':      waveform.lower(),
             'channel':       channel.lower(),
@@ -1025,6 +1026,8 @@ class FXPreset:
             'low':           float(low),
             'spread':        float(spread),
             'phase_offset':  float(phase_offset),
+            'infade':        float(infade),
+            'outfade':       float(outfade),
             'form_id':       form_id,
             'rate_id':       rate_id,
             'size_id':       size_id,
@@ -1053,12 +1056,13 @@ class FXPreset:
                 targets      = targets,
                 spread       = ld['spread'],
                 phase_offset = ld.get('phase_offset', 0.0),
+                infade       = ld.get('infade', 0.0),
+                outfade      = ld.get('outfade', 0.0),
                 form_id      = ld.get('form_id'),
                 rate_id      = ld.get('rate_id'),
                 size_id      = ld.get('size_id'),
                 spread_id    = ld.get('spread_id'),
                 dim_id       = ld.get('dim_id'),
-                color_id     = ld.get('color_id'),
                 speed_id     = ld.get('speed_id'),
                 block_size   = ld.get('block_size', 1),
                 order        = ld.get('order', 'linear'),
@@ -1104,6 +1108,8 @@ class FXPool:
                 spread_id = layer._spread_id,
                 grouping  = layer.grouping,
                 low       = layer.low,
+                infade    = layer.infade,
+                outfade   = layer.outfade,
             )
         self.presets[int(n)] = preset
         return preset

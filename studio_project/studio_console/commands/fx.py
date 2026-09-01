@@ -639,6 +639,8 @@ def cmd_040_record_fx(t0, tokens, raw):
                 size         = ld.get('size',   100.0),
                 spread       = ld.get('spread',   0.0),
                 phase_offset = ld.get('phase_offset', 0.0),
+                infade       = ld.get('infade', 0.0),
+                outfade      = ld.get('outfade', 0.0),
                 form_id      = ld.get('form_id'),
                 rate_id      = ld.get('rate_id'),
                 size_id      = ld.get('size_id'),
