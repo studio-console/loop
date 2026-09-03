@@ -2,67 +2,67 @@
   "version": "3.0",
   "speed_masters": {
     "1": {
-      "name": "SPD1",
-      "bpm": 120.0
+      "name": "spd1",
+      "bpm": 244.0
     },
     "2": {
-      "name": "SPD2",
+      "name": "spd2",
       "bpm": 120.0
     },
     "3": {
-      "name": "SPD3",
+      "name": "spd3",
       "bpm": 120.0
     },
     "4": {
-      "name": "SPD4",
+      "name": "spd4",
       "bpm": 120.0
     },
     "5": {
-      "name": "SPD5",
+      "name": "spd5",
       "bpm": 120.0
     },
     "6": {
-      "name": "SPD6",
+      "name": "spd6",
       "bpm": 120.0
     },
     "7": {
-      "name": "SPD7",
+      "name": "spd7",
       "bpm": 120.0
     },
     "8": {
-      "name": "SPD8",
+      "name": "spd8",
       "bpm": 120.0
     },
     "9": {
-      "name": "SPD9",
+      "name": "spd9",
       "bpm": 120.0
     },
     "10": {
-      "name": "SPD10",
+      "name": "spd10",
       "bpm": 120.0
     },
     "11": {
-      "name": "SPD11",
+      "name": "spd11",
       "bpm": 120.0
     },
     "12": {
-      "name": "SPD12",
+      "name": "spd12",
       "bpm": 120.0
     },
     "13": {
-      "name": "SPD13",
+      "name": "spd13",
       "bpm": 120.0
     },
     "14": {
-      "name": "SPD14",
+      "name": "spd14",
       "bpm": 120.0
     },
     "15": {
-      "name": "SPD15",
+      "name": "spd15",
       "bpm": 120.0
     },
     "16": {
-      "name": "SPD16",
+      "name": "spd16",
       "bpm": 120.0
     }
   }

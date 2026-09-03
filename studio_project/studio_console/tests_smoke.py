@@ -252,7 +252,7 @@ def run_smoke_test(gui):
         run_command('PAGE 1 NAME "Test Page"')
         run_command("PAGE 1 ADD stk 1")
         r3 = run_command("page list")
-        _check("page created and stack added", "Test Page" in r3 and "[1]" in r3)
+        _check("page created and stack added", "test page" in r3 and "[1]" in r3)
 
         run_command("FADER 1 MODE FLASH")
         _check("trigger_mode set", fader_pool.get(1).trigger_mode == 'flash')
@@ -477,7 +477,7 @@ def run_smoke_test(gui):
         r_grp_recall = run_command("GROUP 9")
         _check("GROUP recall", "recalled" in r_grp_recall.lower())
         r_gi = run_command("GROUP 9 INFO")
-        _check("GROUP INFO shows group name", "SmokeGroup" in r_gi)
+        _check("GROUP INFO shows group name", "smokegroup" in r_gi)
         _check("GROUP INFO shows member count", "members" in r_gi)
 
         # GROUP ADD / GROUP REMOVE
@@ -741,7 +741,7 @@ def run_smoke_test(gui):
         _r_spd = run_command("SPEED 4 200")
         _check("SPEED command sets BPM", speed_master_pool.get_bpm(4) == 200.0)
         _r_spd_name = run_command("SPEED 4 NAME StrobeClk")
-        _check("SPEED NAME renames slot", speed_master_pool.get(4).name == "Strobeclk")
+        _check("SPEED NAME renames slot", speed_master_pool.get(4).name == "strobeclk")
         _r_list_spd = run_command("LIST SPEED")
         _check("LIST SPEED shows all slots", "speed masters" in (_r_list_spd or "").lower())
         # FX layer with speed master reference uses master BPM
@@ -968,7 +968,17 @@ def run_smoke_test(gui):
                _fxo_dst_cs3 is not None and _fxo_dst_cs3.cues.get(1.0) is not None and
                _fxo_dst_cs3.cues[1.0].fx_outfade == 3.25)
 
-        # FX CLEAR clears fader FX layers
+        # FX CLEAR clears fader FX layers. Selection must be empty first —
+        # "FX CLEAR" scopes to the current selection when one exists (see
+        # commands/fx.py), and an earlier step in this same run leaves
+        # every fixture selected; with selection active it only clears
+        # programmer FX, never touching a fader's own _fx_ids, which used
+        # to make this check trivially pass either way (the fader's
+        # _fx_ids happened to be empty already, for unrelated reasons —
+        # not because this path was actually exercised). Clearing
+        # selection explicitly makes the check deterministic and
+        # actually exercise the fader-clear branch.
+        prog.clear_selection()
         run_command("FX SINE RED BPM 60 SIZE 100")
         _ex0 = _active_fader()
         _ex0_had_fx = bool(_ex0._fx_ids)
@@ -1028,7 +1038,7 @@ def run_smoke_test(gui):
 
         # stk INFO
         r_csi = run_command("stk 99 INFO")
-        _check("stk INFO shows stack name", "WrapTest" in r_csi)
+        _check("stk INFO shows stack name", "wraptest" in r_csi)
         _check("stk INFO shows wrap/loop state", "wrap" in r_csi or "loop" in r_csi)
         r_csi_bad = run_command("stk 9999 INFO")
         _check("stk INFO rejects unknown stack", "not found" in r_csi_bad)
@@ -1059,7 +1069,7 @@ def run_smoke_test(gui):
         _check("stk COMPRESS renumbers cues to 1,2,3 (collapses gaps)",
                _cmp_nums == [1.0, 2.0, 3.0])
         _check("stk COMPRESS preserves cue names in order",
-               [_stk95.cues[n].name for n in _cmp_nums] == ["Cue1", "Cue5", "Cue10"])
+               [_stk95.cues[n].name for n in _cmp_nums] == ["cue1", "cue5", "cue10"])
         _check("stk COMPRESS returns 'compressed' confirmation", "compressed" in r_cmp)
 
         # stk EXTRACT
@@ -1828,9 +1838,9 @@ def run_smoke_test(gui):
             _rf_master = patch.fixtures[_rf_fid]
             _rf_orig = _rf_master.name
             _rf_result = run_command(f"RENAME FIXTURE {_rf_fid} TempTestName")
-            _check("RENAME FIXTURE: changes master.name", _rf_master.name == "TempTestName")
+            _check("RENAME FIXTURE: changes master.name", _rf_master.name == "temptestname")
             _check("RENAME FIXTURE: includes old→new in response",
-                   "TempTestName" in _rf_result)
+                   "temptestname" in _rf_result)
             run_command(f"RENAME FIXTURE {_rf_fid} {_rf_orig}")  # restore
             _check("RENAME FIXTURE: name restored", _rf_master.name == _rf_orig)
         _rf_bad = run_command("RENAME FIXTURE 9999 X")
@@ -1931,7 +1941,7 @@ def run_smoke_test(gui):
         _check("PATCH RENAME test fixture patched", _tmp_fix is not None)
         r_pr = run_command("PATCH RENAME 51 RenamedFix")
         _check("PATCH RENAME changes fixture name",
-               patch.get(51) is not None and patch.get(51).name == "RenamedFix")
+               patch.get(51) is not None and patch.get(51).name == "renamedfix")
         r_pm = run_command("PATCH MOVE 51 UNIVERSE 2 AT 50")
         _first_sub_51 = patch.get(51).all_subs()[0] if patch.get(51) else None
         _check("PATCH MOVE updates sub universe",
@@ -1962,14 +1972,14 @@ def run_smoke_test(gui):
                prog.data.get('1.1', {}).get('red') == 200)
         run_command("RENAME MACRO 99 Renamed")
         _check("RENAME MACRO changes name",
-               macro_pool.get(99, {}).get("name") == "Renamed")
+               macro_pool.get(99, {}).get("name") == "renamed")
         run_command("MACRO DELETE 99")
         _check("MACRO DELETE removes slot", 99 not in macro_pool)
         # Also test MACRO RENAME <n> <name> (alternative order)
         macro_pool[98] = {"name": "TestMacro", "commands": ["1 FULL"]}
         r_mrn = run_command("MACRO RENAME 98 RenamedViaMAcroRename")
         _check("MACRO RENAME <n> <name> renames macro",
-               macro_pool.get(98, {}).get("name") == "RenamedViaMAcroRename")
+               macro_pool.get(98, {}).get("name") == "renamedviamacrorename")
         del macro_pool[98]
         prog.clear_programmer()
 

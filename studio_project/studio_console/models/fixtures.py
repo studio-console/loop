@@ -10,6 +10,8 @@ import json
 import copy
 import random
 
+from studio_console.models.naming import LowercaseName
+
 # ------------------------------------------------------------
 # FixtureProfile — the blueprint for a fixture type
 # ------------------------------------------------------------
@@ -330,8 +332,12 @@ class SubFixture:
         # e.g. {"red": 0, "green": 0, "blue": 0}
         self.channels = {ch: 0 for ch in profile.channels}
 
-        # Virtual dimmer — always present regardless of profile
-        self.virtual_dimmer = 1.0
+        # Virtual dimmer — always present regardless of profile. Defaults
+        # to OFF, not full — a fixture with no dim value explicitly set
+        # anywhere (no programmer AT DIM, no dim preset, nothing stored in
+        # the active cue) should render dark, not assume it's meant to be
+        # on. See MasterFixture.__init__ for the same default and why.
+        self.virtual_dimmer = 0.0
 
         # Multipatch outputs: [{"universe": int, "address": int}, ...]
         self.outputs = []
@@ -405,14 +411,35 @@ class MasterFixture:
     Controls all its SubFixtures as a unit.
     Selecting this in the programmer auto-selects all sub-fixtures.
     """
+    name = LowercaseName()
+
     def __init__(self, fixture_id, name, profile):
         self.fixture_id     = fixture_id
         self.name           = name
         self.profile        = profile
         self.pixel_count    = profile.pixel_count
-        self.virtual_dimmer = 1.0
+        # Fallback dim used by playback.py's render when NEITHER the active
+        # cue NOR the programmer NOR audio specifies a dim value for this
+        # fixture — defaults OFF (not full) so a colour recorded without an
+        # explicit dim doesn't silently show at full brightness. Was 1.0
+        # ("makes commands like 1 AT R 255 show up immediately without
+        # also setting a dim"), reversed on explicit request: dim/colour
+        # should only be on from something that actually set it (a dim
+        # preset, explicit programmer/cue dim, ...), never an implicit
+        # default. Existing cues that relied on the old default now need
+        # an explicit dim re-recorded into them to show anything.
+        self.virtual_dimmer = 0.0
         self.is_dirty       = False
         self.sub_fixtures   = {}
+        # Optional stage-view pixel-grid override — {"cols": int, "rows":
+        # int, "order": "rowmajor"|"colmajor"}, or None for gui/stage.py's
+        # normal auto-fit layout. Set via the VIZ LAYOUT command
+        # (commands/patch.py) for fixtures whose real physical wiring
+        # isn't just "however many pixels, arranged squarish" — e.g.
+        # several vertical strips side by side, addressed down each one
+        # before moving to the next (colmajor) rather than left-to-right/
+        # top-to-bottom like the generic auto layout assumes.
+        self.viz_layout     = None
 
     def build_sub_fixtures(self):
         """Creates all SubFixture objects based on the profile."""
@@ -578,6 +605,7 @@ class programmer:
     def _push_undo(self):
         """snapshot current programmer state onto the undo stack."""
         self._undo_stack.append({
+            'kind':      'prog',
             'data':      copy.deepcopy(self.data),
             'disabled':  copy.deepcopy(self.disabled),
             'selection': [f.fixture_id for f in self.selection],
@@ -585,11 +613,36 @@ class programmer:
         if len(self._undo_stack) > self._UNDO_MAX:
             self._undo_stack.pop(0)
 
-    def undo(self):
-        """Restore the previous programmer snapshot. Returns result string."""
-        if not self._undo_stack:
-            return "nothing to undo"
+    def push_delete_undo(self, description, restore_fn):
+        """Record a pool/group/stack/cue deletion on the SAME undo stack as
+        programmer snapshots, so one Backspace/Ctrl+Z/UNDO timeline covers
+        both — "undo" should reverse whatever the operator did last,
+        whether that was a programmer edit or deleting a preset, not two
+        separate mechanisms with two separate keys to remember.
+
+        description — short human-readable label for the "N step(s)
+            remaining" message (e.g. "delete color 4").
+        restore_fn   — zero-arg callable that puts the deleted thing back
+            (re-inserts it into its pool dict and re-saves the show). Called
+            by undo() when this entry is popped; never called otherwise.
+        """
+        self._undo_stack.append({
+            'kind':        'delete',
+            'description': description,
+            'restore':     restore_fn,
+        })
+        if len(self._undo_stack) > self._UNDO_MAX:
+            self._undo_stack.pop(0)
+
+    def _apply_one_undo(self):
+        """Pop and apply exactly one undo-stack entry — the shared core of
+        undo() and undo_to(). Returns a short description of what was
+        reverted (used by undo_to()'s summary; undo() keeps its own
+        existing message format and ignores this)."""
         snap = self._undo_stack.pop()
+        if snap.get('kind') == 'delete':
+            snap['restore']()
+            return snap.get('description', 'change')
         # Mutate self.data/self.disabled in place (clear + update) rather than
         # rebinding them to new dict objects. OutputState.link_programmer()
         # aliases output_state.programmer_layer directly to this same dict, so
@@ -608,7 +661,47 @@ class programmer:
                 restored.append(m)
                 restored += m.all_subs()
         self.selection = restored
+        return snap.get('description', 'programmer edit')
+
+    def undo(self):
+        """Reverse the most recent undo-stack entry — a programmer snapshot
+        or a pool/group/stack/cue record/update/delete, whichever was
+        pushed last. Returns result string."""
+        if not self._undo_stack:
+            return "nothing to undo"
+        was_delete = self._undo_stack[-1].get('kind') == 'delete'
+        desc = self._apply_one_undo()
+        if was_delete:
+            return f"undo — restored ({desc})  ({len(self._undo_stack)} step(s) remaining)"
         return f"undo — programmer restored  ({len(self._undo_stack)} step(s) remaining)"
+
+    def undo_history(self):
+        """List of (index, description) for every entry currently on the
+        undo stack, most-recent-first. index is what undo_to() expects —
+        used by the hold-undo history popup to show what each step would
+        revert without actually popping anything."""
+        out = []
+        for i in range(len(self._undo_stack) - 1, -1, -1):
+            snap = self._undo_stack[i]
+            desc = snap.get('description') or (
+                'programmer edit' if snap.get('kind', 'prog') == 'prog' else 'change')
+            out.append((i, desc))
+        return out
+
+    def undo_to(self, index):
+        """Undo everything from the top of the stack down to and including
+        the entry at `index` (0 = oldest currently on the stack, matching
+        undo_history()'s indices) — jumps back multiple steps at once
+        instead of one Backspace/UNDO at a time, for the hold-undo history
+        popup."""
+        if not self._undo_stack or not (0 <= index < len(self._undo_stack)):
+            return "nothing to undo"
+        n = len(self._undo_stack) - index
+        last_desc = None
+        for _ in range(n):
+            last_desc = self._apply_one_undo()
+        return (f"undo — reverted {n} step(s), back to before \"{last_desc}\"  "
+                f"({len(self._undo_stack)} step(s) remaining)")
 
     # ----------------------------------------------------------
     # Selection Management
@@ -641,10 +734,11 @@ class programmer:
             fixture = self._get_fixture_by_fid(fid)
             if fixture:
                 fixture.clear_dirty()
-                # Reset virtual_dimmer so a previous AT DIM 0 doesn't persist
-                # as the _base_dim fallback during cue playback.
+                # Reset virtual_dimmer to its off-by-default state so a
+                # sticky dim from an earlier command doesn't persist as the
+                # _base_dim fallback for whatever gets recorded next.
                 if hasattr(fixture, 'virtual_dimmer'):
-                    fixture.virtual_dimmer = 1.0
+                    fixture.virtual_dimmer = 0.0
         self.selection = []
         self.data.clear()
         self.disabled  = {}
@@ -678,7 +772,7 @@ class programmer:
                 if fixture:
                     fixture.clear_dirty()
                     if hasattr(fixture, 'virtual_dimmer'):
-                        fixture.virtual_dimmer = 1.0
+                        fixture.virtual_dimmer = 0.0
             self.data.clear()
             self.disabled = {}
             self._clear_stage = 2
@@ -1037,20 +1131,55 @@ class programmer:
                 continue
 
             if token in ('NEXT', 'PREV'):
-                _all = list(self.patch.all_fixtures())
-                if _all:
-                    _ids = [m.fixture_id for m in _all]
-                    _cur_ids = {m.fixture_id for m in self.selection
-                                if isinstance(m, MasterFixture)}
-                    if token == 'NEXT':
-                        _ref = max(_cur_ids) if _cur_ids else _ids[-1]
-                        _next_id = next((fid for fid in _ids if fid > _ref), _ids[0])
-                    else:
-                        _ref = min(_cur_ids) if _cur_ids else _ids[0]
-                        _next_id = next((fid for fid in reversed(_ids) if fid < _ref), _ids[-1])
-                    nxt = self.patch.get(_next_id)
-                    if nxt:
-                        selected.append(nxt)
+                # A genuine single-sub-only selection (e.g. "1.5", not "1"
+                # which auto-expands to the master + all its subs — see
+                # select()) steps to the adjacent SUB-FIXTURE within its
+                # own fixture instead, wrapping into the next/prev
+                # fixture's first/last sub at either end. Used to only
+                # know about whole-fixture stepping at all, silently
+                # ignoring a sub-fixture selection (the same isinstance-
+                # MasterFixture-only pattern that recurred for FX/
+                # HIGHLIGHT/GROUP earlier — see their own fixes).
+                _sub_sel    = [f for f in self.selection if isinstance(f, SubFixture)]
+                _master_sel = [f for f in self.selection if isinstance(f, MasterFixture)]
+                if len(_sub_sel) == 1 and not _master_sel:
+                    cur_sub = _sub_sel[0]
+                    cur_master = self.patch.get(cur_sub.master_id)
+                    _all_masters = list(self.patch.all_fixtures())
+                    if cur_master and _all_masters:
+                        _mids = [m.fixture_id for m in _all_masters]
+                        _midx = _mids.index(cur_master.fixture_id)
+                        _subs = cur_master.all_subs()
+                        _sidx = next((k for k, s in enumerate(_subs) if s is cur_sub), None)
+                        if _sidx is not None:
+                            if token == 'NEXT':
+                                if _sidx + 1 < len(_subs):
+                                    nxt_sub = _subs[_sidx + 1]
+                                else:
+                                    _nm = _all_masters[(_midx + 1) % len(_all_masters)]
+                                    nxt_sub = _nm.all_subs()[0]
+                            else:
+                                if _sidx - 1 >= 0:
+                                    nxt_sub = _subs[_sidx - 1]
+                                else:
+                                    _pm = _all_masters[(_midx - 1) % len(_all_masters)]
+                                    nxt_sub = _pm.all_subs()[-1]
+                            selected.append(nxt_sub)
+                else:
+                    _all = list(self.patch.all_fixtures())
+                    if _all:
+                        _ids = [m.fixture_id for m in _all]
+                        _cur_ids = {m.fixture_id for m in self.selection
+                                    if isinstance(m, MasterFixture)}
+                        if token == 'NEXT':
+                            _ref = max(_cur_ids) if _cur_ids else _ids[-1]
+                            _next_id = next((fid for fid in _ids if fid > _ref), _ids[0])
+                        else:
+                            _ref = min(_cur_ids) if _cur_ids else _ids[0]
+                            _next_id = next((fid for fid in reversed(_ids) if fid < _ref), _ids[-1])
+                        nxt = self.patch.get(_next_id)
+                        if nxt:
+                            selected.append(nxt)
                 _subtract = False
                 i += 1
                 continue

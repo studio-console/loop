@@ -55,6 +55,10 @@ Return a JSON array of action objects. Each action is one of:
 {"action": "cue_back",    "stack": 1}
 {"action": "cue_fire",    "stack": 1, "num": 3}
 {"action": "prog",        "cmd": "1 THRU 6 AT R 255 G 0 B 0"}
+  (raw channel values — only when no saved preset already matches; for a
+   named-preset match, use TWO prog actions instead: one to select, one
+   for the recall, e.g. {"action":"prog","cmd":"1.1"} then
+   {"action":"prog","cmd":"COLOR 3"} — see rules below)
 {"action": "dim",         "value": 0.85}
 {"action": "fx_start",    "waveform": "sine", "channel": "red",
                           "bpm": 60, "size": 100, "spread": 0.0}
@@ -63,6 +67,7 @@ Return a JSON array of action objects. Each action is one of:
 {"action": "group_select","group": 2}
 {"action": "fade_time",   "seconds": 3.0}
 {"action": "exec_level",  "fdr": 1, "level": 0.75}
+{"action": "say",         "text": "explanation, answer, or clarifying question"}
 
 Rules:
 - "group_select" selects all fixtures in group N as the programmer selection.
@@ -76,10 +81,21 @@ Rules:
   timing and is not a standing default.
 - "stack" identifies a stack by id, not a fader slot — it is resolved
   to whichever fader that stack is currently assigned to.
-- Only return the JSON array. No explanation, no markdown.
+- "say" is plain text shown directly to the operator — not a command, does
+  nothing to the console. Use it to answer a question, explain a non-obvious
+  choice, admit you're not sure what's wanted, or say what you'd need to
+  know to do this properly. It can stand alone (pure question, nothing to
+  execute yet) or sit alongside real actions in the same array (a short
+  note on why you picked what you picked). Don't add one for routine,
+  self-explanatory requests — only when it actually helps the operator
+  understand or steer you.
+- Only return the JSON array. No markdown fences. "say" is the one place
+  free text belongs — it still has to be inside a JSON action object like
+  everything else, never prose before/after the array.
 """
 
     _CMD_HISTORY_MAX = 12
+    _CHAT_HISTORY_MAX = 6   # exchanges (user+assistant pairs) kept for conversational context
 
     # DeepSeek publishes an Anthropic-compatible endpoint (same
     # messages.create() shape, same response.content[0].text /
@@ -182,6 +198,7 @@ Rules:
         self._enabled        = True
         self._last_fade      = None      # pending fade_time override, consumed by the next cue fire
         self._cmd_history    = []        # last N commands for context
+        self._chat_history   = []        # last N (user, assistant) turns — see ask()/_push_chat_history
         self._token_cb       = None      # optional callback(in_tok, out_tok) for GUI
         # Read the command manual once at startup (see _build_command_ref) —
         # was reported as "working but isn't great at saving pools, calling
@@ -199,6 +216,26 @@ Rules:
         self._cmd_history.append(cmd_str)
         if len(self._cmd_history) > self._CMD_HISTORY_MAX:
             self._cmd_history = self._cmd_history[-self._CMD_HISTORY_MAX:]
+
+    def _push_chat_history(self, prompt, raw_reply):
+        """Record one (operator prompt, model reply) turn for conversational
+        continuity — separate from _cmd_history, which tracks executed
+        command strings, not the actual back-and-forth. Stores the model's
+        raw JSON reply verbatim (not a hand-written summary) so a follow-up
+        turn sees exactly what it said last time, "say" text included.
+        Only the prompt text is kept for history turns — the current
+        request still gets a fresh state_json prepended in ask() itself,
+        so old turns don't need to carry a stale state snapshot too."""
+        self._chat_history.append({"role": "user", "content": prompt})
+        self._chat_history.append({"role": "assistant", "content": raw_reply})
+        _cap = self._CHAT_HISTORY_MAX * 2
+        if len(self._chat_history) > _cap:
+            self._chat_history = self._chat_history[-_cap:]
+
+    def clear_chat_history(self):
+        """Start a fresh conversation — call when the operator closes the AI
+        window or explicitly wants to reset context (see ai_popups.py)."""
+        self._chat_history = []
 
     def _state(self):
         # Fader still lives in studio_project.py until a later phase moves it
@@ -335,15 +372,49 @@ Rules:
             "OUTPUT/ASSIGN, PAGE ...), macros, patch edits, direct DMX, LIST "
             "commands to inspect a pool, and everything else in the reference "
             "below — there is no dedicated action type for most of this, prog "
-            "covers it. Prefer a saved preset over improvising raw values when "
-            "the state's \"pools\" section already has one that fits what the "
-            "user asked for — reuse it (COLOR 3, FIRE FX 2, POSITION 1, ...) "
-            "instead of re-deriving the same look with prog/fx_start actions. "
+            "covers it. Prefer a saved preset over improvising raw values, "
+            "for EVERY pool type, not just colour — colour, dim, group, fx, "
+            "position, gobo, zoom, focus, beam, control, rate, size, spread, "
+            "form all have a pools.<name> section in the state below; check "
+            "it for a name matching the request BEFORE improvising with "
+            "prog/fx_start/raw AT values. If pools.fx already has an entry "
+            "whose name matches, use prog \"FIRE FX n\" instead of an "
+            "fx_start action; if pools.position/gobo/zoom/... has a match, "
+            "use prog \"POSITION n\" / \"GOBO n\" / etc, not raw AT values. "
+            "This applies at any selection scope, including a single "
+            "sub-fixture (e.g. \"1.1 green\" → check pools.color for a "
+            "name matching \"green\" first). Only fall back to raw values "
+            "or fx_start when nothing in the relevant pool actually fits — "
+            "don't force a loose match just to avoid improvising.\n"
+            "IMPORTANT — COLOR/DIM preset recall syntax: 'COLOR n' and 'DIM "
+            "PRESET n' only work as their OWN prog action, sent AFTER a "
+            "separate prog action that makes the selection. Combining them "
+            "in one command string (e.g. \"1.1 COLOR 3\") does NOT recall "
+            "the preset — 'COLOR' there is parsed as a moving-light colour-"
+            "wheel channel instead, silently NOT applying the saved RGB. "
+            "So a request like \"1.1 green\", when pools.color has a preset "
+            "named Green (id 3), must be TWO prog actions in the array: "
+            "[{\"action\":\"prog\",\"cmd\":\"1.1\"}, "
+            "{\"action\":\"prog\",\"cmd\":\"COLOR 3\"}] — never "
+            "\"1.1 COLOR 3\" as a single cmd string. Same two-step rule for "
+            "DIM PRESET n.\n"
             "Be cautious with clearly destructive, hard-to-undo commands "
             "(PATCH REMOVE, DELETE FORM/RATE/SIZEP/SPREADP, CLEAR <pool> n, "
             "stk N CLEAR) — only use those when the user explicitly asked for "
             "that specific removal, never as an improvised part of a creative "
             "lighting request.\n\n"
+            "This is a real conversation, not one-shot requests — a short "
+            "window of your own recent turns (prompt + your reply, exactly "
+            "as you sent it) is included as prior messages below, so you can "
+            "answer follow-ups like 'why didn't that work' or 'what did you "
+            "mean' with actual continuity instead of guessing fresh each "
+            "time. Use the \"say\" action (see ACTION_SCHEMA) whenever the "
+            "operator is asking you something rather than asking you to do "
+            "something — including asking what you'd need from them to do a "
+            "request properly, or why a previous result wasn't what they "
+            "wanted. Don't force a request into actions that don't fit it "
+            "just to avoid returning an empty-ish array; a \"say\" asking "
+            "for clarification is a better answer than a wrong guess.\n\n"
             "FULL COMMAND REFERENCE (this is the real command vocabulary — "
             "read it before assuming a capability doesn't exist):\n"
             + self._command_ref + "\n\n"
@@ -357,13 +428,18 @@ Rules:
             + self.ACTION_SCHEMA
         )
         user_msg = f"Console state:\n{state_json}\n\nRequest: {prompt}"
+        # Prior turns carry just the bare prompt/reply text, not a repeated
+        # state_json — only the live request below needs current state, and
+        # replaying old snapshots on every turn would grow tokens for no
+        # benefit. See _push_chat_history().
+        messages = list(self._chat_history) + [{"role": "user", "content": user_msg}]
 
         try:
             resp = self._client.messages.create(
                 model=self._model,
                 max_tokens=512,
                 system=system,
-                messages=[{"role": "user", "content": user_msg}],
+                messages=messages,
                 timeout=30.0,
                 # DeepSeek's models think by default (unlike Claude, where
                 # it's opt-in) — a ThinkingBlock then leads resp.content,
@@ -386,7 +462,21 @@ Rules:
                 raw = raw.split("```")[1]
                 if raw.startswith("json"):
                     raw = raw[4:]
-            actions = json.loads(raw)
+            try:
+                actions = json.loads(raw)
+            except json.JSONDecodeError:
+                # The model replied with plain prose instead of the
+                # required JSON action array — happens even with the
+                # system prompt's "always JSON" rule, especially on a
+                # conversational/explanatory turn (e.g. answering "why
+                # did that happen") rather than a request to act. That
+                # used to surface as a bare "AI error: Expecting value:
+                # line 1 column 1 (char 0)" and silently threw away
+                # whatever the model actually said. Treat the raw text as
+                # a spoken reply instead — the say-action branch below
+                # already renders it exactly like a normal chat response.
+                actions = [{"action": "say", "text": raw}] if raw else []
+            self._push_chat_history(prompt, raw)
             # Report token usage
             try:
                 in_tok  = resp.usage.input_tokens
@@ -399,6 +489,12 @@ Rules:
                 self._log(f"AI → {len(actions)} action(s)  [{in_tok}↑ {out_tok}↓ tok]")
                 for a in actions:
                     act = a.get("action", "?")
+                    if act == "say":
+                        # Shown here (not re-logged by execute()) — free text
+                        # meant for the operator to actually read, not a
+                        # key=value action dump.
+                        self._log(f"  AI: {a.get('text', '')}")
+                        continue
                     detail = ", ".join(f"{k}={v}" for k, v in a.items() if k != "action")
                     self._log(f"  {act}  {detail}")
             else:
@@ -561,6 +657,11 @@ Rules:
                     # Applied once, to whichever cue-fire action follows in
                     # this same batch (see _fire()) — not a standing default.
                     self._last_fade = float(a["seconds"])
+                elif act == "say":
+                    # Free text for the operator, already shown in ask()'s
+                    # action log (see the "say" special-case there) —
+                    # nothing to execute on the console.
+                    pass
             except Exception as e:
                 print(f"  AI execute error ({a}): {e}")
 

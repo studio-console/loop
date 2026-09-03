@@ -2,15 +2,15 @@
   "version": "3.0",
   "size_presets": {
     "1": {
-      "name": "Subtle",
+      "name": "subtle",
       "size": 64.0
     },
     "2": {
-      "name": "Medium",
+      "name": "medium",
       "size": 128.0
     },
     "3": {
-      "name": "Full",
+      "name": "full",
       "size": 255.0
     }
   }

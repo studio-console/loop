@@ -298,3 +298,94 @@ def cmd_104_copy_fixture_to(t0, tokens, raw):
         return f"copied fixture {src_id} → {copied}"
 
 
+def cmd_126_viz_layout(t0, tokens, raw):
+    """VIZ LAYOUT — set/clear/list a per-fixture stage-view pixel grid
+    override, replacing what used to be a hardcoded fixture-id set in
+    gui/stage.py. Stored on the fixture itself (MasterFixture.viz_layout)
+    and persisted in patch.json alongside the rest of the patch, so it's
+    real, editable show data instead of a code change.
+
+    VIZ LAYOUT                                        — list all overrides
+    VIZ LAYOUT [<range>] GRID <cols>x<rows> [ORDER]    — set an override
+    VIZ LAYOUT [<range>] AUTO                          — clear an override
+    <range> defaults to the current programmer selection if omitted.
+    ORDER defaults to ROWMAJOR (left-to-right, top-to-bottom fill); use
+    COLMAJOR for physical wiring that runs down each column before
+    moving to the next (e.g. several vertical strips side by side).
+    """
+    if t0 != 'VIZ' or len(tokens) < 2 or tokens[1] != 'LAYOUT':
+        return None
+
+    if len(tokens) == 2:
+        overrides = [(m.fixture_id, m.viz_layout) for m in patch.all_fixtures()
+                     if getattr(m, 'viz_layout', None)]
+        if not overrides:
+            return "VIZ LAYOUT: no fixtures have a custom layout (all auto-fit)"
+        lines = [f"  {fid}: {lay['cols']}x{lay['rows']} {lay.get('order', 'rowmajor')}"
+                 for fid, lay in overrides]
+        return "custom viz layouts:\n" + "\n".join(lines)
+
+    rest = tokens[2:]
+    kw_idx = next((i for i, t in enumerate(rest) if t in ('GRID', 'AUTO')), None)
+    if kw_idx is None:
+        return ("usage: VIZ LAYOUT [<range>] GRID <cols>x<rows> [ROWMAJOR|COLMAJOR]"
+                 "  |  VIZ LAYOUT [<range>] AUTO  |  VIZ LAYOUT")
+    range_tokens  = rest[:kw_idx]
+    action_tokens = rest[kw_idx:]
+
+    # A range given inline (e.g. "1 THRU 4") reuses the programmer's own
+    # selection parser — same engine "1 THRU 6", "1 + 3", "ALL" etc. use
+    # everywhere else, so range syntax here is identical to every other
+    # command instead of a second, separately-maintained parser. No range
+    # given falls back to whatever's currently selected.
+    targets = prog._parse_selection(range_tokens) if range_tokens else list(prog.selection)
+    if not targets:
+        return "VIZ LAYOUT: no fixtures specified — give a range (e.g. 1 THRU 4) or select fixtures first"
+
+    # A viz layout is a whole-fixture property — collapse any sub-fixture
+    # selection up to its owning master rather than silently ignoring it
+    # (the isinstance-MasterFixture-only bug that's recurred for other
+    # commands earlier — see NEXT/PREV and cmd_sel_count's own fixes).
+    master_ids = set()
+    for f in targets:
+        if isinstance(f, SubFixture):
+            master_ids.add(f.master_id)
+        elif isinstance(f, MasterFixture):
+            master_ids.add(f.fixture_id)
+    masters = [m for m in (patch.get(mid) for mid in sorted(master_ids)) if m]
+    if not masters:
+        return "VIZ LAYOUT: no valid fixtures in that range"
+
+    if action_tokens[0] == 'AUTO':
+        for m in masters:
+            m.viz_layout = None
+        save_show()
+        return f"viz layout: {len(masters)} fixture(s) reset to auto-fit"
+
+    if len(action_tokens) < 2:
+        return "usage: VIZ LAYOUT [<range>] GRID <cols>x<rows> [ROWMAJOR|COLMAJOR]"
+    grid_spec = _re.match(r'^(\d+)x(\d+)$', action_tokens[1].lower())
+    if not grid_spec:
+        return f"VIZ LAYOUT: bad grid spec '{action_tokens[1]}' — expected <cols>x<rows>, e.g. 6x9"
+    cols, rows = int(grid_spec.group(1)), int(grid_spec.group(2))
+    if cols < 1 or rows < 1:
+        return "VIZ LAYOUT: cols and rows must both be at least 1"
+
+    order = 'rowmajor'
+    if len(action_tokens) >= 3:
+        if action_tokens[2] not in ('ROWMAJOR', 'COLMAJOR'):
+            return f"VIZ LAYOUT: bad order '{action_tokens[2]}' — expected ROWMAJOR or COLMAJOR"
+        order = action_tokens[2].lower()
+
+    mismatched = [m.fixture_id for m in masters if m.pixel_count != cols * rows]
+    for m in masters:
+        m.viz_layout = {"cols": cols, "rows": rows, "order": order}
+    save_show()
+    applied = [m.fixture_id for m in masters]
+    warn = ""
+    if mismatched:
+        warn = (f"  — WARNING: fixture(s) {mismatched} don't have {cols * rows} pixels; "
+                "stage view falls back to auto-fit for those until the grid size matches")
+    return f"viz layout: {cols}x{rows} {order} set on fixture(s) {applied}{warn}"
+
+

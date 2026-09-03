@@ -68,7 +68,10 @@ from studio_console.drivers.osc import OSCEngine
 from studio_console.drivers.audio import AudioEngine, AudioMapper
 from studio_console.drivers.ai import AIEngine
 from studio_console.show import ShowFile, _write_file, _read_file
-from studio_console.commands._shared import _record_cue_into, _prog_fx_stop, _prog_fx_start, _prog_fx_rebuild
+from studio_console.commands._shared import (
+    _record_cue_into, _prog_fx_stop, _prog_fx_start, _prog_fx_rebuild,
+    _delete_with_undo, _snapshot_undo,
+)
 
 # GUIEngine hasn't been extracted yet as its own importable module —
 # defined in studio_project.py, which imports this package. Deferred
@@ -360,6 +363,26 @@ def cmd_006_stack_select(t0, tokens, raw):
                 return f"stk {n} '{stk.name}': WRAP OFF — LTP tracking across loop"
             return "WRAP: use ON or OFF"
 
+        # stk n TRACKING ON/OFF — whether a cue fires with the LTP-merged
+        # state of every earlier cue up through it (ON, default) or only
+        # its own explicitly-recorded values (OFF)
+        if len(tokens) >= 4 and tokens[2].upper() == 'TRACKING':
+            stk = stack_pool.get(n)
+            if not stk:
+                return f"stack {n} not found"
+            state = tokens[3].upper()
+            if state == 'ON':
+                stk.tracking = True
+                save_show()
+                return (f"stk {n} '{stk.name}': tracking on — a cue fires with "
+                        "every earlier cue's values it doesn't override itself")
+            elif state == 'OFF':
+                stk.tracking = False
+                save_show()
+                return (f"stk {n} '{stk.name}': tracking off — a cue fires with "
+                        "ONLY what's explicitly recorded into it")
+            return "TRACKING: use ON or OFF"
+
         # stk n CHASE ON [BPM x] / stk n CHASE OFF / stk n CHASE BPM x / stk n CHASE SPEED k
         if len(tokens) >= 4 and tokens[2].upper() == 'CHASE':
             stk = stack_pool.get(n)
@@ -422,6 +445,21 @@ def cmd_007_record_stack_settings(t0, tokens, raw):
         except ValueError:
             return f"RECORD STACK: bad number '{tokens[2]}'"
         name = _name_after(raw, 3) or f"stack {n}"
+        # StackPool.create() renames an existing stack IN PLACE (preserving
+        # its cues) rather than replacing it — the usual _snapshot_undo
+        # (snapshot the dict slot's object reference) doesn't work here,
+        # since that reference would just get mutated along with it. Only
+        # the name (or the stack's existence at all, if it's new) needs
+        # capturing.
+        _had_stack = n in stack_pool.stacks
+        _prior_name = stack_pool.stacks[n].name if _had_stack else None
+        def _restore_stack(_n=n, _had=_had_stack, _name=_prior_name):
+            if _had:
+                stack_pool.stacks[_n].name = _name
+            else:
+                stack_pool.stacks.pop(_n, None)
+            save_show()
+        prog.push_delete_undo(f"record stack {n}", _restore_stack)
         stk = stack_pool.create(n, name)
         fader_pool.assign(n, stk)
         active_fader[0] = n
@@ -530,9 +568,24 @@ def cmd_022_delete_cue(t0, tokens, raw):
                 return "no active stack"
         if cue_num not in stk.cues:
             return f"cue {cue_num} not found in {stk.name}"
+        _deleted_cue    = stk.cues[cue_num]
+        _was_current    = (stk.current == cue_num)
+        _pool_n         = int(cue_num) if cue_num == int(cue_num) else None
+        _had_pool_entry = _pool_n is not None and _pool_n in cue_pool.cues
+        _deleted_pool_cue = cue_pool.cues.get(_pool_n) if _had_pool_entry else None
+
+        def _restore():
+            stk.cues[cue_num] = _deleted_cue
+            if _was_current:
+                stk.current = cue_num
+            if _had_pool_entry:
+                cue_pool.cues[_pool_n] = _deleted_pool_cue
+            save_show()
+
         stk.delete_cue(cue_num)
-        if cue_num == int(cue_num):
-            cue_pool.delete(int(cue_num))
+        if _pool_n is not None:
+            cue_pool.delete(_pool_n)
+        prog.push_delete_undo(f"cue {cue_num} from {stk.name}", _restore)
         save_show()
         return f"deleted cue {cue_num} from {stk.name}"
 
@@ -547,34 +600,29 @@ def cmd_023_delete_other(t0, tokens, raw):
         if sub == 'GROUP':
             if not group_pool.get(n):
                 return f"group {n} is empty"
-            group_pool.delete(n)
-            save_show()
+            _delete_with_undo(group_pool.groups, n, f"group {n}")
             return f"deleted group {n}"
         if sub in ('COLOR', 'COLOUR'):
             if not color_pool.get(n):
                 return f"color {n} is empty"
-            color_pool.delete(n)
-            save_show()
+            _delete_with_undo(color_pool.presets, n, f"color {n}")
             return f"deleted color {n}"
         if sub == 'DIM':
             if not dim_pool.get(n):
                 return f"dim {n} is empty"
-            dim_pool.delete(n)
-            save_show()
+            _delete_with_undo(dim_pool.presets, n, f"dim {n}")
             return f"deleted dim {n}"
         if sub == 'FX':
             if not fx_pool.get(n):
                 return f"FX {n} is empty"
-            fx_pool.delete(n)
-            save_show()
+            _delete_with_undo(fx_pool.presets, n, f"FX {n}")
             return f"deleted FX {n}"
         if sub == 'FORM':
             if n < FormPool.FIRST_CUSTOM_SLOT:
                 return f"form {n} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be deleted"
             if not form_pool.get(n):
                 return f"form {n} is empty"
-            form_pool.delete(n)
-            save_show()
+            _delete_with_undo(form_pool.forms, n, f"form {n}")
             return f"deleted form {n}"
         if sub in ('STACK', 'STK'):
             if not stack_pool.get(n):
@@ -584,18 +632,20 @@ def cmd_023_delete_other(t0, tokens, raw):
             for ex in list(fader_pool.faders.values()):
                 if ex.stack and ex.stack.stack_id == n:
                     ex.stop()
-            stack_pool.delete(n)
-            save_show()
+            _delete_with_undo(stack_pool.stacks, n, f"stack {n}: {cs_name}")
             return f"deleted stack {n}: {cs_name}"
         if sub == 'RATE':
             if not rate_pool.get(n): return f"rate {n} is empty"
-            rate_pool.delete(n); save_show(); return f"deleted rate preset {n}"
+            _delete_with_undo(rate_pool.presets, n, f"rate preset {n}")
+            return f"deleted rate preset {n}"
         if sub in ('SIZEP', 'SIZE'):
             if not size_pool.get(n): return f"size {n} is empty"
-            size_pool.delete(n); save_show(); return f"deleted size preset {n}"
+            _delete_with_undo(size_pool.presets, n, f"size preset {n}")
+            return f"deleted size preset {n}"
         if sub in ('SPREADP', 'SPREAD'):
             if not spread_pool.get(n): return f"spread {n} is empty"
-            spread_pool.delete(n); save_show(); return f"deleted spread preset {n}"
+            _delete_with_undo(spread_pool.presets, n, f"spread preset {n}")
+            return f"deleted spread preset {n}"
         _del_attr_map = {
             'POSITION': position_pool, 'GOBO': gobo_pool, 'ZOOM': zoom_pool,
             'FOCUS': focus_pool, 'BEAM': beam_pool, 'CONTROL': control_pool,
@@ -603,7 +653,7 @@ def cmd_023_delete_other(t0, tokens, raw):
         if sub in _del_attr_map:
             pool = _del_attr_map[sub]
             if not pool.get(n): return f"{sub.title()} preset {n} is empty"
-            pool.delete(n); save_show()
+            _delete_with_undo(pool.presets, n, f"{sub.lower()} preset {n}")
             return f"deleted {sub.title()} preset {n}"
 
 
@@ -1180,6 +1230,7 @@ def cmd_125_update_main(t0, tokens, raw):
             if not _has_rgb:
                 return "UPDATE COLOR: no RGB in programmer"
             name = _name_after(raw, 3) or ""
+            _snapshot_undo(color_pool.presets, upd_id, f"update color {upd_id}")
             p = color_pool.record(upd_id, prog, name=name or (color_pool.get(upd_id).name if color_pool.get(upd_id) else f"color {upd_id}"))
             save_show()
             _preset_live_push('color', upd_id)
@@ -1190,6 +1241,7 @@ def cmd_125_update_main(t0, tokens, raw):
             if not p:
                 return f"UPDATE DIM: dim preset {upd_id} not found — use RECORD DIM {upd_id} first"
             old_name = p.name
+            _snapshot_undo(dim_pool.presets, upd_id, f"update dim {upd_id}")
             p = dim_pool.record(upd_id, prog, name=old_name)
             save_show()
             _preset_live_push('dim', upd_id)
@@ -1227,6 +1279,7 @@ def cmd_125_update_main(t0, tokens, raw):
                     low=ld.get('low', 0.0),
                     target_scope=ld.get('target_scope'),
                 )
+            _snapshot_undo(fx_pool.presets, upd_id, f"update fx {upd_id}")
             fx_pool.store(upd_id, preset)
             ShowFile.save_fx_pool(fx_pool)
             _preset_live_push('fx', upd_id)
@@ -1239,6 +1292,7 @@ def cmd_125_update_main(t0, tokens, raw):
                 return f"UPDATE: unknown preset type '{upd_type}'  (valid: color, dim, fx, position, gobo, zoom, focus, beam, control)"
             existing_p = ap.get(upd_id)
             old_name = existing_p.name if existing_p else f"{upd_type} {upd_id}"
+            _snapshot_undo(ap.presets, upd_id, f"update {upd_type} {upd_id}")
             p = ap.record(upd_id, prog, name=old_name)
             save_show()
             _preset_live_push(upd_type, upd_id)

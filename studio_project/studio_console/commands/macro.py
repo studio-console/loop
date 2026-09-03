@@ -91,7 +91,7 @@ def cmd_046_macro_main(t0, tokens, raw):
             if _macro_recording["slot"] is not None:
                 return f"already recording macro {_macro_recording['slot']} — MACRO STOP first"
             raw_parts = raw.split(None, 3)
-            name = raw_parts[3] if len(raw_parts) > 3 else f"macro {slot}"
+            name = raw_parts[3].lower() if len(raw_parts) > 3 else f"macro {slot}"
             _macro_recording["slot"] = slot
             _macro_recording["cmds"] = []
             _macro_recording["name"] = name
@@ -142,7 +142,7 @@ def cmd_046_macro_main(t0, tokens, raw):
             raw_parts = raw.split(None, 3)
             if len(raw_parts) < 4:
                 return "MACRO RENAME: provide a new name"
-            macro_pool[slot]["name"] = raw_parts[3].strip()
+            macro_pool[slot]["name"] = raw_parts[3].strip().lower()
             ShowFile.save_macros(macro_pool)
             return f"macro {slot} renamed to '{macro_pool[slot]['name']}'"
         # MACRO <n> — playback

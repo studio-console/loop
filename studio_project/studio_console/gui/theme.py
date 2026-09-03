@@ -28,6 +28,20 @@ _C_BTN       = (44,  34,  98, 255) # raised button (elevated above fields)
 _C_BTN_H     = (98,  72, 190, 255) # hover — luminous lift
 _C_BTN_A     = (146, 102, 248, 255)# active — bright violet
 _C_CUE_ACT   = (88,  64, 172, 255) # selected cue row — brighter violet
+_C_CUE_WRAP  = (140, 30,  30, 255) # wrap-to-cue-1 warning row — deliberately red, distinct from the violet active-row family
+# Fader-page cue list's "this cue is actually running" row highlight —
+# deliberately a distinct blue (not the violet family used everywhere
+# else). NOT used for the selected-fader outline any more (that's plain
+# white now, see _make_selected_slot_theme) — the two are separate
+# signals: which fader is running vs. which fader is selected.
+_C_FPG_ACCENT      = (50,  110, 255, 255)  # bright variant (unused directly at the
+                                            # moment, kept for any future border/badge
+                                            # use of this hue — green channel deliberately
+                                            # kept well below both red and blue, since the
+                                            # earlier (80,170,255) read as cyan/teal
+                                            # against this dark UI)
+_C_FPG_ACCENT_DIM  = (28,  62,  145, 255)  # darker fill variant — the running-cue row's
+                                            # actual background color, safe as a text bg
 _C_SLIDER_G  = _C_ACCENT
 
 # pool panel header colours — violet family, varied lightness/hue for readability
@@ -178,6 +192,33 @@ def _make_dim_btn_theme():
     return t
 
 
+def _make_fpg_id_theme():
+    """Flat, near-invisible button look for the fader-page id badge (top-
+    left of each slot) — clicking it changes stack focus (active_fader)
+    to this fader. Transparent background so it still reads as plain
+    text until hovered/clicked, not like a normal raised button; dim
+    text for the not-currently-focused state."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 40, 80, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (70, 55, 110, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          _C_DIM)
+    return t
+
+
+def _make_fpg_id_focused_theme():
+    """Same flat button look as _make_fpg_id_theme, white text — the
+    fader-page id badge for whichever fader currently has stack focus."""
+    with dpg.theme() as t:
+        with dpg.theme_component(dpg.mvButton):
+            dpg.add_theme_color(dpg.mvThemeCol_Button,        (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (50, 40, 80, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,  (70, 55, 110, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Text,          _C_TEXT)
+    return t
+
+
 def _make_numpad_digit_theme():
     """Slightly lighter background for digit buttons — distinct from keyword keys."""
     with dpg.theme() as t:
@@ -299,12 +340,16 @@ def _make_stop_btn_theme():
     return t
 
 
-def _make_active_slot_theme():
-    """Brighter border for a slot that has a live cue playing."""
+def _make_selected_slot_theme():
+    """Border-only outline for the fader-page slot whose stack is the
+    current selection (active_fader — what left-column commands like
+    RECORD CUE target). White, and deliberately does NOT touch ChildBg —
+    filling the whole slot's background made it read as "too much blue"
+    rather than a clean outline, and every other slot's normal panel
+    background should stay exactly as-is; only the border differs."""
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvChildWindow):
-            dpg.add_theme_color(dpg.mvThemeCol_Border,       (162, 115, 255, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg,      (22, 16, 48, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_Border, _C_TEXT)
     return t
 
 
@@ -363,16 +408,19 @@ def _setup_fonts():
 __all__ = [
     "dpg", "_DPG_OK",
     "_C_BG", "_C_PANEL", "_C_BORDER", "_C_TEXT", "_C_DIM", "_C_ACCENT", "_C_HOT",
-    "_C_BTN", "_C_BTN_H", "_C_BTN_A", "_C_CUE_ACT", "_C_SLIDER_G",
+    "_C_BTN", "_C_BTN_H", "_C_BTN_A", "_C_CUE_ACT", "_C_CUE_WRAP", "_C_SLIDER_G",
+    "_C_FPG_ACCENT", "_C_FPG_ACCENT_DIM",
     "_C_P_GROUPS", "_C_P_COLORS", "_C_P_DIMS", "_C_P_CS", "_C_P_CUES", "_C_P_FX",
     "_C_P_FORMS", "_C_P_POSITION", "_C_P_GOBO", "_C_P_ZOOM", "_C_P_FOCUS",
     "_C_P_BEAM", "_C_P_CONTROL",
     "_apply_theme", "_make_go_theme", "_make_fade_bar_theme", "_make_back_theme",
     "_make_alert_btn_theme", "_make_transport_go_theme", "_make_dim_btn_theme",
+    "_make_fpg_id_theme", "_make_fpg_id_focused_theme",
     "_make_numpad_digit_theme", "_make_pool_live_theme", "_make_pool_empty_theme",
     "_make_out_moment_theme", "_make_out_vfade_theme", "_make_trig_flash_theme",
     "_make_trig_moment_theme", "_make_pri_hi_theme", "_make_pri_lo_theme",
-    "_make_go_btn_theme", "_make_stop_btn_theme", "_make_active_slot_theme",
+    "_make_go_btn_theme", "_make_stop_btn_theme",
+    "_make_selected_slot_theme",
     "_make_fpg_fader_theme",
     "_CONSOLE_FONT_CANDIDATES", "_SURFACE_FONT_CANDIDATES", "_setup_fonts",
 ]

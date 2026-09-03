@@ -2,15 +2,15 @@
   "version": "3.0",
   "spread_presets": {
     "1": {
-      "name": "Sync",
+      "name": "sync",
       "spread": 0.0
     },
     "2": {
-      "name": "Half",
+      "name": "half",
       "spread": 0.5
     },
     "3": {
-      "name": "Chase",
+      "name": "chase",
       "spread": 1.0
     }
   }

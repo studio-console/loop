@@ -57,9 +57,14 @@ class GUIEngineFaderPage:
                             width=self._FPG_SLOT_W, height=self._FPG_SLOT_H,
                             border=True, no_scrollbar=True, no_scroll_with_mouse=True):
 
-                        # row 1 — fdr id + priority badge + output mode badge
+                        # row 1 — fdr id (click to set stack focus) +
+                        # priority badge + output mode badge
                         with dpg.group(horizontal=True):
-                            dpg.add_text(f"{n}", color=_C_DIM)
+                            dpg.add_button(
+                                tag=f"fpg_id_{n}", label=f"{n}",
+                                width=22, height=self._FPG_BADGE_H,
+                                callback=self._on_fpg_id_click, user_data=n)
+                            dpg.bind_item_theme(f"fpg_id_{n}", self._fpg_id_theme)
                             dpg.add_button(
                                 tag=f"fpg_pri_{n}", label="nrm",
                                 width=30, height=self._FPG_BADGE_H,
@@ -76,16 +81,33 @@ class GUIEngineFaderPage:
                         dpg.add_text("—", tag=f"fpg_name_{n}", color=_C_ACCENT)
 
                         # row 3 — full-width cue list: every cue in the
-                        # stack, running one marked with ▶ and pre-selected
-                        # (native listbox selection highlight). Click jumps
-                        # straight to that cue via GOTO.
-                        dpg.add_listbox(
-                            tag=f"fpg_cuelist_{n}",
-                            items=["—"],
-                            num_items=self._FPG_CUELIST_ITEMS,
-                            width=cuelist_w,
-                            callback=self._on_fpg_cuelist_click,
-                            user_data=n)
+                        # stack, running one marked with ▶ and highlighted
+                        # via highlight_table_row (a per-row bg color the
+                        # renderer always draws, unlike add_listbox's
+                        # built-in "selected" color, which is ImGui's
+                        # Header/HeaderHovered pair — HeaderHovered fires
+                        # for whatever row the mouse happens to be over,
+                        # selected or not, so a themed listbox meant any
+                        # cue lit up on hover, not just the running one.
+                        # highlight_table_row is exactly the mechanism the
+                        # left-column cue list already uses for this same
+                        # "mark the running cue" job (see core.py's
+                        # _tick()) — reused here instead of a second,
+                        # different approach. Click jumps straight to that
+                        # cue via GOTO.
+                        with dpg.child_window(
+                                tag=f"fpg_cuelist_{n}",
+                                width=cuelist_w,
+                                height=self._FPG_CUELIST_ITEMS * self._FPG_CUELIST_ROW_H + 8,
+                                border=True, no_scrollbar=False,
+                                no_scroll_with_mouse=False):
+                            with dpg.table(tag=f"fpg_cuelist_tbl_{n}",
+                                           header_row=False,
+                                           borders_innerH=False, borders_outerH=False,
+                                           borders_innerV=False, borders_outerV=False,
+                                           policy=dpg.mvTable_SizingFixedFit,
+                                           resizable=False):
+                                dpg.add_table_column(width_stretch=True, init_width_or_weight=1.0)
 
                         # row 4 — full-width fader, MA-style. Deliberately a
                         # plain, unmodified add_slider_int — no pos= overlay,
@@ -252,6 +274,29 @@ class GUIEngineFaderPage:
         if fn == 'FLASH':
             return  # hold polling handled by tick loop
         self._cmd(f"FADER {eid} {fn}")
+    def _set_fader_focus(self, eid):
+        """Give fader `eid` stack focus (active_fader) and log it — the
+        same state _on_stack_click sets from the left-column stack list.
+        "Focus" = which stack left-column commands like RECORD CUE/
+        UPDATE CUE currently target; independent of which fader(s) are
+        actually running. Shared by every "click an id badge to focus
+        this fader" spot — the fader-page grid and the main-page running-
+        stacks panel both call this rather than duplicating the logic."""
+        if self._active_fader is not None:
+            self._active_fader[0] = eid
+        ex = self._fader_pool.faders.get(eid) if self._fader_pool else None
+        name = ex.stack.name if (ex and ex.stack) else "—"
+        if self._log:
+            self._log(f"> focus → fader {eid}  ({name})")
+    def _on_fpg_id_click(self, _sender, _app_data, user_data):
+        """Click a fader-page slot's id badge to give that fader focus."""
+        n = int(user_data)
+        eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        self._set_fader_focus(eid)
+    def _on_playback_id_click(self, _sender, _app_data, user_data):
+        """Click a running-stacks row's id badge (main page) to give that
+        fader focus — same action as the fader-page grid's id badge."""
+        self._set_fader_focus(int(user_data))
     def _on_fpg_pri_cycle(self, _sender, _app_data, user_data):
         """Cycle priority for the fader in fader page slot user_data (nrm→hi→lo→nrm)."""
         n = int(user_data)
@@ -289,18 +334,39 @@ class GUIEngineFaderPage:
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
         if self._cmd:
             self._cmd(f"FADER {eid} BTN {btn_slot.upper()} {fn}")
-    def _on_fpg_cuelist_click(self, _sender, value, user_data):
+    def _on_fpg_cuelist_click(self, _sender, _app_data, user_data):
         """GOTO the cue the user clicked in the fader page cue list."""
-        if not value or value.strip() in ("—", ""):
-            return
-        n   = int(user_data)
+        n, cue_num = user_data
         eid = self._fpg_exec_for_slot(self._fpg_page, n)
+        if self._cmd:
+            self._cmd(f"GOTO {eid} {cue_num}")
+    def _fpg_rebuild_cuelist(self, n, stack):
+        """(Re)build the row widgets for fader-page slot n's cue list.
+        Only called when the stack assigned to this slot, or its set of
+        cue numbers, actually changes — not every tick — since it deletes
+        and recreates every row. Per-tick updates (the ▶ marker and the
+        running-row highlight) are cheap set_item_label/highlight_table_row
+        calls handled separately in _tick_fader_page."""
+        tbl_tag = f"fpg_cuelist_tbl_{n}"
         try:
-            cue_num = float(value.strip().lstrip("▶").strip().split()[0])
-            if self._cmd:
-                self._cmd(f"GOTO {eid} {cue_num}")
-        except (ValueError, IndexError):
-            pass
+            dpg.delete_item(tbl_tag, children_only=True)
+        except Exception:
+            return
+        dpg.add_table_column(parent=tbl_tag, width_stretch=True, init_width_or_weight=1.0)
+        nums = stack._sorted_cue_numbers() if stack else []
+        if not nums:
+            with dpg.table_row(parent=tbl_tag):
+                dpg.add_text("—", color=_C_DIM)
+            return
+        for idx, cn in enumerate(nums):
+            cue = stack.cues[cn]
+            with dpg.table_row(parent=tbl_tag):
+                dpg.add_selectable(
+                    label=f"  {cn:.0f} {cue.name}",
+                    tag=f"fpg_cue_row_{n}_{idx}",
+                    span_columns=True,
+                    callback=self._on_fpg_cuelist_click,
+                    user_data=(n, cn))
     def _tick_fader_page(self):
         """Update fader page slot labels + mode badges (called from _tick)."""
         if not dpg.is_item_shown("fader_page_window"):
@@ -316,42 +382,50 @@ class GUIEngineFaderPage:
                 dpg.set_value(f"fpg_name_{n}",
                               self._fit_text(_nm, self._FPG_SLOT_W - 10))
 
-                # ── cue list: every cue, running one marked + selected ──
-                if ex and ex.stack:
-                    _cs   = ex.stack
-                    _cur  = _cs.current
-                    _items, _sel, _sel_idx = [], None, 0
-                    for _row_i, _cn in enumerate(sorted(_cs.cues.keys())):
-                        _c   = _cs.cues[_cn]
-                        _lbl = f"{'▶' if _cn == _cur else ' '}{_cn:.0f} {_c.name}"
-                        _items.append(_lbl)
-                        if _cn == _cur:
-                            _sel = _lbl
-                            _sel_idx = _row_i
-                    dpg.configure_item(f"fpg_cuelist_{n}",
-                                       items=_items if _items else ["—"])
-                    if _sel:
-                        dpg.set_value(f"fpg_cuelist_{n}", _sel)
-                        # add_listbox doesn't auto-scroll to the selected
-                        # item on set_value() the way a native OS listbox
-                        # would — same manual scroll-to-current-cue this
-                        # window's own cue_list_scroll needs (core.py),
-                        # clamped to the real scroll max for the same
-                        # reason: the row-height estimate only has to be
-                        # close for cues mid-list, not exact anywhere,
-                        # since a cue near the end always reaches the true
-                        # bottom regardless.
+                # ── cue list: every cue, running one marked + highlighted ──
+                _cs  = ex.stack if ex else None
+                _nums = _cs._sorted_cue_numbers() if _cs else []
+                _sig = (_cs.stack_id, tuple(_nums)) if _cs else (None, ())
+                if self._fpg_cuelist_sig.get(n) != _sig:
+                    self._fpg_rebuild_cuelist(n, _cs)
+                    self._fpg_cuelist_sig[n] = _sig
+                if _cs and _nums:
+                    _cur = _cs.current
+                    _tbl = f"fpg_cuelist_tbl_{n}"
+                    _sel_idx = None
+                    for idx, _cn in enumerate(_nums):
+                        _cue = _cs.cues[_cn]
+                        _row_tag = f"fpg_cue_row_{n}_{idx}"
+                        _is_cur = (_cn == _cur)
+                        try:
+                            dpg.set_item_label(
+                                _row_tag,
+                                f"{'▶' if _is_cur else ' '} {_cn:.0f} {_cue.name}")
+                            if _is_cur:
+                                dpg.highlight_table_row(_tbl, idx, _C_FPG_ACCENT_DIM)
+                                _sel_idx = idx
+                            else:
+                                dpg.unhighlight_table_row(_tbl, idx)
+                        except Exception:
+                            pass
+                    # Manual scroll-to-current-row, same reasoning as the
+                    # left-column cue list (core.py _tick()) and this
+                    # widget's own previous listbox-based version: one row
+                    # of headroom above the current cue so the next
+                    # upcoming one stays visible too, clamped to the real
+                    # scroll max since the row-height estimate only has to
+                    # be close for cues mid-list — a cue near the end
+                    # always reaches the true bottom regardless.
+                    if _sel_idx is not None:
                         try:
                             _row_h = self._FPG_CUELIST_ROW_H
-                            _target = max(0, _sel_idx * _row_h - 2 * _row_h)
+                            _target = max(0, (_sel_idx - 1) * _row_h)
                             _smax = dpg.get_y_scroll_max(f"fpg_cuelist_{n}")
                             if _smax:
                                 _target = min(_target, _smax)
                             dpg.set_y_scroll(f"fpg_cuelist_{n}", _target)
                         except Exception:
                             pass
-                else:
-                    dpg.configure_item(f"fpg_cuelist_{n}", items=["—"])
 
                 # ── fader (sync when not dragging) ───────────
                 _lvl01 = ex.level if ex else 1.0
@@ -413,10 +487,30 @@ class GUIEngineFaderPage:
                 if _tt:
                     dpg.bind_item_theme(f"fpg_trig_{n}", _tt)
 
-                # ── active slot highlight ─────────────────────
-                is_live = bool(ex and ex.is_active and ex.stack)
-                if is_live and self._active_slot_theme:
-                    dpg.bind_item_theme(f"fpg_slot_{n}", self._active_slot_theme)
+                # ── focused slot outline ──────────────────────
+                # "Focus" = active_fader, what left-column commands like
+                # RECORD CUE currently target. Only the focused fader gets
+                # an outline; exactly one slot at a time. A running cue is
+                # signalled separately, per-cue, by highlight_table_row on
+                # its row in this slot's own cue list above (blue) — not
+                # by outlining the whole fader slot, since multiple
+                # faders can be running at once but only one ever has
+                # focus. This one is a plain white border only — no
+                # fill/background change, every other slot's own panel
+                # background stays exactly as it already is. The id
+                # badge (now clickable — see _on_fpg_id_click) doubles
+                # as the focus indicator: white text + brackets when
+                # this fader has focus, dim otherwise.
+                focused_eid = self._active_fader[0] if self._active_fader else None
+                is_focused = bool(ex and eid == focused_eid)
+                if is_focused and self._selected_slot_theme:
+                    dpg.bind_item_theme(f"fpg_slot_{n}", self._selected_slot_theme)
+                else:
+                    dpg.bind_item_theme(f"fpg_slot_{n}", 0)
+                dpg.set_item_label(f"fpg_id_{n}", f"[{n}]" if is_focused else f"{n}")
+                dpg.bind_item_theme(f"fpg_id_{n}",
+                                    self._fpg_id_focused_theme if is_focused
+                                    else self._fpg_id_theme)
 
             except Exception:
                 pass
@@ -446,7 +540,8 @@ class GUIEngineFaderPage:
             dpg.add_table_column(label="#", width_fixed=True, init_width_or_weight=42)
             dpg.add_table_column(label="name", width_stretch=True, init_width_or_weight=1.0)
             dpg.add_table_column(label="t", width_fixed=True, init_width_or_weight=50)
-            for num in stack._sorted_cue_numbers():
+            numbers = stack._sorted_cue_numbers()
+            for num in numbers:
                 cue  = stack.cues[num]
                 tag  = f"cue_row_{sid}_{num}"
                 ft   = f"{cue.fade_time:.1f}s" if cue.fade_time else ""
@@ -463,12 +558,38 @@ class GUIEngineFaderPage:
                     if note:
                         with dpg.tooltip(tag):
                             dpg.add_text(note, color=(200, 200, 160, 255))
+            # Wrap-to-1 warning row — sitting right on the current cue at the
+            # end of the stack, "next GO wraps back to the start" is easy to
+            # miss since the real cue 1 row is scrolled off the top of a long
+            # list. Duplicating a preview of it directly under the last cue
+            # puts the warning where the operator is actually looking.
+            # Built once here (hidden by default) and toggled/highlighted red
+            # per-tick in core.py's autoscroll block, exactly when the
+            # current cue is genuinely the last one (bounce mode never
+            # wraps, so it's skipped there). Number column repeats "1" (that
+            # IS which cue this is — see the red colour + separator for what
+            # marks it as the wrap preview, not a duplicate real cue).
+            if len(numbers) > 1 and not getattr(stack, 'bounce', False):
+                first_num = numbers[0]
+                first_cue = stack.cues[first_num]
+                with dpg.table_row(tag=f"cue_wrap_row_{sid}", show=False):
+                    dpg.add_text("1", tag=f"cue_wrap_num_{sid}", color=_C_CUE_WRAP)
+                    dpg.add_selectable(label=f"↻ {first_cue.name}",
+                                       tag=f"cue_wrap_sel_{sid}",
+                                       span_columns=False,
+                                       callback=lambda *_, u=first_num: self._goto(u),
+                                       user_data=first_num)
+                    dpg.add_text("wrap", color=_C_CUE_WRAP)
                     dpg.add_text(ft, color=_C_DIM)
     def _playbacks_state_hash(self):
-        """Compact snapshot of running fader state — used to detect changes."""
+        """Compact snapshot of running fader state — used to detect changes.
+        Includes the active fader id: the list is ordered selected-fader-
+        first (see _rebuild_playbacks), so switching selection changes the
+        row order even when no fader's own state changed at all."""
         if not self._fader_pool:
             return ()
-        return tuple(
+        active_id = self._active_fader[0] if self._active_fader else None
+        return (active_id,) + tuple(
             (eid, ex.priority, ex.stack.current if ex.stack else None,
              ex.time_override_on, ex.time_override_fade, ex.is_active,
              getattr(ex, 'output_mode', 'normal'), getattr(ex, 'trigger_mode', 'toggle'))
@@ -496,13 +617,19 @@ class GUIEngineFaderPage:
         except Exception:
             return
 
+        # Order: the currently active/selected fader's row first (whatever
+        # the left column's "stack" combo is showing), then every other
+        # running fader by its stack's pool number — was most-recently-
+        # fired first, which meant the row you're actually looking at (the
+        # one you have selected) could land anywhere in the list.
         active = []
         if self._fader_pool:
-            running_eids = {eid for eid, ex in self._fader_pool.faders.items()
-                            if ex.is_active and ex.stack}
-            ordered = [eid for eid in reversed(self._fader_pool._fire_order)
-                       if eid in running_eids]
-            ordered += sorted(running_eids - set(ordered))
+            running_eids = [eid for eid, ex in self._fader_pool.faders.items()
+                            if ex.is_active and ex.stack]
+            selected_eid = self._active_fader[0] if self._active_fader else None
+            rest = [eid for eid in running_eids if eid != selected_eid]
+            rest.sort(key=lambda eid: self._fader_pool.faders[eid].stack.stack_id)
+            ordered = ([selected_eid] if selected_eid in running_eids else []) + rest
             for eid in ordered:
                 active.append(self._fader_pool.faders[eid])
 
@@ -511,17 +638,18 @@ class GUIEngineFaderPage:
                          color=_C_DIM, parent="playbacks_list")
             return
 
-        # Reserve room for the trailing fixed-width buttons (time/priority/a/b/c
-        # + inter-item spacing) so the two variable-length labels below never
-        # push them past the edge of the (fixed-width) left column — see
-        # _fit_text. 260px measured empirically (pixel-verified via a headless
-        # DearPyGui render against the widest real row) with margin to spare
-        # for the rarer 52px time-override badge.
+        # Name/cue get their own row, entirely separate from the action
+        # buttons below (see the width-aware button row further down) —
+        # they used to share one row, squeezing the name down to just
+        # "[3]..." with nothing of the actual stack name visible (reported:
+        # buttons hiding the name, and the surviving "[3]" reading as a
+        # redundant number next to the cue label's own leading number, e.g.
+        # "[3]... ▶ 3: warm…").
         try:
             _row_w = dpg.get_item_rect_size("playbacks_list")[0] or 349
         except Exception:
             _row_w = 349
-        _label_budget = max(60, _row_w - 260)
+        _label_budget = max(60, _row_w - 12)
         _name_w = _label_budget * 2 // 5
         _cue_w  = _label_budget - _name_w
 
@@ -538,44 +666,90 @@ class GUIEngineFaderPage:
                 getattr(ex, 'output_mode', 'normal'), '')
             _trig_tag = {'flash': ' ⚡', 'moment': ' ◌'}.get(
                 getattr(ex, 'trigger_mode', 'toggle'), '')
-            _full_name = f"[{ex.fdr_id}] {stk.name}{_mode_tag}{_trig_tag}"
-            _fit_name  = self._fit_text(_full_name, _name_w)
+            # Id badge is its own clickable button now (click it to give
+            # this fader stack focus — same action, same visual language
+            # as the fader-page grid's id badge), split out of what used
+            # to be one plain "[id] name" text — _rebuild_playbacks only
+            # runs when _playbacks_state_hash() changes, and that hash
+            # already includes active_fader, so the focused/not-focused
+            # look here only needs to be correct at build time, no
+            # separate per-tick update pass like the grid needs.
+            _cur_focus  = self._active_fader[0] if self._active_fader else None
+            is_focused  = (ex.fdr_id == _cur_focus)
+            _stack_label = f"{stk.name}{_mode_tag}{_trig_tag}"
+            _id_w      = 30
+            _fit_stack = self._fit_text(_stack_label, max(20, _name_w - _id_w - 6))
             _fit_cue   = self._fit_text(cue_label, _cue_w)
             if i > 0:
                 dpg.add_separator(parent="playbacks_list")
             with dpg.group(horizontal=True, parent="playbacks_list"):
+                _id_tag   = f"pb_id_{ex.fdr_id}"
                 _name_tag = f"pb_name_{ex.fdr_id}"
                 _cue_tag  = f"pb_cue_{ex.fdr_id}"
-                dpg.add_text(_fit_name, tag=_name_tag, color=_C_TEXT)
-                if _fit_name != _full_name:
+                dpg.add_button(label=f"[{ex.fdr_id}]" if is_focused else f"{ex.fdr_id}",
+                               tag=_id_tag, width=_id_w, height=20,
+                               callback=self._on_playback_id_click, user_data=ex.fdr_id)
+                dpg.bind_item_theme(_id_tag,
+                                    self._fpg_id_focused_theme if is_focused
+                                    else self._fpg_id_theme)
+                with dpg.tooltip(_id_tag):
+                    dpg.add_text(f"fader {ex.fdr_id} — click to give it focus")
+                dpg.add_text(_fit_stack, tag=_name_tag, color=_C_TEXT)
+                if _fit_stack != _stack_label:
                     with dpg.tooltip(_name_tag):
-                        dpg.add_text(_full_name)
+                        dpg.add_text(_stack_label)
                 dpg.add_text(_fit_cue, tag=_cue_tag, color=_C_ACCENT)
                 if _fit_cue != cue_label:
                     with dpg.tooltip(_cue_tag):
                         dpg.add_text(cue_label)
+            # Back to one row for all 5 action buttons (time/priority/a/b/c)
+            # — a two-row split fixed the earlier clipping but ate an extra
+            # row per running fader for no real reason, and the whole point
+            # of giving this panel more height was to fit more stacks, not
+            # more rows per stack. Fits for real this time by measuring the
+            # row's actual width (same _row_w as the name/cue split above)
+            # and dividing it between the 5 slots, then pre-fitting each
+            # button's own label text into its slot with the same
+            # _fit_text() ellipsis logic the name/cue labels already use —
+            # a real per-frame text measurement against the live font, not
+            # another hand-guessed width, so a slot that's genuinely too
+            # narrow for "back"/"stop" shrinks the text instead of
+            # overflowing past the button (and still shows the full label
+            # in a hover tooltip).
+            _btn_gap  = 6   # theme ItemSpacing.x
+            _btn_avail = max(200, _row_w - 4 * _btn_gap)
+            _time_w = max(40, int(_btn_avail * 0.22))
+            _act_w  = max(32, (_btn_avail - _time_w) // 4)
+            with dpg.group(horizontal=True, parent="playbacks_list"):
                 # Time override badge
                 if ex.time_override_on and ex.time_override_fade is not None:
                     t_label  = f"t{ex.time_override_fade:.1f}s"
-                    dpg.add_button(label=t_label, width=52, height=20,
+                    dpg.add_button(label=self._fit_text(t_label, _time_w - 16),
+                                   width=_time_w, height=20,
                                    callback=self._on_exec_time_toggle,
                                    user_data=ex.fdr_id)
                     dpg.configure_item(dpg.last_item(), enabled=stk.allow_exec_time)
                     if not stk.allow_exec_time:
                         dpg.add_text("×", color=_C_DIM)
                 else:
-                    dpg.add_button(label="time", width=44, height=20,
+                    dpg.add_button(label=self._fit_text("time", _time_w - 16),
+                                   width=_time_w, height=20,
                                    callback=self._on_exec_time_toggle,
                                    user_data=ex.fdr_id)
-                dpg.add_button(label=pri_label, width=40, height=20,
+                dpg.add_button(label=self._fit_text(pri_label, _act_w - 16),
+                               width=_act_w, height=20,
                                callback=self._on_priority_cycle,
                                user_data=ex.fdr_id)
                 for _slot, _fn in (('a', ex.btn_a), ('b', ex.btn_b), ('c', ex.btn_c)):
                     _tag = f"ebtn_{_slot}_{ex.fdr_id}"
-                    dpg.add_button(label=_fn.lower(), tag=_tag,
-                                   width=40, height=20,
+                    _lbl = _fn.lower()
+                    dpg.add_button(label=self._fit_text(_lbl, _act_w - 16), tag=_tag,
+                                   width=_act_w, height=20,
                                    callback=self._on_exec_slot_btn,
                                    user_data=(ex.fdr_id, _slot))
+                    if self._fit_text(_lbl, _act_w - 16) != _lbl:
+                        with dpg.tooltip(_tag):
+                            dpg.add_text(_lbl)
             # fader level row — 0-100 (%), matching the fader page's own
             # faders (shown as a separate "N%" text there rather than the
             # slider's own number, but the same 0-100 scale) instead of

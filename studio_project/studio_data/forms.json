@@ -2,7 +2,7 @@
   "version": "3.0",
   "forms": {
     "5": {
-      "name": "Bounce",
+      "name": "bounce",
       "form_type": "breakpoints",
       "breakpoints": [
         [
@@ -20,7 +20,7 @@
       ]
     },
     "6": {
-      "name": "Heartbeat",
+      "name": "heartbeat",
       "form_type": "breakpoints",
       "breakpoints": [
         [
@@ -50,7 +50,7 @@
       ]
     },
     "7": {
-      "name": "Spike",
+      "name": "spike",
       "form_type": "breakpoints",
       "breakpoints": [
         [
@@ -72,7 +72,7 @@
       ]
     },
     "8": {
-      "name": "Trapezoid",
+      "name": "trapezoid",
       "form_type": "breakpoints",
       "breakpoints": [
         [

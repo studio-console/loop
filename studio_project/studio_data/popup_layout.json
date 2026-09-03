@@ -4,8 +4,8 @@
       100,
       100
     ],
-    "width": 774,
-    "height": 749,
+    "width": 691,
+    "height": 553,
     "show": false
   },
   "osc_window": {
@@ -28,11 +28,11 @@
   },
   "fx_editor_window": {
     "pos": [
-      100,
-      100
+      11,
+      143
     ],
-    "width": 1100,
-    "height": 580,
+    "width": 1899,
+    "height": 795,
     "show": false
   },
   "keys_window": {
@@ -64,11 +64,11 @@
   },
   "monitors_window": {
     "pos": [
-      100,
-      100
+      0,
+      263
     ],
-    "width": 1474,
-    "height": 346,
+    "width": 1919,
+    "height": 373,
     "show": false
   },
   "ai_history_window": {
@@ -82,10 +82,10 @@
   },
   "attr_window": {
     "pos": [
-      100,
-      100
+      2,
+      171
     ],
-    "width": 1687,
+    "width": 1918,
     "height": 365,
     "show": false
   },
@@ -100,17 +100,17 @@
   },
   "ai_bar_window": {
     "pos": [
-      100,
-      100
+      1140,
+      375
     ],
     "width": 760,
     "height": 230,
-    "show": false
+    "show": true
   },
   "color_picker_window": {
     "pos": [
-      100,
-      100
+      866,
+      80
     ],
     "width": 523,
     "height": 583,
@@ -127,12 +127,12 @@
   },
   "fader_page_window": {
     "pos": [
-      100,
-      100
+      27,
+      33
     ],
-    "width": 1649,
-    "height": 609,
-    "show": false
+    "width": 1826,
+    "height": 825,
+    "show": true
   },
   "audio_window": {
     "pos": [
@@ -151,5 +151,8 @@
     "width": 434,
     "height": 221,
     "show": false
+  },
+  "__values__": {
+    "cpick_live": true
   }
 }

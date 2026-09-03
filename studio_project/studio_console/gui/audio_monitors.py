@@ -91,9 +91,17 @@ class GUIEngineAudioMonitors:
             pass
     def _build_monitors_popup(self):
         """Floating programmer/output monitor popup — no inner boxes, just tables."""
+        # 1600 was sized for just the two tables (programmer + output).
+        # Adding the live-fx panel as a third column (see below) pushed the
+        # real content past that width with nothing to scroll it back into
+        # view with — it was rendering, just entirely off the right edge
+        # of the window (reported: "not seeing live fx in monitor window").
+        # Widened to fit all three with real margin, using explicit widths
+        # everywhere (out_table's width was previously implicit/auto) so
+        # this total is verifiable instead of another guess.
         with dpg.window(tag="monitors_window", label="monitors",
-                        width=1600, height=360, show=False,
-                        pos=(160, 360), no_collapse=False):
+                        width=1900, height=360, show=False,
+                        pos=(10, 360), no_collapse=False):
             with dpg.group(horizontal=True):
                 # ── programmer ──────────────────────────────────────
                 with dpg.group(tag="prog_panel"):
@@ -108,7 +116,7 @@ class GUIEngineAudioMonitors:
                         dpg.add_table_column(label="g",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="b",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="dim", width_fixed=True, init_width_or_weight=56)
-                        dpg.add_table_column(label="fx",  width_stretch=True)
+                        dpg.add_table_column(label="fx / refs / attrs", width_stretch=True)
                         dpg.add_table_column(label="bar", width_fixed=True, init_width_or_weight=130)
 
                         for master in self._patch.all_fixtures():
@@ -132,7 +140,7 @@ class GUIEngineAudioMonitors:
                     with dpg.table(tag="out_table", header_row=True,
                                    borders_innerV=True, borders_outerV=True,
                                    borders_outerH=True, row_background=True,
-                                   scrollY=False):
+                                   width=650, scrollY=False):
                         dpg.add_table_column(label="fixture", width_fixed=True, init_width_or_weight=110)
                         dpg.add_table_column(label="r",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="g",   width_fixed=True, init_width_or_weight=42)
@@ -150,6 +158,26 @@ class GUIEngineAudioMonitors:
                                 dpg.add_text("--", tag=f"out_dim_{fid}", color=_C_DIM)
                                 dpg.add_progress_bar(default_value=0.0,
                                                      tag=f"out_bar_{fid}", width=-1)
+
+                dpg.add_spacer(width=24)
+
+                # ── Live FX (programmer) — moved here from the left column,
+                # which needed the room for more running-stacks rows. Same
+                # tags (prog_fx_list/prog_fx_empty) and the same
+                # _rebuild_prog_fx_list()/kill-fx callback as before, just a
+                # different window to live in — that rebuild function needed
+                # no changes at all.
+                with dpg.group(tag="fx_mon_panel"):
+                    with dpg.group(horizontal=True):
+                        dpg.add_text("live fx (programmer)", color=_C_ACCENT)
+                        dpg.add_spacer(width=8)
+                        dpg.add_button(label="kill", width=50, height=22,
+                                       callback=lambda: self._cmd("FX CLEAR") if self._cmd else None)
+                    dpg.add_separator()
+                    with dpg.child_window(tag="prog_fx_list", width=380, height=280,
+                                          border=True, no_scrollbar=False,
+                                          no_scroll_with_mouse=False):
+                        dpg.add_text("— none live", tag="prog_fx_empty", color=_C_DIM)
     def _build_ai_bar_popup(self):
         """Floating AI prompt bar — moved out of the main window (was inline,
         ~70px, and only counted against the 1920x1080 layout budget when
@@ -158,7 +186,8 @@ class GUIEngineAudioMonitors:
         so the main window's layout is deterministic regardless of AI config.
         """
         with dpg.window(tag="ai_bar_window", label="ai prompt",
-                        width=760, height=230, show=False, pos=(240, 100)):
+                        width=760, height=230, show=False, pos=(240, 100),
+                        on_close=self._on_ai_bar_close):
             with dpg.group(horizontal=True):
                 dpg.add_text("ai prompt", color=_C_ACCENT)
                 dpg.add_spacer(width=8)

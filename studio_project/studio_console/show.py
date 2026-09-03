@@ -141,6 +141,8 @@ class ShowFile:
             }
             if getattr(stack, 'bounce', False):
                 entry_cs["bounce"] = True
+            if not getattr(stack, 'tracking', True):
+                entry_cs["tracking"] = False
             if getattr(stack, 'note', ''):
                 entry_cs["note"] = stack.note
             if getattr(stack, 'chase_enabled', False):
@@ -441,6 +443,7 @@ class ShowFile:
             stack.allow_exec_time = bool(sdata.get("allow_exec_time", True))
             stack.wrap            = bool(sdata.get("wrap", False))
             stack.bounce          = bool(sdata.get("bounce", False))
+            stack.tracking        = bool(sdata.get("tracking", True))
             stack.note            = sdata.get("note", "")
             stack.chase_enabled   = bool(sdata.get("chase_enabled", False))
             stack.chase_bpm       = float(sdata.get("chase_bpm", 120.0))
@@ -874,7 +877,7 @@ class ShowFile:
                 continue
             primary = first_sub.outputs[0]
             extra = first_sub.outputs[1:] if len(first_sub.outputs) > 1 else []
-            fixtures.append({
+            fx_doc = {
                 "fixture_id":    master.fixture_id,
                 "name":          master.name,
                 "profile":       master.profile.name,
@@ -882,7 +885,10 @@ class ShowFile:
                 "start_address": primary["address"],
                 "extra_outputs": [{"universe": o["universe"], "address": o["address"] - (primary["address"] - 1)}
                                   for o in extra],
-            })
+            }
+            if getattr(master, 'viz_layout', None):
+                fx_doc["viz_layout"] = master.viz_layout
+            fixtures.append(fx_doc)
         doc = {"version": ShowFile.VERSION, "fixtures": fixtures}
         _write_file(ShowFile.PATCH, doc)
         print(f"  Saved patch     → {len(fixtures)} fixture(s)")
@@ -893,7 +899,7 @@ class ShowFile:
         if not doc:
             return False
         for f in doc.get("fixtures", []):
-            patch.patch_fixture(
+            master = patch.patch_fixture(
                 fixture_id    = int(f["fixture_id"]),
                 name          = f.get("name", f"Fixture {f['fixture_id']}"),
                 profile_name  = f.get("profile", "Generic_RGB"),
@@ -901,6 +907,8 @@ class ShowFile:
                 start_address = int(f.get("start_address", 1)),
                 extra_outputs = f.get("extra_outputs") or None,
             )
+            if master is not None and f.get("viz_layout"):
+                master.viz_layout = f["viz_layout"]
         print(f"  Loaded patch    — {len(patch.fixtures)} fixture(s)")
         return True
 

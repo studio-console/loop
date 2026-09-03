@@ -8,7 +8,7 @@ multiple inheritance.
 import math
 
 from studio_console.gui.theme import *  # noqa: F401,F403
-from studio_console.models.fixtures import MasterFixture
+from studio_console.models.fixtures import MasterFixture, SubFixture
 
 
 class GUIEngineStage:
@@ -32,6 +32,22 @@ class GUIEngineStage:
             rows, cols, dot_f = rb, cb, dot_b
         else:
             rows, cols, dot_f = ra, ca, dot_a
+        return rows, cols, max(1, int(dot_f) - 1)
+
+    @classmethod
+    def _explicit_grid_layout(cls, cols, rows, pixel_count, slot_w, sub_h):
+        """Fixed cols x rows layout for a fixture with a VIZ LAYOUT
+        override (MasterFixture.viz_layout, set via the VIZ LAYOUT
+        command), sized to fill the available space the same way
+        _best_sub_layout does — just without searching for the "best"
+        shape, since the real physical shape isn't a free choice for
+        these fixtures. Falls back to the auto layout if cols*rows
+        doesn't match the fixture's actual pixel count (e.g. the
+        override predates a re-patch onto a different profile), rather
+        than forcing a mismatched grid onto it."""
+        if cols * rows != pixel_count:
+            return cls._best_sub_layout(pixel_count, slot_w, sub_h)
+        dot_f = min(slot_w / cols, sub_h / rows)
         return rows, cols, max(1, int(dot_f) - 1)
     def _build_stage_panel(self):
         """Inline stage view — third column in the main row, fills remaining width."""
@@ -173,13 +189,28 @@ class GUIEngineStage:
                 fill = (255, 255, 255, 255)
             elif r or g or b:
                 fill = (r, g, b, 255)
-            elif dim > 0:
-                grey = max(0, min(255, int(dim * gm * 200)))
-                fill = (grey, grey, grey, 255)
             else:
+                # A raised dim with no colour set (r=g=b=0) is genuinely
+                # dark on real output — dim only ever scales the existing
+                # RGB (r*dim above), so 0 * anything is still 0. This used
+                # to paint a grey/white square anyway to signal "dim is up"
+                # (dim*gm*200), which is exactly backwards: it shows the
+                # fixture as lit precisely when it's actually outputting
+                # nothing, and virtual_dimmer defaults to 1.0 (see
+                # MasterFixture.__init__) so this fired on every unpatched-
+                # looking, colourless fixture by default. The %-text label
+                # underneath already shows the real dim level; the square
+                # itself should match true output.
                 fill = (18, 13, 40, 255)
             sel_masters = {f.fixture_id for f in self._prog.selection
                            if isinstance(f, MasterFixture)}
+            # Sub-fixture selection ("1.5") had NO visual indication at all
+            # before — only the master's own border lit up, and only for a
+            # whole-fixture selection (this fixture's subs are excluded
+            # below when the whole fixture is already selected, so a dot
+            # doesn't get a redundant border on top of the master's own).
+            sel_subs = {f.fixture_id for f in self._prog.selection
+                        if isinstance(f, SubFixture)}
             border_col = (162, 115, 255, 255) if master.fixture_id in sel_masters else (55, 38, 105, 255)
             dim_pct = int(dim * gm * 100)
             dim_col = _C_TEXT if dim_pct > 0 else _C_DIM
@@ -197,12 +228,28 @@ class GUIEngineStage:
                 continue
             subs = list(master.sub_fixtures.values())
             pc   = len(subs)
-            rows, cols, dot = self._best_sub_layout(pc, tw, sub_h)
+            _layout = getattr(master, 'viz_layout', None)
+            _order  = 'rowmajor'
+            if _layout and _layout.get('cols') and _layout.get('rows'):
+                rows, cols, dot = self._explicit_grid_layout(
+                    _layout['cols'], _layout['rows'], pc, tw, sub_h)
+                _order = _layout.get('order', 'rowmajor')
+            else:
+                rows, cols, dot = self._best_sub_layout(pc, tw, sub_h)
             dot_s = dot + 1   # stride = dot + 1px gap
 
             for j, sub in enumerate(subs):
-                row  = j // cols
-                col  = j % cols
+                if _order == 'colmajor':
+                    # Pixel 0 is the top of column 1, addressing runs
+                    # DOWN that column before moving across to the next
+                    # one — matches physical wiring like several vertical
+                    # strips side by side, not left-to-right/top-to-
+                    # bottom like the generic auto layout (rowmajor).
+                    col = j // rows
+                    row = j % rows
+                else:
+                    row = j // cols
+                    col = j % cols
                 sx0  = x0 + col * dot_s
                 sy0  = sub_y0 + row * dot_s
                 sfid = str(sub.fixture_id)
@@ -250,15 +297,18 @@ class GUIEngineStage:
                     sfill = (255, 255, 255, 255)
                 elif sr or sg or sb2:
                     sfill = (sr, sg, sb2, 255)
-                elif sdim > 0:
-                    sgrey = max(0, min(255, int(sdim * gm * 200)))
-                    sfill = (sgrey, sgrey, sgrey, 255)
                 else:
+                    # Same fix as the master-bar fill above — a raised dim
+                    # with no colour is genuinely dark on real output, not
+                    # a grey glow.
                     sfill = (16, 11, 36, 255)
+                sub_selected = sfid in sel_subs and master.fixture_id not in sel_masters
+                sborder = (162, 115, 255, 255) if sub_selected else (0, 0, 0, 0)
                 try:
                     dpg.configure_item(f"stage_sub_{i}_{j}",
                                        pmin=(sx0, sy0), pmax=(sx0 + dot, sy0 + dot),
-                                       fill=sfill)
+                                       fill=sfill, color=sborder,
+                                       thickness=(2 if sub_selected else 0))
                 except Exception:
                     pass
     def _on_fixture_dim_slider(self, _sender, value, user_data):

@@ -21,6 +21,7 @@ import copy
 import time
 
 from studio_console.models.fixtures import MasterFixture
+from studio_console.models.naming import LowercaseName
 from studio_console.engine.fx import _fx_grouping_compat
 
 # ============================================================
@@ -41,6 +42,8 @@ class ColorPreset:
     # Future: add a `scope` field ("selective" | "universe" | "global") to expand
     # targeting without changing the stored RGB format.
     """
+    name = LowercaseName()
+
     def __init__(self, preset_id, name=""):
         self.preset_id = preset_id
         self.name      = name if name else f"color {preset_id}"
@@ -117,6 +120,8 @@ class DimmerPreset:
     # Future: add a `scope` field ("selective" | "universe" | "global") to expand
     # targeting without changing the stored level format.
     """
+    name = LowercaseName()
+
     def __init__(self, preset_id, name=""):
         self.preset_id = preset_id
         self.name      = name if name else f"Dimmer {preset_id}"
@@ -191,9 +196,11 @@ class AttributePreset:
     attribute  — logical name (e.g. "position", "gobo", "zoom")
     data       — {fixture_id_str: {channel_name: value, ...}}
     """
+    name = LowercaseName()
+
     def __init__(self, preset_id, name, attribute):
         self.preset_id = int(preset_id)
-        self.name      = name or f"{attribute.title()} {preset_id}"
+        self.name      = name or f"{attribute.lower()} {preset_id}"
         self.attribute = attribute
         self.data      = {}
 
@@ -269,6 +276,8 @@ class Group:
     can mix whole fixtures with individual pixels of other fixtures (e.g.
     "all the .1s across a rig" alongside a couple of complete fixtures).
     """
+    name = LowercaseName()
+
     def __init__(self, group_id, name=""):
         self.group_id = group_id
         self.name     = name or f"group {group_id}"
@@ -377,6 +386,8 @@ class Cue:
     fade_times  — per-attribute-group overrides: {'colour': float, 'dim': float, ...}
     delay_times — per-attribute-group delay overrides
     """
+    name = LowercaseName()
+
     def __init__(self, cue_number, name="", fade_time=0.0, delay_time=0.0,
                  fade_times=None, delay_times=None, follow_time=0.0):
         self.cue_number  = float(cue_number)
@@ -465,6 +476,8 @@ class Stack:
         BACK    — step to previous cue
         GOTO n  — jump to specific cue number
     """
+    name = LowercaseName()
+
     def __init__(self, stack_id, name=""):
         self.stack_id        = stack_id
         self.name            = name if name else f"stack {stack_id}"
@@ -475,6 +488,15 @@ class Stack:
         self.bounce          = False     # True = reverse direction at ends (ping-pong)
         self._bounce_dir     = 1        # 1 = forward, -1 = backward (runtime, not saved)
         self.note            = ""        # Production annotation (saved, optional)
+        # True = a cue's effective playback state is the LTP-merge of
+        # every earlier cue's own delta up through it (real-console
+        # "tracking" — see Cue's own docstring: "Unmentioned fixtures
+        # track from previous cues"), not just that one cue's raw delta.
+        # False = a cue fires with ONLY what's explicitly recorded into
+        # it — anything it doesn't mention stays at the fixture's default
+        # (dark), matching the pre-tracking-fix behavior for shows that
+        # were deliberately recorded assuming no tracking.
+        self.tracking        = True
         # Chase mode — auto-advance through cues at a fixed BPM
         self.chase_enabled  = False
         self.chase_bpm      = 120.0
@@ -739,9 +761,10 @@ class Fader:
                 self.fx_engine.remove(fxid)
         self._fx_ids.clear()
 
-    def _start_cue_fx(self, cue, patch, default_infade=0.0, default_outfade=0.0):
+    def _start_cue_fx(self, cue, patch, default_infade=0.0, default_outfade=0.0,
+                      cue_data=None):
         """
-        Read FX defs from cue.data master entries and start layers.
+        Read FX defs from master entries and start layers.
         Old layers are outfaded (not instant-killed) so FX crossfades naturally.
         Each layer ID is fdr_id * 10000 + ever-increasing counter so IDs never
         repeat even while outfading layers are still in the engine.
@@ -750,10 +773,19 @@ class Fader:
         default_outfade — fallback outfade applied to outgoing layers that
                           had no explicit outfade; callers pass eff_fade so
                           old FX ramps out in sync with the DMX crossfade.
+        cue_data        — per-fixture data to scan for 'fx' defs; defaults
+                          to cue.data (that one cue's own raw delta) when
+                          not given. Callers that want FX to track
+                          forward the same way DMX values do (see
+                          engine/playback.py's _tracked_cue_data) pass
+                          the fully-merged dict here instead, so an FX
+                          started in an earlier cue keeps running through
+                          a later cue that doesn't touch that fixture.
         """
         if not self.fx_engine:
             self._fx_ids = []
             return
+        cue_data = cue_data if cue_data is not None else cue.data
 
         # Outfade old layers — they self-remove when amplitude reaches 0
         now = time.monotonic()
@@ -762,7 +794,7 @@ class Fader:
         self._fx_ids = []
 
         fx_defs_by_fid = {}
-        for fid_str, vals in cue.data.items():
+        for fid_str, vals in cue_data.items():
             if '.' in fid_str:
                 continue
             fx_defs = vals.get('fx', [])
@@ -911,12 +943,14 @@ class Fader:
         self._clear_fx()
         self.is_active = False
         self.layer.clear()
+        self._follow_at = None
         # stack.current intentionally not reset — position is preserved
 
     def stop(self):
         self._clear_fx()
         self.is_active = False
         self.layer.clear()
+        self._follow_at = None
         if self.stack:
             self.stack.current = None
 
@@ -1012,7 +1046,7 @@ class FaderPool:
         return self.pages[n]
 
     def set_page_name(self, n, name):
-        self.get_page(n)['name'] = name
+        self.get_page(n)['name'] = name.lower() if isinstance(name, str) else name
 
     def add_to_page(self, n, cs_id):
         page = self.get_page(n)
@@ -1041,6 +1075,8 @@ class FaderPool:
 
 class FXPreset:
     """One named FX state: a list of layer defs that fire together."""
+
+    name = LowercaseName()
 
     def __init__(self, preset_id, name=""):
         self.preset_id = int(preset_id)
@@ -1079,38 +1115,6 @@ class FXPreset:
             'target_scope':  target_scope,
         })
 
-    def fire(self, fx_engine, targets, base_id=1):
-        """Start all layers in this preset without clearing other running FX."""
-        fired = []
-        for i, ld in enumerate(self.layers, 1):
-            _mirror, _cluster, _order = _fx_grouping_compat(ld)
-            layer = fx_engine.add(
-                base_id + i,
-                ld['waveform'],
-                ld['channel'],
-                rate_bpm     = ld.get('bpm', ld.get('rate_bpm', 60.0)),
-                size         = ld['size'],
-                targets      = targets,
-                spread       = ld['spread'],
-                phase_offset = ld.get('phase_offset', 0.0),
-                infade       = ld.get('infade', 0.0),
-                outfade      = ld.get('outfade', 0.0),
-                form_id      = ld.get('form_id'),
-                rate_id      = ld.get('rate_id'),
-                size_id      = ld.get('size_id'),
-                spread_id    = ld.get('spread_id'),
-                dim_id       = ld.get('dim_id'),
-                speed_id     = ld.get('speed_id'),
-                block_size   = ld.get('block_size', 1),
-                order        = _order,
-                direction    = ld.get('direction', 'forward'),
-                mirror       = _mirror,
-                cluster      = _cluster,
-                low          = ld.get('low', 0.0),
-            )
-            fired.append(layer)
-        return fired
-
     def __repr__(self):
         parts = [f"{ld['waveform']} {ld['channel']}" for ld in self.layers]
         return f"[FX {self.preset_id}] {self.name}  ({', '.join(parts)})"
@@ -1130,28 +1134,6 @@ class FXPool:
 
     def delete(self, n):
         self.presets.pop(int(n), None)
-
-    def record_from_active(self, n, active_fx_list, name=""):
-        """snapshot currently running FXLayer objects into a new preset, preserving pool refs."""
-        preset = FXPreset(int(n), name or f"fx {n}")
-        for layer in active_fx_list:
-            preset.add_layer(
-                layer.waveform, layer.channel,
-                bpm       = layer._bpm_inline,
-                size      = layer._size_inline,
-                spread    = layer._spread_inline,
-                form_id   = layer.form_id,
-                rate_id   = layer._rate_id,
-                size_id   = layer._size_id,
-                spread_id = layer._spread_id,
-                mirror    = layer.mirror,
-                cluster   = layer.cluster,
-                low       = layer.low,
-                infade    = layer.infade,
-                outfade   = layer.outfade,
-            )
-        self.presets[int(n)] = preset
-        return preset
 
     def all_slots(self):
         return sorted(self.presets.keys())

@@ -235,10 +235,45 @@ def _exec_fader_mode_hook(ex):
             _vfade_apply(ex)
 
 
+def _tracked_cue_data(stack, cue_number):
+    """Build the fully-tracked effective state for `cue_number` in
+    `stack`: LTP-merges every cue's own delta (Cue.data), in cue-number
+    order, from the stack's first cue up through and including
+    cue_number — so a fixture/channel this cue doesn't mention resolves
+    to whatever the most recent EARLIER cue actually set it to, matching
+    Cue's own docstring ("Unmentioned fixtures track from previous
+    cues") instead of just that one cue's raw delta.
+
+    Without this, firing a cue relied entirely on the fader's current
+    live output (fader.layer) to carry forward anything the cue itself
+    doesn't mention — which happens to look right for strictly
+    sequential GO/GO/GO playback (each fire's result IS the next fire's
+    "from" state), but is wrong the moment you land on a cue any other
+    way: BACK past a cue that set something explicitly, a GOTO that
+    skips around, or firing right after a fresh load/CLEAR. In all of
+    those, whatever was last on the fader has nothing to do with what
+    this specific cue should actually be tracking from.
+    """
+    merged = {}
+    for num in stack._sorted_cue_numbers():
+        for fid, vals in stack.cues[num].data.items():
+            if vals:
+                merged.setdefault(fid, {}).update(copy.deepcopy(vals))
+        if num == cue_number:
+            break
+    return merged
+
+
 def _stack_fire_cue(self, cue_number, patch, fade_engine, fader):
     cue = self.cues[cue_number]
     self.current = cue_number
     fader.is_active = True
+
+    # The effective per-fixture data this cue fires with — either the
+    # fully-tracked merge (see _tracked_cue_data) or, when this stack has
+    # tracking turned off (STK n TRACKING OFF), just this cue's own raw
+    # delta, unchanged from the original behavior.
+    eff_data = _tracked_cue_data(self, cue_number) if getattr(self, 'tracking', True) else cue.data
 
     # fx_kill: instant-apply by default so FX dies immediately without waiting
     # for the fade to interpolate 0→1.  Pre-setting fader.layer to 1.0 before
@@ -246,10 +281,10 @@ def _stack_fire_cue(self, cue_number, patch, fade_engine, fader):
     # Leaving an fx_kill cue: clear it now so the Fade starts from 0 (not stale 1).
     new_cue_has_fx_kill = any(
         isinstance(v, dict) and v.get('fx_kill')
-        for v in cue.data.values()
+        for v in eff_data.values()
     )
     if new_cue_has_fx_kill:
-        for fid_str, vals in cue.data.items():
+        for fid_str, vals in eff_data.items():
             if isinstance(vals, dict) and vals.get('fx_kill'):
                 fader.layer.setdefault(fid_str, {})['fx_kill'] = 1.0
     else:
@@ -257,7 +292,7 @@ def _stack_fire_cue(self, cue_number, patch, fade_engine, fader):
             fid_vals.pop('fx_kill', None)
 
     resolved = _resolve_cue_refs(
-        cue.data, patch,
+        eff_data, patch,
         getattr(fader, 'color_pool',    None),
         getattr(fader, 'dim_pool',      None),
         getattr(fader, 'attr_pools',    None),
@@ -299,7 +334,7 @@ def _stack_fire_cue(self, cue_number, patch, fade_engine, fader):
     #    rather than cutting between them abruptly.
     new_cue_has_fx = any(
         isinstance(vals, dict) and vals.get('fx')
-        for fk, vals in cue.data.items()
+        for fk, vals in eff_data.items()
         if '.' not in str(fk)
     )
     if new_cue_has_fx_kill or not new_cue_has_fx:
@@ -312,7 +347,8 @@ def _stack_fire_cue(self, cue_number, patch, fade_engine, fader):
     if _cue_fx_out is not None:
         fx_outfade = float(_cue_fx_out)
 
-    fader._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=fx_outfade)
+    fader._start_cue_fx(cue, patch, default_infade=eff_fade, default_outfade=fx_outfade,
+                       cue_data=eff_data)
 
     # Auto-follow: arm timer so _tick() fires GO after follow_time seconds
     follow = getattr(cue, 'follow_time', 0.0)

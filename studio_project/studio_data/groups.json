@@ -2,7 +2,7 @@
   "version": "3.0",
   "groups": {
     "1": {
-      "name": "All",
+      "name": "1-4",
       "members": [
         {
           "type": "master",
@@ -19,19 +19,11 @@
         {
           "type": "master",
           "fixture_id": 4
-        },
-        {
-          "type": "master",
-          "fixture_id": 5
-        },
-        {
-          "type": "master",
-          "fixture_id": 6
         }
       ]
     },
     "2": {
-      "name": "Left",
+      "name": "left",
       "members": [
         {
           "type": "master",
@@ -48,7 +40,7 @@
       ]
     },
     "3": {
-      "name": "Right",
+      "name": "right",
       "members": [
         {
           "type": "master",
@@ -65,7 +57,7 @@
       ]
     },
     "4": {
-      "name": "Odds",
+      "name": "odds",
       "members": [
         {
           "type": "master",
@@ -82,7 +74,7 @@
       ]
     },
     "5": {
-      "name": "Evens",
+      "name": "evens",
       "members": [
         {
           "type": "master",
@@ -99,7 +91,7 @@
       ]
     },
     "6": {
-      "name": "Ends",
+      "name": "ends",
       "members": [
         {
           "type": "master",
@@ -112,7 +104,7 @@
       ]
     },
     "7": {
-      "name": "Middle",
+      "name": "middle",
       "members": [
         {
           "type": "master",
@@ -133,11 +125,32 @@
       ]
     },
     "8": {
-      "name": "Tube 1",
+      "name": "tube 1",
       "members": [
         {
           "type": "master",
           "fixture_id": 1
+        }
+      ]
+    },
+    "9": {
+      "name": ".1s",
+      "members": [
+        {
+          "type": "sub",
+          "fixture_id": "1.1"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "2.1"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "3.1"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "4.1"
         }
       ]
     }

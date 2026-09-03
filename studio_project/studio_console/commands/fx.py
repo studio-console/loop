@@ -70,7 +70,7 @@ from studio_console.drivers.ai import AIEngine
 from studio_console.show import ShowFile, _write_file, _read_file
 from studio_console.commands._shared import (
     _record_cue_into, _prog_fx_stop, _prog_fx_start, _prog_fx_rebuild,
-    _resolve_fx_selection_targets,
+    _resolve_fx_selection_targets, _snapshot_undo,
 )
 
 # GUIEngine hasn't been extracted yet as its own importable module —
@@ -112,7 +112,7 @@ def cmd_030_record_form(t0, tokens, raw):
             if ',' in tok:
                 bp_start = i
                 break
-            name_parts.append(tok.capitalize())
+            name_parts.append(tok.lower())
 
         name = " ".join(name_parts) if name_parts else f"form {form_n}"
 
@@ -129,6 +129,7 @@ def cmd_030_record_form(t0, tokens, raw):
             return "usage: record form <n> [name] <phase,value> <phase,value> ..."
 
         form = FormPreset(form_n, name, 'breakpoints', breakpoints=breakpoints)
+        _snapshot_undo(form_pool.forms, form_n, f"record form {form_n}")
         form_pool.store(form_n, form)
         ShowFile.save_forms(form_pool)
         return f"recorded: {form}  (auto-saved)"
@@ -396,7 +397,7 @@ def cmd_039_fx_main(t0, tokens, raw):
                         if ld.get('target_scope'):             dist.append(ld['target_scope'])
                         dist_s = f" [{' '.join(dist)}]" if dist else ""
                         lines.append(f"  fixture {fid}: {ld['waveform']} {ld['channel']} "
-                                     f"BPM={ld.get('bpm',60)} size={ld.get('size',200)}{dist_s}")
+                                     f"BPM={ld.get('bpm',60)} size={ld.get('size',100)}{dist_s}")
             else:
                 lines.append("programmer FX: (none)")
             # Active fader FX
@@ -661,7 +662,7 @@ def cmd_040_record_fx(t0, tokens, raw):
         if not defs:
             return "RECORD FX: no FX in programmer — apply with  FX SINE RED  first"
 
-        name = " ".join(t.capitalize() for t in tokens[3:]) if len(tokens) > 3 else ""
+        name = " ".join(t.lower() for t in tokens[3:]) if len(tokens) > 3 else ""
         preset = FXPreset(fx_n, name or f"FX {fx_n}")
         for ld in defs:
             _mirror, _cluster, _order = _fx_grouping_compat(ld)
@@ -689,6 +690,7 @@ def cmd_040_record_fx(t0, tokens, raw):
                 low          = ld.get('low', 0.0),
                 target_scope = ld.get('target_scope'),
             )
+        _snapshot_undo(fx_pool.presets, fx_n, f"record fx {fx_n}")
         fx_pool.store(fx_n, preset)
         ShowFile.save_fx_pool(fx_pool)
         _preset_live_push('fx', fx_n)

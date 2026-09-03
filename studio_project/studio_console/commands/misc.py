@@ -453,7 +453,7 @@ def cmd_103_rename(t0, tokens, raw):
                 return "RENAME STACK: provide a new name"
             stk.name = new_name
             save_show()
-            return f"stack {n} → \"{new_name}\""
+            return f"stack {n} → \"{stk.name}\""
 
         # RENAME stk <n> CUE <m> <name>  or  RENAME CUE <n> <name>
         if sub == 'CUE' or (sub == 'STK' and 'CUE' in tokens):
@@ -484,7 +484,7 @@ def cmd_103_rename(t0, tokens, raw):
                 return f"cue {cue_num} not found"
             cue.name = new_name
             save_show()
-            return f"cue {cue_num} → \"{new_name}\""
+            return f"cue {cue_num} → \"{cue.name}\""
 
         # RENAME COLOR / COLOUR <n> <name>
         if sub in ('COLOR', 'COLOUR'):
@@ -500,7 +500,7 @@ def cmd_103_rename(t0, tokens, raw):
                 return "RENAME COLOR: provide a new name"
             p.name = new_name
             save_show()
-            return f"color {n} → \"{new_name}\""
+            return f"color {n} → \"{p.name}\""
 
         # RENAME DIM <n> <name>
         if sub == 'DIM':
@@ -516,7 +516,7 @@ def cmd_103_rename(t0, tokens, raw):
                 return "RENAME DIM: provide a new name"
             p.name = new_name
             save_show()
-            return f"dim {n} → \"{new_name}\""
+            return f"dim {n} → \"{p.name}\""
 
         # RENAME GROUP <n> <name>
         if sub == 'GROUP':
@@ -532,7 +532,7 @@ def cmd_103_rename(t0, tokens, raw):
                 return "RENAME GROUP: provide a new name"
             g.name = new_name
             save_show()
-            return f"group {n} → \"{new_name}\""
+            return f"group {n} → \"{g.name}\""
 
         # RENAME FX <n> <name>
         if sub == 'FX':
@@ -548,7 +548,7 @@ def cmd_103_rename(t0, tokens, raw):
                 return "RENAME FX: provide a new name"
             p.name = new_name
             save_show()
-            return f"FX {n} → \"{new_name}\""
+            return f"FX {n} → \"{p.name}\""
 
         # RENAME RATE / SIZEP / SPREADP / FORM <n> <name>
         _rename_pool_map = {
@@ -577,7 +577,7 @@ def cmd_103_rename(t0, tokens, raw):
                 return f"RENAME {sub}: provide a new name"
             item.name = new_name
             save_show()
-            return f"{sub} {n} → \"{new_name}\""
+            return f"{sub} {n} → \"{item.name}\""
 
         # RENAME MACRO <n> <name>
         if sub == 'MACRO':
@@ -590,9 +590,9 @@ def cmd_103_rename(t0, tokens, raw):
             new_name = _name_after(raw, 3)
             if not new_name:
                 return "RENAME MACRO: provide a new name"
-            macro_pool[n]["name"] = new_name
+            macro_pool[n]["name"] = new_name.lower()
             ShowFile.save_macros(macro_pool)
-            return f"macro {n} → \"{new_name}\""
+            return f"macro {n} → \"{macro_pool[n]['name']}\""
 
         # RENAME FIXTURE <n> <name>
         if sub == 'FIXTURE':
@@ -609,7 +609,7 @@ def cmd_103_rename(t0, tokens, raw):
             old_name = master.name
             master.name = new_name
             ShowFile.save_patch(patch)
-            return f"fixture {n}: \"{old_name}\" → \"{new_name}\""
+            return f"fixture {n}: \"{old_name}\" → \"{master.name}\""
 
         return (f"RENAME: unknown type '{sub}' — use STACK, CUE, COLOR, DIM, GROUP, FX, "
                 "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO, FIXTURE")

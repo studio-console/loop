@@ -514,46 +514,48 @@ class GUIEnginePoolsPanel:
         # Spans the same width as the 3 pool panels above INCLUDING the
         # inter-panel ItemSpacing gaps, so its right edge lines up with theirs:
         #   3×_PANEL_W  (panels)  +  2×ItemSpacing.X  (gaps)
-        _FORMS_COLS  = 12
+        # Single row of 16 (was 2 rows of 12 = 24 slots) — halving the row
+        # count is what actually buys back the vertical space; the 2-row
+        # layout was the reason "main" needed a scrollbar fallback at all,
+        # and no scrollbar (of any kind, anywhere) is the point here, not
+        # just a smaller one.
+        _FORMS_COLS  = self._FORMS_SLOTS
         _PANEL_TOTAL = 3 * self._PANEL_W + 2 * 6           # 1890 + 12 = 1902
         _FORMS_BTN_W = (_PANEL_TOTAL - 2 - 16 - (_FORMS_COLS - 1) * 6) // _FORMS_COLS
-        # header text (~20) + separator (~6) + 2 button rows (_BTN_H each)
-        # + 3 ItemSpacing.y(5) gaps between the 4 top-level rows + the
-        # child_window's own top+bottom WindowPadding.y(6 each) — the old
-        # "32 + 2*(BTN_H+4)" flat estimate came out ~13px short of this
-        # (real ItemSpacing.y is 5, not the 4 baked into that formula,
-        # and it didn't separately account for WindowPadding at all),
-        # clipping the second button row's bottom edge.
-        _FORMS_H     = 20 + 6 + 2 * self._BTN_H + 3 * 5 + 2 * 6
+        # header text (~20) + separator (~6) + 1 button row (_BTN_H) + 2
+        # ItemSpacing.y(5) gaps between the 3 top-level rows (header, sep,
+        # buttons) + the child_window's own top+bottom WindowPadding.y(6
+        # each) — same accounting as the old 2-row formula, just one less
+        # button row and one less gap.
+        _FORMS_H     = 20 + 6 + self._BTN_H + 2 * 5 + 2 * 6
         with dpg.child_window(tag="pool_forms", width=_PANEL_TOTAL,
                               height=_FORMS_H, border=True,
                               no_scrollbar=True, no_scroll_with_mouse=True):
             dpg.add_text("› forms", color=_C_P_FORMS)
             dpg.add_separator()
-            for row in range(2):
-                with dpg.group(horizontal=True):
-                    for col in range(_FORMS_COLS):
-                        n = row * _FORMS_COLS + col + 1
-                        dpg.add_button(
-                            tag=f"form_btn_{n}", label=f"f{n}",
-                            width=_FORMS_BTN_W, height=self._BTN_H,
-                            callback=self._on_form_click, user_data=n)
-                        with dpg.tooltip(f"form_btn_{n}"):
-                            dpg.add_text(f"form {n}", tag=f"form_tip_{n}")
-                        if n >= FormPool.FIRST_CUSTOM_SLOT:
-                            with dpg.popup(f"form_btn_{n}", mousebutton=1):
-                                dpg.add_text(f"form {n}", color=_C_P_FORMS)
-                                dpg.add_separator()
-                                dpg.add_menu_item(label="use form",
-                                    callback=self._ctx_exec,
-                                    user_data=f"FX FORM {n}")
-                                dpg.add_menu_item(label="rename...",
-                                    callback=self._ctx_prefill,
-                                    user_data=f"RENAME FORM {n} ")
-                                dpg.add_separator()
-                                dpg.add_menu_item(label="delete form",
-                                    callback=self._ctx_exec,
-                                    user_data=f"DELETE FORM {n}")
+            with dpg.group(horizontal=True):
+                for col in range(_FORMS_COLS):
+                    n = col + 1
+                    dpg.add_button(
+                        tag=f"form_btn_{n}", label=f"f{n}",
+                        width=_FORMS_BTN_W, height=self._BTN_H,
+                        callback=self._on_form_click, user_data=n)
+                    with dpg.tooltip(f"form_btn_{n}"):
+                        dpg.add_text(f"form {n}", tag=f"form_tip_{n}")
+                    if n >= FormPool.FIRST_CUSTOM_SLOT:
+                        with dpg.popup(f"form_btn_{n}", mousebutton=1):
+                            dpg.add_text(f"form {n}", color=_C_P_FORMS)
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="use form",
+                                callback=self._ctx_exec,
+                                user_data=f"FX FORM {n}")
+                            dpg.add_menu_item(label="rename...",
+                                callback=self._ctx_prefill,
+                                user_data=f"RENAME FORM {n} ")
+                            dpg.add_separator()
+                            dpg.add_menu_item(label="delete form",
+                                callback=self._ctx_exec,
+                                user_data=f"DELETE FORM {n}")
     def _on_fx_click(self, _sender, _app_data, user_data):
         n = user_data
         if self._fx_pool and self._fx_pool.get(n):
@@ -878,8 +880,8 @@ class GUIEnginePoolsPanel:
                 except Exception:
                     pass
 
-        # Forms (slots 1-24, matches _POOL_SLOTS)
-        for n in range(1, self._POOL_SLOTS + 1):
+        # Forms (slots 1-16, matches the panel's single row — see _FORMS_SLOTS)
+        for n in range(1, self._FORMS_SLOTS + 1):
             f = self._form_pool.get(n) if self._form_pool else None
             lbl = f"{n}:{f.name[:6]}" if f else f"f{n}"
             try:

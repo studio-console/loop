@@ -2,7 +2,7 @@
   "version": "3.0",
   "dims": {
     "1": {
-      "name": "Full",
+      "name": "full",
       "level": 1.0
     },
     "2": {
@@ -10,7 +10,7 @@
       "level": 0.75
     },
     "3": {
-      "name": "Half",
+      "name": "half",
       "level": 0.5
     },
     "4": {
@@ -18,11 +18,11 @@
       "level": 0.25
     },
     "5": {
-      "name": "Low",
+      "name": "low",
       "level": 0.1
     },
     "6": {
-      "name": "Out",
+      "name": "out",
       "level": 0.0
     }
   }

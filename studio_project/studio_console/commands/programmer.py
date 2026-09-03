@@ -50,7 +50,7 @@ from studio_console.models.presets import (
     Group, GroupPool, Cue, Stack, CuePool, StackPool,
     Fader, FaderPool, FXPreset, FXPool, Fade,
 )
-from studio_console.commands._shared import _prog_fx_rebuild
+from studio_console.commands._shared import _prog_fx_rebuild, _delete_with_undo
 
 from studio_console.engine.playback import (
     FadeEngine, OutputState, _resolve_cue_refs, _vfade_apply, _exec_fader_mode_hook, _stack_fire_cue,
@@ -379,53 +379,37 @@ def cmd_112_clear_len3(t0, tokens, raw):
         except ValueError:
             return f"CLEAR {sub}: bad slot number '{tokens[2]}'"
         if sub in ('COLOR', 'COLOUR'):
-            if slot in color_pool.presets:
-                del color_pool.presets[slot]
-                save_show()
+            if _delete_with_undo(color_pool.presets, slot, f"color {slot}"):
                 return f"color preset {slot} cleared (show saved)"
             return f"color preset {slot} is already empty"
         if sub == 'DIM':
-            if slot in dim_pool.presets:
-                del dim_pool.presets[slot]
-                save_show()
+            if _delete_with_undo(dim_pool.presets, slot, f"dim {slot}"):
                 return f"dim preset {slot} cleared (show saved)"
             return f"dim preset {slot} is already empty"
         if sub in ('GROUP', 'GRP'):
-            if slot in group_pool.groups:
-                del group_pool.groups[slot]
-                save_show()
+            if _delete_with_undo(group_pool.groups, slot, f"group {slot}"):
                 return f"group {slot} cleared (show saved)"
             return f"group {slot} is already empty"
         if sub == 'FX':
-            if slot in fx_pool.presets:
-                del fx_pool.presets[slot]
-                save_show()
+            if _delete_with_undo(fx_pool.presets, slot, f"FX {slot}"):
                 return f"FX preset {slot} cleared (show saved)"
             return f"FX preset {slot} is already empty"
         if sub == 'FORM':
             if slot < FormPool.FIRST_CUSTOM_SLOT:
                 return f"form {slot} is built-in — only custom forms (slot ≥ {FormPool.FIRST_CUSTOM_SLOT}) can be cleared"
-            if slot in form_pool.forms:
-                del form_pool.forms[slot]
-                save_show()
+            if _delete_with_undo(form_pool.forms, slot, f"form {slot}"):
                 return f"form {slot} cleared (show saved)"
             return f"form {slot} is already empty"
         if sub == 'RATE':
-            if slot in rate_pool.presets:
-                del rate_pool.presets[slot]
-                save_show()
+            if _delete_with_undo(rate_pool.presets, slot, f"rate preset {slot}"):
                 return f"rate preset {slot} cleared (show saved)"
             return f"rate preset {slot} is already empty"
         if sub in ('SIZEP', 'SIZE'):
-            if slot in size_pool.presets:
-                del size_pool.presets[slot]
-                save_show()
+            if _delete_with_undo(size_pool.presets, slot, f"size preset {slot}"):
                 return f"size preset {slot} cleared (show saved)"
             return f"size preset {slot} is already empty"
         if sub in ('SPREADP', 'SPREAD'):
-            if slot in spread_pool.presets:
-                del spread_pool.presets[slot]
-                save_show()
+            if _delete_with_undo(spread_pool.presets, slot, f"spread preset {slot}"):
                 return f"spread preset {slot} cleared (show saved)"
             return f"spread preset {slot} is already empty"
         _clear_attr_map = {
@@ -438,9 +422,7 @@ def cmd_112_clear_len3(t0, tokens, raw):
         }
         if sub in _clear_attr_map:
             pool = _clear_attr_map[sub]
-            if slot in pool.presets:
-                del pool.presets[slot]
-                save_show()
+            if _delete_with_undo(pool.presets, slot, f"{sub.lower()} preset {slot}"):
                 return f"{sub.title()} preset {slot} cleared (show saved)"
             return f"{sub.title()} preset {slot} is already empty"
 
@@ -456,6 +438,16 @@ def cmd_113_clear_len1(t0, tokens, raw):
 
 
 def cmd_114_undo(t0, tokens, raw):
+    if t0 == 'UNDO' and len(tokens) >= 3 and tokens[1] == 'TO':
+        # UNDO TO <index> — jump back multiple steps at once (index from
+        # programmer.undo_history(), used by the hold-undo history popup).
+        try:
+            idx = int(tokens[2])
+        except ValueError:
+            return f"UNDO TO: bad index '{tokens[2]}'"
+        result = prog.undo_to(idx)
+        _prog_fx_rebuild()
+        return result
     if t0 == 'UNDO':
         result = prog.undo()
         # prog.undo() only restores prog.data/.disabled/.selection — it has

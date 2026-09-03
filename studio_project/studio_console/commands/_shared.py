@@ -18,6 +18,7 @@ studio_console.commands gets imported, state.py has already run.
 """
 
 import re as _re
+import copy as _copy
 
 from studio_console.state import (
     patch, prog, fade_engine, fader_pool, color_pool, dim_pool, group_pool,
@@ -28,6 +29,68 @@ from studio_console.engine.fx import (
     _bucket_fx_defs, _expand_color_fx, _expand_group_fx, _fx_grouping_compat,
 )
 from studio_console.models.fixtures import MasterFixture
+
+
+def _delete_with_undo(pool_dict, slot_id, description):
+    """Delete pool_dict[slot_id], first snapshotting it onto prog's undo
+    stack (see programmer.push_delete_undo in models/fixtures.py) so
+    UNDO/Backspace/Ctrl+Z can put it right back.
+
+    pool_dict — the raw {id: object} dict a pool keeps its slots in
+        (color_pool.presets, group_pool.groups, stack_pool.stacks,
+        form_pool.forms, ...). Every one of these pools' own delete()
+        is a plain dict.pop() with no other side effect (verified against
+        each class), so re-inserting the same object at the same key on
+        undo is a complete, exact restore.
+    slot_id     — the pool slot number.
+    description — short human-readable label for the "N step(s)
+        remaining" message (e.g. "color 4").
+
+    Returns True if something was actually deleted, False if the slot was
+    already empty (caller keeps its own "already empty" message in that
+    case — nothing pushed onto the undo stack for a no-op).
+    """
+    slot_id = int(slot_id)
+    if slot_id not in pool_dict:
+        return False
+    snapshot = pool_dict[slot_id]
+
+    def _restore():
+        pool_dict[slot_id] = snapshot
+        save_show()
+
+    prog.push_delete_undo(description, _restore)
+    del pool_dict[slot_id]
+    save_show()
+    return True
+
+
+def _snapshot_undo(pool_dict, slot_id, description):
+    """Snapshot pool_dict[slot_id]'s CURRENT value — or the fact the slot
+    is currently empty — onto prog's undo stack, before a RECORD or UPDATE
+    command overwrites it. Call this right before the write; unlike
+    _delete_with_undo, this doesn't perform the write itself (RECORD/UPDATE
+    commands each build their own replacement object in ways too varied to
+    standardize here), it just captures what to restore if the operator
+    changes their mind.
+
+    pool_dict   — the raw {id: object} dict a pool keeps its slots in.
+    slot_id     — the pool slot number about to be written.
+    description — short human-readable label for the "N step(s)
+        remaining" message (e.g. "record color 4").
+    """
+    slot_id = int(slot_id)
+    had_prior = slot_id in pool_dict
+    prior = pool_dict.get(slot_id)
+
+    def _restore():
+        if had_prior:
+            pool_dict[slot_id] = prior
+        else:
+            pool_dict.pop(slot_id, None)
+        save_show()
+
+    prog.push_delete_undo(description, _restore)
 
 
 def _resolve_fx_selection_targets():
@@ -82,6 +145,37 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
     merge=False → RECORD mode: replaces cue data entirely.
     Returns result string.
     """
+    # Snapshot whatever's there before any of this function's three write
+    # paths (timing-only edit, UPDATE merge, full RECORD) touch it — all
+    # three MUTATE the existing Cue object in place rather than replacing
+    # the dict slot with a new one (cue.update()/_apply_timing_edit()), so
+    # a reference-only snapshot ("prior = stk.cues.get(cue_num)") would
+    # just point at the same, already-mutated object afterward. A deep
+    # copy is required; stk.cues[n] and cue_pool.cues[n] are normally the
+    # SAME object for a whole-numbered cue, but restored independently
+    # here (each a slot-replace with its own snapshot) rather than relying
+    # on that aliasing surviving undo — simpler, and nothing else in this
+    # codebase depends on those two dicts holding the literal same object.
+    _pool_n = int(cue_num) if cue_num == int(cue_num) else None
+    _had_cue = cue_num in stk.cues
+    _cue_snap = _copy.deepcopy(stk.cues[cue_num]) if _had_cue else None
+    _had_pool_cue = _pool_n is not None and _pool_n in cue_pool.cues
+    _pool_cue_snap = _copy.deepcopy(cue_pool.cues[_pool_n]) if _had_pool_cue else None
+
+    def _push_cue_undo(description):
+        def _restore():
+            if _had_cue:
+                stk.cues[cue_num] = _cue_snap
+            else:
+                stk.cues.pop(cue_num, None)
+            if _pool_n is not None:
+                if _had_pool_cue:
+                    cue_pool.cues[_pool_n] = _pool_cue_snap
+                else:
+                    cue_pool.cues.pop(_pool_n, None)
+            save_show()
+        prog.push_delete_undo(description, _restore)
+
     _KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY', 'FOLLOW',
            'CFADE', 'CINFADE', 'DFADE', 'DINFADE', 'CDELAY', 'DDELAY',
            'GROUP', 'COLOR', 'COLOUR', 'DIM'}
@@ -97,7 +191,7 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
         for tok in suffix_tokens:
             if tok in _KW or (tok and tok[0].isdigit()):
                 break
-            name_parts.append(tok.capitalize())
+            name_parts.append(tok.lower())
         if name_parts:
             name = " ".join(name_parts)
         else:
@@ -182,17 +276,23 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
             elif kind == 'group':
                 prog.select(preset.recall(patch))
 
-    # Treat programmer as empty if it only contains flag values (fx_kill etc.)
-    # with no actual DMX data — prevents CFADE/DFADE from accidentally wiping cue data.
-    _prog_has_dmx = any(
-        any(k not in ('fx_kill',) for k in vals)
-        for vals in prog.data.values() if vals
-    )
+    # Any non-empty per-fixture entry counts as real programmer content —
+    # including one that's fx_kill-only (from CLEAR FX / KILL FX). This used
+    # to exclude fx_kill-only entries so a bare timing edit (CFADE/DFADE)
+    # wouldn't accidentally wipe cue data, but that made fx_kill silently
+    # NOT get merged by UPDATE CUE either: CLEAR FX -> UPDATE reported
+    # "saved to cue" while actually falling through to the timing-only
+    # branch below and never calling cue.update(prog) at all, so the kill
+    # never made it into the cue and FX resumed on release. fx_kill is
+    # meant to be recordable (see CLEAR FX / KILL FX's own return
+    # messages), so it has to count here for that to work.
+    _prog_has_dmx = any(bool(vals) for vals in prog.data.values())
 
     if not _prog_has_dmx:
         # programmer has no DMX data — allow timing/name update on any existing cue.
         existing = stk.get_cue(cue_num)
         if existing:
+            _push_cue_undo(f"{'update' if merge else 'record'} cue {cue_num} timing")
             _apply_timing_edit(existing, raw_str)
             if name:
                 existing.name = name
@@ -208,6 +308,7 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
         cue = stk.get_cue(cue_num)
         if not cue:
             return f"UPDATE CUE: cue {cue_num} not found — create it first with RECORD CUE"
+        _push_cue_undo(f"update cue {cue_num}")
         cue.update(prog)
         _apply_timing_edit(cue, raw_str)
         if name:
@@ -227,6 +328,7 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
         _reload_note = f"  (live-reloaded fdr {_reloaded})" if _reloaded else ""
         return f"updated: {cue}  (merged into {stk.name}){_reload_note}"
 
+    _push_cue_undo(f"record cue {cue_num}")
     cue = stk.record_cue(cue_num, prog, name=name, fade_time=fade)
     cue.delay_time  = delay
     cue.follow_time = follow

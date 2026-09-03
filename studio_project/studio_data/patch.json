@@ -3,7 +3,7 @@
   "fixtures": [
     {
       "fixture_id": 1,
-      "name": "Tube 1",
+      "name": "tube 1",
       "profile": "SGM_RGB_54",
       "universe": 1,
       "start_address": 1,
@@ -11,7 +11,7 @@
     },
     {
       "fixture_id": 2,
-      "name": "Tube 2",
+      "name": "tube 2",
       "profile": "SGM_RGB_54",
       "universe": 1,
       "start_address": 163,
@@ -19,7 +19,7 @@
     },
     {
       "fixture_id": 3,
-      "name": "Tube 3",
+      "name": "tube 3",
       "profile": "SGM_RGB_54",
       "universe": 1,
       "start_address": 325,
@@ -27,7 +27,7 @@
     },
     {
       "fixture_id": 4,
-      "name": "Tube 4",
+      "name": "tube 4",
       "profile": "SGM_RGB_54",
       "universe": 2,
       "start_address": 1,
@@ -35,19 +35,29 @@
     },
     {
       "fixture_id": 5,
-      "name": "Tube 5",
+      "name": "tube 5",
       "profile": "SGM_RGB_54",
       "universe": 2,
       "start_address": 163,
-      "extra_outputs": []
+      "extra_outputs": [],
+      "viz_layout": {
+        "cols": 1,
+        "rows": 54,
+        "order": "colmajor"
+      }
     },
     {
       "fixture_id": 6,
-      "name": "Tube 6",
+      "name": "tube 6",
       "profile": "SGM_RGB_54",
       "universe": 2,
       "start_address": 325,
-      "extra_outputs": []
+      "extra_outputs": [],
+      "viz_layout": {
+        "cols": 1,
+        "rows": 54,
+        "order": "colmajor"
+      }
     }
   ]
 }

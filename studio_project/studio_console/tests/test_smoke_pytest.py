@@ -320,7 +320,7 @@ def test_smoke_full_pipeline(subtests):
         run_command("PAGE 1 ADD stk 1")
         r3 = run_command("page list")
         with subtests.test(msg="page created and stack added"):
-            assert ("Test Page" in r3 and "[1]" in r3)
+            assert ("test page" in r3 and "[1]" in r3)
 
         run_command("FADER 1 MODE FLASH")
         with subtests.test(msg="trigger_mode set"):
@@ -590,7 +590,7 @@ def test_smoke_full_pipeline(subtests):
             assert ("recalled" in r_grp_recall.lower())
         r_gi = run_command("GROUP 9 INFO")
         with subtests.test(msg="GROUP INFO shows group name"):
-            assert ("SmokeGroup" in r_gi)
+            assert ("smokegroup" in r_gi)
         with subtests.test(msg="GROUP INFO shows member count"):
             assert ("members" in r_gi)
 
@@ -887,7 +887,7 @@ def test_smoke_full_pipeline(subtests):
             assert (speed_master_pool.get_bpm(4) == 200.0)
         _r_spd_name = run_command("SPEED 4 NAME StrobeClk")
         with subtests.test(msg="SPEED NAME renames slot"):
-            assert (speed_master_pool.get(4).name == "Strobeclk")
+            assert (speed_master_pool.get(4).name == "strobeclk")
         _r_list_spd = run_command("LIST SPEED")
         with subtests.test(msg="LIST SPEED shows all slots"):
             assert ("speed masters" in (_r_list_spd or "").lower())
@@ -1141,7 +1141,11 @@ def test_smoke_full_pipeline(subtests):
             assert (_fxo_dst_cs3 is not None and _fxo_dst_cs3.cues.get(1.0) is not None and
                _fxo_dst_cs3.cues[1.0].fx_outfade == 3.25)
 
-        # FX CLEAR clears fader FX layers
+        # FX CLEAR clears fader FX layers. Selection must be empty first —
+        # "FX CLEAR" scopes to the current selection when one exists (see
+        # commands/fx.py); with a selection active it only clears
+        # programmer FX, never touching a fader's own _fx_ids.
+        prog.clear_selection()
         run_command("FX SINE RED BPM 60 SIZE 100")
         _ex0 = _active_fader()
         _ex0_had_fx = bool(_ex0._fx_ids)
@@ -1206,7 +1210,7 @@ def test_smoke_full_pipeline(subtests):
         # stk INFO
         r_csi = run_command("stk 99 INFO")
         with subtests.test(msg="stk INFO shows stack name"):
-            assert ("WrapTest" in r_csi)
+            assert ("wraptest" in r_csi)
         with subtests.test(msg="stk INFO shows wrap/loop state"):
             assert ("wrap" in r_csi or "loop" in r_csi)
         r_csi_bad = run_command("stk 9999 INFO")
@@ -1242,7 +1246,7 @@ def test_smoke_full_pipeline(subtests):
         with subtests.test(msg="stk COMPRESS renumbers cues to 1,2,3 (collapses gaps)"):
             assert (_cmp_nums == [1.0, 2.0, 3.0])
         with subtests.test(msg="stk COMPRESS preserves cue names in order"):
-            assert ([_stk95.cues[n].name for n in _cmp_nums] == ["Cue1", "Cue5", "Cue10"])
+            assert ([_stk95.cues[n].name for n in _cmp_nums] == ["cue1", "cue5", "cue10"])
         with subtests.test(msg="stk COMPRESS returns 'compressed' confirmation"):
             assert ("compressed" in r_cmp)
 
@@ -2099,9 +2103,9 @@ def test_smoke_full_pipeline(subtests):
             _rf_orig = _rf_master.name
             _rf_result = run_command(f"RENAME FIXTURE {_rf_fid} TempTestName")
             with subtests.test(msg="RENAME FIXTURE: changes master.name"):
-                assert (_rf_master.name == "TempTestName")
+                assert (_rf_master.name == "temptestname")
             with subtests.test(msg="RENAME FIXTURE: includes old→new in response"):
-                assert ("TempTestName" in _rf_result)
+                assert ("temptestname" in _rf_result)
             run_command(f"RENAME FIXTURE {_rf_fid} {_rf_orig}")  # restore
             with subtests.test(msg="RENAME FIXTURE: name restored"):
                 assert (_rf_master.name == _rf_orig)
@@ -2220,7 +2224,7 @@ def test_smoke_full_pipeline(subtests):
             assert (_tmp_fix is not None)
         r_pr = run_command("PATCH RENAME 51 RenamedFix")
         with subtests.test(msg="PATCH RENAME changes fixture name"):
-            assert (patch.get(51) is not None and patch.get(51).name == "RenamedFix")
+            assert (patch.get(51) is not None and patch.get(51).name == "renamedfix")
         r_pm = run_command("PATCH MOVE 51 UNIVERSE 2 AT 50")
         _first_sub_51 = patch.get(51).all_subs()[0] if patch.get(51) else None
         with subtests.test(msg="PATCH MOVE updates sub universe"):
@@ -2255,7 +2259,7 @@ def test_smoke_full_pipeline(subtests):
             assert (prog.data.get('1.1', {}).get('red') == 200)
         run_command("RENAME MACRO 99 Renamed")
         with subtests.test(msg="RENAME MACRO changes name"):
-            assert (macro_pool.get(99, {}).get("name") == "Renamed")
+            assert (macro_pool.get(99, {}).get("name") == "renamed")
         run_command("MACRO DELETE 99")
         with subtests.test(msg="MACRO DELETE removes slot"):
             assert (99 not in macro_pool)
@@ -2263,7 +2267,7 @@ def test_smoke_full_pipeline(subtests):
         macro_pool[98] = {"name": "TestMacro", "commands": ["1 FULL"]}
         r_mrn = run_command("MACRO RENAME 98 RenamedViaMAcroRename")
         with subtests.test(msg="MACRO RENAME <n> <name> renames macro"):
-            assert (macro_pool.get(98, {}).get("name") == "RenamedViaMAcroRename")
+            assert (macro_pool.get(98, {}).get("name") == "renamedviamacrorename")
         del macro_pool[98]
         prog.clear_programmer()
 

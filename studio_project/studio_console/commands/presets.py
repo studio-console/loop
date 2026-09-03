@@ -67,7 +67,10 @@ from studio_console.drivers.osc import OSCEngine
 from studio_console.drivers.audio import AudioEngine, AudioMapper
 from studio_console.drivers.ai import AIEngine
 from studio_console.show import ShowFile, _write_file, _read_file
-from studio_console.commands._shared import _record_cue_into, _prog_fx_stop, _prog_fx_start, _prog_fx_rebuild
+from studio_console.commands._shared import (
+    _record_cue_into, _prog_fx_stop, _prog_fx_start, _prog_fx_rebuild,
+    _snapshot_undo,
+)
 
 # GUIEngine hasn't been extracted yet as its own importable module —
 # defined in studio_project.py, which imports this package. Deferred
@@ -191,6 +194,7 @@ def cmd_075_record_group(t0, tokens, raw):
             return (f"RECORD GROUP: nothing selected — "
                     f"first type  1 THRU 6  (or any fixture range)  "
                     f"then  RECORD GROUP {gid} {name}")
+        _snapshot_undo(group_pool.groups, gid, f"record group {gid}")
         g = group_pool.record(gid, prog, name=name)
         if g:
             save_show()
@@ -230,9 +234,10 @@ def cmd_077_record_color(t0, tokens, raw):
             except ValueError:
                 return "RECORD COLOR: bad R/G/B values"
             _non_num = [t for t in tokens[3:] if not t.lstrip('-').replace('.','',1).isdigit()]
-            name = " ".join(_non_num).title() or f"color {pid}"
+            name = " ".join(_non_num).lower() or f"color {pid}"
             p = ColorPreset(pid, name)
             p.red, p.green, p.blue = float(er), float(eg), float(eb)
+            _snapshot_undo(color_pool.presets, pid, f"record color {pid}")
             color_pool.presets[pid] = p
             save_show()
             _preset_live_push('color', pid)
@@ -243,6 +248,7 @@ def cmd_077_record_color(t0, tokens, raw):
                        if '.' in fid)
         if not _has_rgb:
             return "RECORD COLOR: no RGB data in programmer  (set a colour first)"
+        _snapshot_undo(color_pool.presets, pid, f"record color {pid}")
         p = color_pool.record(pid, prog, name=name)
         save_show()
         _preset_live_push('color', pid)
@@ -290,9 +296,10 @@ def cmd_079_record_dim(t0, tokens, raw):
                 return "RECORD DIM: bad level value"
             level = max(0.0, min(1.0, pct / 100.0 if pct > 1.0 else pct))
             _non_num = [t for t in tokens[3:] if not t.rstrip('%').replace('.','',1).lstrip('-').isdigit()]
-            name = " ".join(_non_num).title() or f"dimmer {pid}"
+            name = " ".join(_non_num).lower() or f"dimmer {pid}"
             p = DimmerPreset(pid, name)
             p.level = level
+            _snapshot_undo(dim_pool.presets, pid, f"record dim {pid}")
             dim_pool.presets[pid] = p
             save_show()
             _preset_live_push('dim', pid)
@@ -304,6 +311,7 @@ def cmd_079_record_dim(t0, tokens, raw):
                        if '.' not in fid)
         if not _has_dim:
             return "RECORD DIM: no dimmer data in programmer  (set a dim level first)"
+        _snapshot_undo(dim_pool.presets, pid, f"record dim {pid}")
         p = dim_pool.record(pid, prog, name=name)
         save_show()
         _preset_live_push('dim', pid)
@@ -318,7 +326,8 @@ def cmd_081_record_attr(t0, tokens, raw):
             pid = int(tokens[2])
         except ValueError:
             return f"RECORD {pool_key}: bad slot number '{tokens[2]}'"
-        name = _name_after(raw, 3) or f"{pool_key.title()} {pid}"
+        name = _name_after(raw, 3) or f"{pool_key.lower()} {pid}"
+        _snapshot_undo(pool.presets, pid, f"record {pool_key.lower()} {pid}")
         p = pool.record(pid, prog, name=name)
         if p and p.data:
             save_show()
@@ -407,8 +416,9 @@ def cmd_086_record_rate(t0, tokens, raw):
             bpm = float(tokens[-1])
         except ValueError:
             return "RECORD RATE: last token must be BPM value  e.g. RECORD RATE 5 Strobe 240"
-        name = " ".join(tokens[3:-1]).title() or f"rate {pid}"
+        name = " ".join(tokens[3:-1]).lower() or f"rate {pid}"
         p = RatePreset(pid, name, bpm)
+        _snapshot_undo(rate_pool.presets, pid, f"record rate {pid}")
         rate_pool.store(pid, p)
         ShowFile.save_rate_pool(rate_pool)
         return f"recorded: {p}  (saved)"
@@ -424,8 +434,9 @@ def cmd_087_record_sizep(t0, tokens, raw):
             size = float(tokens[-1])
         except ValueError:
             return "RECORD SIZEP: last token must be size value 0-100  e.g. RECORD SIZEP 4 Big 100"
-        name = " ".join(tokens[3:-1]).title() or f"size {pid}"
+        name = " ".join(tokens[3:-1]).lower() or f"size {pid}"
         p = SizePreset(pid, name, size)
+        _snapshot_undo(size_pool.presets, pid, f"record size {pid}")
         size_pool.store(pid, p)
         ShowFile.save_size_pool(size_pool)
         return f"recorded: {p}  (saved)"
@@ -441,8 +452,9 @@ def cmd_088_record_spreadp(t0, tokens, raw):
             spread = float(tokens[-1])
         except ValueError:
             return "RECORD SPREADP: last token must be spread 0-100  e.g. RECORD SPREADP 4 Wave 50"
-        name = " ".join(tokens[3:-1]).title() or f"spread {pid}"
+        name = " ".join(tokens[3:-1]).lower() or f"spread {pid}"
         p = SpreadPreset(pid, name, spread)
+        _snapshot_undo(spread_pool.presets, pid, f"record spread {pid}")
         spread_pool.store(pid, p)
         ShowFile.save_spread_pool(spread_pool)
         return f"recorded: {p}  (saved)"
@@ -455,7 +467,7 @@ def cmd_089_speed(t0, tokens, raw):
         except ValueError:
             return f"SPEED: bad slot '{tokens[1]}'  (SPEED <1-{SpeedMasterPool._DEFAULT_SLOTS}> <bpm>)"
         if tokens[2] == 'NAME':
-            name = " ".join(tokens[3:]).title() if len(tokens) > 3 else f"spd{sid}"
+            name = " ".join(tokens[3:]).lower() if len(tokens) > 3 else f"spd{sid}"
             m = speed_master_pool.get(sid)
             if not m:
                 speed_master_pool.masters[sid] = SpeedMaster(sid, 120.0, name)

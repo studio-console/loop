@@ -13,7 +13,7 @@ import signal
 import threading
 
 from studio_console.gui.theme import *  # noqa: F401,F403
-from studio_console.models.fixtures import MasterFixture
+from studio_console.models.fixtures import MasterFixture, SubFixture
 from studio_console.paths import _SCRIPT_DIR
 from studio_console.show import ShowFile
 
@@ -71,6 +71,7 @@ class GUIEngineCore:
     _W_RIGHT    = 720
     _POOL_SLOTS = 24    # 4 rows × 6 cols per panel
     _POOL_COLS  = 6
+    _FORMS_SLOTS = 16   # forms panel: single row of 16 (was 2×12=24)
     _PANEL_W    = 630   # 3 panels + 2 ItemSpacing gaps fit 1920 (3×630+12 = 1902)
     _BTN_W      =  97   # exactly fits 6 columns in a 630-wide panel (97×6+5×6 = 612)
     _BTN_H      =  30   # 4 rows × 30 + 3 × 5gap + header = ~155px content
@@ -234,6 +235,7 @@ class GUIEngineCore:
         self._ai_prompts       = []   # list of {name, prompt} — user-editable AI prompt presets
         self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows fdr (page-1)*15+N
         self._fpg_last_win_size = (0, 0)
+        self._fpg_cuelist_sig   = {}   # slot n -> (stack_id, cue numbers) last built, to skip needless rebuilds
     # Widget values (not window pos/size) that need to survive a restart —
     # currently just the color picker's "live" checkbox, which was
     # silently resetting to its default_value=True on every launch with
@@ -338,7 +340,9 @@ class GUIEngineCore:
         self._pri_lo_theme        = _make_pri_lo_theme()
         self._go_btn_theme        = _make_go_btn_theme()
         self._stop_btn_theme      = _make_stop_btn_theme()
-        self._active_slot_theme   = _make_active_slot_theme()
+        self._selected_slot_theme = _make_selected_slot_theme()
+        self._fpg_id_theme         = _make_fpg_id_theme()
+        self._fpg_id_focused_theme = _make_fpg_id_focused_theme()
         self._fpg_fader_theme     = _make_fpg_fader_theme()
 
         W, H = 1920, 1040   # trimmed from 1080: macOS menu bar eats ~25-38px off a
@@ -346,13 +350,15 @@ class GUIEngineCore:
         self._vp_w, self._vp_h = W, H   # stash for overlay builder (viewport not yet created)
 
         with dpg.window(tag="main", no_close=True, no_collapse=True,
-                        no_move=True, no_resize=True, no_title_bar=True):
-            # Scrolling left ON (was off): stacked panels (header + 3-col row +
-            # pools row + monitors row + AI bar) can exceed the visible viewport
-            # height, and with no_scrollbar the overflow was silently clipped
-            # with no way to reach it. Scrolling is a safe fallback regardless
-            # of the exact overflow amount, which isn't verifiable without a
-            # real display.
+                        no_move=True, no_resize=True, no_title_bar=True,
+                        no_scrollbar=True, no_scroll_with_mouse=True):
+            # No scrollbar, anywhere, full stop — every stacked panel's
+            # height (header + 3-col row + pools row, see _H_MAIN and the
+            # per-panel _H_* constants) must actually add up to fit inside
+            # the fixed viewport instead of relying on scroll as a fallback
+            # for a bad estimate. The forms panel going to a single row of
+            # 16 (see _build_forms_panel) is what freed the room this was
+            # masking a shortfall in.
             self._build_header()
             with dpg.group(horizontal=True):
                 self._build_left_column()
@@ -370,6 +376,7 @@ class GUIEngineCore:
         self._build_attr_popup()
         self._build_fx_params_popup()
         self._build_monitors_popup()
+        self._build_undo_history_popup()
         self._build_ai_bar_popup()
         self._build_ai_history_popup()
         self._build_ai_prompts_popup()
@@ -438,10 +445,19 @@ class GUIEngineCore:
             # (built for button clicks, not raw keypresses) doesn't have.
             dpg.add_key_press_handler(dpg.mvKey_Add,
                                       callback=self._on_global_numpad_op,
-                                      user_data=" + ")
+                                      user_data=("+", " + "))
             dpg.add_key_press_handler(dpg.mvKey_Subtract,
                                       callback=self._on_global_numpad_op,
-                                      user_data=" - ")
+                                      user_data=("-", " - "))
+            # NumPad Divide ("/") — its own keycode, distinct from the
+            # top-row Slash registered in _letter_keys above (which just
+            # types a literal '/'). Shortcut for THRU, mirroring the GUI
+            # numpad's own "/" button (right_column.py) exactly — same
+            # padded-append as Add/Subtract above, so "1 / 6" tokenizes
+            # the same as clicking "thru".
+            dpg.add_key_press_handler(dpg.mvKey_Divide,
+                                      callback=self._on_global_numpad_op,
+                                      user_data=("/", " THRU "))
             dpg.add_key_press_handler(dpg.mvKey_Back,
                                       callback=self._on_global_backspace)
             dpg.add_key_press_handler(dpg.mvKey_Return,
@@ -460,7 +476,14 @@ class GUIEngineCore:
                                       callback=self._on_hist_up)
             dpg.add_key_press_handler(dpg.mvKey_Down,
                                       callback=self._on_hist_down)
+            dpg.add_key_press_handler(dpg.mvKey_Left,
+                                      callback=self._on_arrow_select,
+                                      user_data="PREV")
+            dpg.add_key_press_handler(dpg.mvKey_Right,
+                                      callback=self._on_arrow_select,
+                                      user_data="NEXT")
             dpg.add_mouse_click_handler(callback=self._on_global_mouse_click)
+            dpg.add_mouse_click_handler(callback=self._on_global_right_click)
 
         # Apply per-item themes after widgets are built
         try:
@@ -481,6 +504,11 @@ class GUIEngineCore:
         # normally afterward.
         dpg.toggle_viewport_fullscreen()
         dpg.set_primary_window("main", True)
+        # set_primary_window() silently resets no_scrollbar/no_scroll_with_mouse
+        # back to False as a side effect (confirmed against real DPG behavior,
+        # not assumed) — whatever was passed at dpg.window(...) creation time
+        # above doesn't survive it. Re-apply after, which does stick.
+        dpg.configure_item("main", no_scrollbar=True, no_scroll_with_mouse=True)
     def _on_cmd_execute(self):
         raw = dpg.get_value("cmd_input").strip()
         if not raw:
@@ -522,13 +550,88 @@ class GUIEngineCore:
             if result:
                 self._log(f"  {result}")
         dpg.focus_item("cmd_input")
+    @staticmethod
+    def _wrap_log_line(text, max_w):
+        """Word-wrap one log line to fit max_w px. Multiline InputText (the
+        cmd_log widget — see its build comment in right_column.py) has no
+        native word-wrap, so this has to happen before the text is ever
+        handed to the widget, using the same dpg.get_text_size() real-
+        measurement technique _fit_text uses elsewhere. Splits on spaces;
+        a single word wider than max_w on its own is left on its own line
+        rather than being broken mid-word."""
+        if not text:
+            return [text]
+        try:
+            if dpg.get_text_size(text)[0] <= max_w:
+                return [text]
+        except Exception:
+            return [text]
+        words = text.split(' ')
+        lines = []
+        cur = ''
+        for w in words:
+            candidate = f"{cur} {w}" if cur else w
+            try:
+                fits = dpg.get_text_size(candidate)[0] <= max_w
+            except Exception:
+                fits = True
+            if fits or not cur:
+                cur = candidate
+            else:
+                lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        return lines or ['']
     def _log(self, line):
-        self._cmd_log.append(line)
+        # Wrap against the log window's REAL current width, not a fixed
+        # guess — falls back to the right column's own width budget only
+        # when the widget hasn't been laid out yet (first few ticks).
+        try:
+            _w = dpg.get_item_rect_size("cmd_log_win")[0]
+            if not _w or _w < 20:
+                _w = self._W_RIGHT - 60
+        except Exception:
+            _w = self._W_RIGHT - 60
+        _max_text_w = max(100, _w - 30)   # room for FramePadding + scrollbar
+        self._cmd_log.extend(self._wrap_log_line(line, _max_text_w))
         if len(self._cmd_log) > 200:
             self._cmd_log = self._cmd_log[-200:]
         try:
-            dpg.set_value("cmd_log", "\n".join(self._cmd_log))
-            dpg.set_y_scroll("cmd_log_win", 99999)
+            # Was the view at the bottom of what's THERE NOW, before this
+            # line's content/height change? Checked before resizing below
+            # — comparing against the stale (pre-growth) max is what
+            # correctly answers "was the operator already caught up".
+            _at_bottom = True
+            try:
+                _smax = dpg.get_y_scroll_max("cmd_log_win")
+                _at_bottom = _smax <= 0 or dpg.get_y_scroll("cmd_log_win") >= _smax - 20
+            except Exception:
+                pass
+            # cmd_log's own height needs to track the REAL rendered content
+            # height, not an estimate — a fixed oversized height (tried
+            # first) meant cmd_log_win's scroll range was a constant no
+            # matter how much text existed; a guessed per-line height
+            # (tried second, 20px/line) was close but systematically a
+            # touch too generous, and that small per-line error compounds
+            # across up to 200 lines into a large, growing gap of blank
+            # space below the real content — with the view scrolled to
+            # "max" landing in that gap, past the real last line, pushing
+            # the actual text up out of view (reported both times: visible
+            # empty space growing, real content scrolling out of sight).
+            # dpg.get_text_size() measures the REAL wrapped text block as
+            # DPG's own font metrics will actually render it (it accounts
+            # for embedded newlines), so this can't drift the way a
+            # hand-guessed constant does.
+            full_text = "\n".join(self._cmd_log)
+            try:
+                _content_h = dpg.get_text_size(full_text)[1] + 16
+            except Exception:
+                _content_h = len(self._cmd_log) * 20 + 16
+            dpg.configure_item("cmd_log", height=max(140, int(_content_h)))
+            dpg.set_value("cmd_log", full_text)
+            if _at_bottom:
+                dpg.set_y_scroll("cmd_log_win", 99999)
         except Exception:
             pass
         # Clear any pending error flash on the next non-error log line
@@ -789,12 +892,18 @@ class GUIEngineCore:
         except Exception:
             pass
 
-        # CLEAR button — lights up (go_theme) when programmer has data or selection active
+        # CLEAR button — lights up (go_theme) when programmer has data or
+        # selection active. Driven only by what's ACTUALLY there, not by
+        # do_clear()'s own multi-tap sequence counter (_clear_stage) — that
+        # counter stays > 0 mid-sequence even after data/selection/
+        # live_fades are all genuinely empty (e.g. right after the 2nd of
+        # 3 taps, which clears the data but leaves _clear_stage=2 until a
+        # 3rd tap or a 2s timeout), which kept the button lit with nothing
+        # left to clear (reported: "lighting up if hit too many times").
         try:
             clear_active = bool(
-                (self._prog and (self._prog.data or self._prog.selection or
-                                 self._prog.live_fades)) or
-                (self._prog and self._prog._clear_stage > 0)
+                self._prog and (self._prog.data or self._prog.selection or
+                                self._prog.live_fades)
             )
             theme = self._go_theme if clear_active else self._dim_btn_theme
             if theme:
@@ -846,13 +955,33 @@ class GUIEngineCore:
         except Exception:
             pass
 
-        # Selection counter in command bar (keep small label too)
+        # Selection summary in command bar — was master-fixture-only (the
+        # same isinstance(f, MasterFixture)-only pattern that recurred for
+        # FX/HIGHLIGHT/GROUP/NEXT-PREV earlier), so a sub-fixture-only
+        # selection like "1.5" showed "sel: —" as if nothing were picked.
+        # Also now names what's actually selected instead of just a count
+        # (reported: hard to see/find what fixtures/sub-fixtures are
+        # selected) — a whole fixture shows as its bare id ("3"), a
+        # partial sub-selection shows the specific subs ("3.1, 3.2"); a
+        # full tooltip covers anything the fixed-width label has to elide.
         try:
             sel = self._prog.selection
-            masters = sum(1 for f in sel if isinstance(f, MasterFixture))
-            if masters:
-                dpg.set_value("cmd_sel_count", f"sel: {masters} fixture(s)")
+            masters_full = sorted({f.fixture_id for f in sel if isinstance(f, MasterFixture)})
+            _masters_set = set(masters_full)
+            subs_only = sorted(
+                (f.fixture_id for f in sel
+                 if isinstance(f, SubFixture) and f.master_id not in _masters_set),
+                key=lambda s: tuple(int(p) for p in s.split('.')))
+            parts = [str(m) for m in masters_full] + subs_only
+            if parts:
+                full_label = f"sel: {', '.join(parts)}"
+                fit_label  = self._fit_text(full_label, 220)
+                dpg.set_value("cmd_sel_count", fit_label)
                 dpg.configure_item("cmd_sel_count", color=_C_ACCENT)
+                try:
+                    dpg.set_value("cmd_sel_count_tip", full_label)
+                except Exception:
+                    pass
             else:
                 dpg.set_value("cmd_sel_count", "sel: —")
                 dpg.configure_item("cmd_sel_count", color=_C_DIM)
@@ -912,6 +1041,13 @@ class GUIEngineCore:
                 fa = getattr(ex, '_follow_at', None)
                 if fa and _now >= fa:
                     ex._follow_at = None
+                    if not ex.is_active:
+                        # Fader was stopped after the timer was armed —
+                        # STOP clears _follow_at too now, but guard here
+                        # as well so a stopped fader can never auto-fire
+                        # (this was the cause of a follow-time cue stack
+                        # re-firing in a loop even after STOP).
+                        continue
                     try:
                         self._cmd(f"FADER {ex.fdr_id} GO")
                     except Exception:
@@ -1094,7 +1230,31 @@ class GUIEngineCore:
                         dpg.unhighlight_table_row(tbl_tag, idx)
                 except Exception:
                     pass
-            # Auto-scroll the cue list so the active cue stays visible.
+            # Wrap-to-1 warning row (built hidden in _rebuild_cue_list) —
+            # shown and red-highlighted exactly when the current cue is the
+            # stack's last one, since that's the only moment GO would
+            # actually wrap back to cue 1 (the row doesn't exist at all for
+            # a bounce-mode stack, which never wraps — see does_item_exist).
+            wrap_tag = f"cue_wrap_row_{sid}"
+            if dpg.does_item_exist(wrap_tag):
+                at_last = bool(sorted_nums) and cur == sorted_nums[-1]
+                try:
+                    dpg.configure_item(wrap_tag, show=at_last)
+                    if at_last:
+                        dpg.highlight_table_row(tbl_tag, len(sorted_nums), _C_CUE_WRAP)
+                    else:
+                        dpg.unhighlight_table_row(tbl_tag, len(sorted_nums))
+                except Exception:
+                    pass
+            # Auto-scroll the cue list so the active cue AND the next
+            # upcoming one both stay visible — the operator needs to see
+            # what's coming up next at least as much as what's currently
+            # live. Only one row of headroom above the current cue (was
+            # ~2 rows), which leaves more guaranteed room below it for the
+            # next cue(s); the window shows ~5 rows at this height (118px
+            # / ~23px per row), so even with the row-height estimate below
+            # off by a bit, there's several rows of slack before the next
+            # cue could actually clip off the bottom.
             # row_h is an estimate (real row height = text line height +
             # 2×CellPadding.y, theme.py) — close but not exact, and any
             # per-row error compounds over a long cue list, underscrolling
@@ -1108,7 +1268,7 @@ class GUIEngineCore:
                 try:
                     cur_idx = list(sorted_nums).index(cur) if cur in sorted_nums else 0
                     row_h   = 23   # approximate table row height with padding
-                    target  = max(0, cur_idx * row_h - 44)
+                    target  = max(0, (cur_idx - 1) * row_h)
                     scroll_max = dpg.get_y_scroll_max("cue_list_scroll")
                     if scroll_max:
                         target = min(target, scroll_max)
@@ -1246,6 +1406,37 @@ class GUIEngineCore:
             has_attr = bool(attr_parts)
             attr_str = ' '.join(attr_parts)
 
+            # Pool references — the programmer doesn't just hold raw values,
+            # it can be tracking a *specific saved preset* it was applied
+            # from (color_ref/dim_ref/<attribute>_ref on the master entry —
+            # set by ColorPreset.apply()/DimmerPreset.apply()/
+            # AttributePreset.apply() — and fx_preset_ref per FX layer def,
+            # set by FIRE FX). Recording into a cue while these are set
+            # keeps that cue linked to the preset (UPDATE COLOR n later
+            # live-pushes to it) rather than just copying values, which
+            # wasn't visible anywhere before this.
+            ref_parts = []
+            _cref = m_vals.get('color_ref')
+            if _cref is not None:
+                _p = self._colors.get(_cref) if self._colors else None
+                ref_parts.append(f"[color:{_p.name if _p else _cref}]")
+            _dref = m_vals.get('dim_ref')
+            if _dref is not None:
+                _p = self._dims.get(_dref) if self._dims else None
+                ref_parts.append(f"[dim:{_p.name if _p else _dref}]")
+            for _attr_name, _attr_pool in (self._attr_pools or {}).items():
+                _rk = m_vals.get(f"{_attr_name}_ref")
+                if _rk is not None:
+                    _p = _attr_pool.get(_rk) if _attr_pool else None
+                    ref_parts.append(f"[{_attr_name}:{_p.name if _p else _rk}]")
+            _fx_ref = next((ld.get('fx_preset_ref') for ld in fx_defs
+                            if ld.get('fx_preset_ref') is not None), None)
+            if _fx_ref is not None:
+                _p = self._fx_pool.get(_fx_ref) if self._fx_pool else None
+                ref_parts.append(f"[fx:{_p.name if _p else _fx_ref}]")
+            has_refs = bool(ref_parts)
+            ref_str = ' '.join(ref_parts)
+
             try:
                 dpg.configure_item(f"prog_name_{fid}", color=txt_col)
                 dpg.set_value(f"prog_r_{fid}",   str(r)         if has_data else "—")
@@ -1260,9 +1451,14 @@ class GUIEngineCore:
                 fx_display = fx_lbl
                 if has_attr:
                     fx_display = f"{attr_str}  {fx_lbl}" if has_fx else attr_str
+                # Pool refs lead the column — the operator scans this first
+                # to see whether the programmer is tracking a saved preset
+                # at all, before the raw values that came from it.
+                if has_refs:
+                    fx_display = f"{ref_str}  {fx_display}" if fx_display != "—" else ref_str
                 dpg.set_value(f"prog_fx_{fid}",  fx_display)
                 dpg.configure_item(f"prog_fx_{fid}",
-                                   color=_C_ACCENT if (has_fx or has_attr) else _C_DIM)
+                                   color=_C_ACCENT if (has_fx or has_attr or has_refs) else _C_DIM)
                 brightness = (r + g + b) / (3 * 255) * float(dim if dim is not None else 1.0)
                 # When only FX or attr channels in programmer, show partial bar
                 bar_val = max(brightness, 0.25) if ((has_fx or has_attr) and not (r or g or b)) else brightness

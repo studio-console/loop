@@ -9,6 +9,8 @@ import random
 import threading
 import time
 
+from studio_console.models.naming import LowercaseName
+
 
 # ------------------------------------------------------------
 # Waveform functions
@@ -76,6 +78,8 @@ class Waveform:
 
 class FormPreset:
     """One named waveform shape — built-in or breakpoint curve."""
+
+    name = LowercaseName()
 
     def __init__(self, form_id, name, form_type='builtin',
                  builtin_name=None, breakpoints=None):
@@ -187,6 +191,7 @@ class FormPool:
 class RatePreset:
     """BPM / timing preset."""
     _BUILTINS = [(1,'Slow',30.0),(2,'Medium',60.0),(3,'Fast',120.0),(4,'Very Fast',240.0)]
+    name = LowercaseName()
     def __init__(self, preset_id, name, bpm=60.0):
         self.preset_id = int(preset_id)
         self.name      = name
@@ -207,6 +212,7 @@ class RatePool:
 class SizePreset:
     """Amplitude preset (0–100, where 100 = full DMX 255)."""
     _BUILTINS = [(1,'Subtle',25.0),(2,'Medium',50.0),(3,'Full',100.0)]
+    name = LowercaseName()
     def __init__(self, preset_id, name, size=100.0):
         self.preset_id = int(preset_id)
         self.name      = name
@@ -227,6 +233,7 @@ class SizePool:
 class SpreadPreset:
     """Phase-distribution preset (0 = sync, 100 = full chase)."""
     _BUILTINS = [(1,'Sync',0.0),(2,'Half',50.0),(3,'Chase',100.0)]
+    name = LowercaseName()
     def __init__(self, preset_id, name, spread=100.0):
         self.preset_id = int(preset_id)
         self.name      = name
@@ -247,6 +254,7 @@ class SpreadPool:
 
 class SpeedMaster:
     """One live BPM master slot — FXLayers referencing this slot track its BPM live."""
+    name = LowercaseName()
     def __init__(self, slot_id, bpm=120.0, name=""):
         self.slot_id = int(slot_id)
         self.bpm     = float(bpm)
@@ -670,7 +678,7 @@ class FXEngine:
         self._thread.start()
 
     def add(self, fx_id, waveform, channel, rate_bpm, size,
-            targets, spread=1.0, form_id=None,
+            targets, spread=0.0, form_id=None,
             rate_id=None, size_id=None, spread_id=None, dim_id=None,
             speed_id=None,
             phase_offset=0.0, infade=0.0, outfade=0.0,
@@ -748,14 +756,6 @@ class FXEngine:
             self._layers.clear()
             self.output_state.fx_layer = {}
         print("All FX cleared.")
-
-    def print_fx(self):
-        print("\n===== FX LAYERS =====")
-        if not self._layers:
-            print("  (none active)")
-        for layer in self._layers.values():
-            print(f"  {layer}")
-        print("=====================\n")
 
     def compute_merged(self, now):
         """Evaluate all active FX layers at timestamp `now`, update output_state.fx_layer,
@@ -845,7 +845,16 @@ def _bucket_fx_defs(fx_defs_by_fid, patch):
         if not master:
             continue
         for ld in defs:
-            scope = ld.get('target_scope') or 'pixel'
+            # Docstring above promises 'dim' defaults to whole-fixture scope
+            # and colour channels default to per-pixel — this branch used to
+            # default EVERY channel to 'pixel' unconditionally, silently
+            # contradicting that (a bare "FX SINE DIM" ran per-pixel-desynced
+            # instead of a synced whole-tube dim pulse). cmd_037_strobe
+            # already worked around it by hardcoding an explicit "FIXTURE"
+            # suffix onto its own generated command — this makes that the
+            # real default instead of a per-caller workaround.
+            _default_scope = 'fixture' if ld.get('channel') == 'dim' else 'pixel'
+            scope = ld.get('target_scope') or _default_scope
             _mirror, _cluster, _order = _fx_grouping_compat(ld)
             _subs = ld.get('sub_indices')
             _subs_key = tuple(sorted(_subs)) if _subs else None

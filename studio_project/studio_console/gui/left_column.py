@@ -49,26 +49,18 @@ class GUIEngineLeftColumn:
                 dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_faders)
             dpg.add_separator()
-            with dpg.child_window(tag="playbacks_list", width=-1, height=108,
+            # Running stacks now gets the room live fx (programmer) used to
+            # share this space with — that list moved into the monitors
+            # popup (see _build_monitors_popup in audio_monitors.py, "kill"
+            # button and all) since it needed a "check on it occasionally"
+            # popup a lot less than running stacks needed the room to show
+            # more than one or two faders at a time. 128+50(old prog_fx_list)
+            # plus its header/separator overhead reclaimed, so the left
+            # column's total height budget doesn't grow (no scrollbar
+            # anywhere is the whole point — see build()'s own comment).
+            with dpg.child_window(tag="playbacks_list", width=-1, height=220,
                                   border=False, no_scrollbar=False, no_scroll_with_mouse=False):
                 dpg.add_text("— none running", tag="playbacks_empty", color=_C_DIM)
-
-            # ── Live programmer FX ───────────────
-            # Moved out of the header bar (was crammed into "fx: <waveform>
-            # <bpm>bpm" text there) — a long-enough FX description used to
-            # reflow the whole header row, pushing the win (minimize/close)
-            # cluster off the edge of the viewport whenever an effect went
-            # live. The header now shows a fixed, clipped summary; this list
-            # is the actual detail view, with room for more than one layer.
-            with dpg.group(horizontal=True):
-                dpg.add_text("› live fx (programmer)", color=_C_ACCENT)
-                dpg.add_spacer(width=4)
-                dpg.add_button(label="kill", width=50, height=22,
-                               callback=lambda: self._cmd("FX CLEAR") if self._cmd else None)
-            dpg.add_separator()
-            with dpg.child_window(tag="prog_fx_list", width=-1, height=70,
-                                  border=False, no_scrollbar=False, no_scroll_with_mouse=False):
-                dpg.add_text("— none live", tag="prog_fx_empty", color=_C_DIM)
 
             # FX live controls (tap/rate/size/spread/kill fx/rsp pool) moved
             # into the fx editor window — see _build_fx_editor_popup in
@@ -217,6 +209,23 @@ class GUIEngineLeftColumn:
                               self._cmd_history[-(self._cmd_hist_i + 1)])
             except Exception:
                 pass
+    def _on_arrow_select(self, _sender, _app_data, user_data):
+        """Left/Right arrow — PREV/NEXT fixture (or sub-fixture, when
+        exactly one is selected — see NEXT/PREV's own extended stepping in
+        programmer._parse_selection) stepping, mirroring the numpad prev/
+        next buttons exactly. Gated like the ↑/↓ history handlers above:
+        only fires when no input-type widget has focus at all — Left/Right
+        are standard text-cursor-movement keys and must not be hijacked
+        while actually editing cmd_input or any other field."""
+        if self._cmd_input_needs_focus():
+            return
+        cmd = user_data
+        self._log(f"> {cmd}")
+        if self._cmd:
+            result = self._cmd(cmd)
+            if result:
+                for line in str(result).splitlines():
+                    self._log(f"  {line}")
     def _on_ctrl_s(self, *_):
         """Ctrl+S: save show."""
         is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
@@ -283,6 +292,19 @@ class GUIEngineLeftColumn:
                 self._log(f"> SELECT {master.fixture_id}")
         except Exception:
             pass
+    def _on_global_right_click(self, sender, app_data):
+        """Right-click anywhere — currently only meaningful over either
+        undo button, where it opens the hold-undo history popup (see
+        _build_undo_history_popup/_open_undo_history in right_column.py)."""
+        if app_data != 1:   # 1 = right mouse button
+            return
+        for tag in ("qbtn_undo", "numpad_undo_btn"):
+            try:
+                if dpg.does_item_exist(tag) and dpg.is_item_hovered(tag):
+                    self._open_undo_history()
+                    return
+            except Exception:
+                pass
     def _on_global_char(self, sender, app_data, user_data):
         """Route printable keys to cmd_input when no other text widget is active."""
         if self._cmd_input_needs_focus():
@@ -299,22 +321,40 @@ class GUIEngineLeftColumn:
         dpg.set_value("cmd_input",
                       dpg.get_value("cmd_input") + lo)
     def _on_global_numpad_op(self, _sender, _app_data, user_data):
-        """Physical NumPad +/- — appends the SAME padded " + "/" - " string
-        the GUI numpad's own +/- buttons do (_numpad_append in
-        right_column.py), so the two behave identically. Unlike plain
-        _numpad_append (built for button clicks, which can't collide with
-        typing elsewhere), this checks the same other-field-focus guard
-        every other global key route uses, since a raw keypress can fire
-        while some other text field legitimately has focus."""
-        if self._cmd_input_needs_focus():
+        """Physical NumPad +/-// — appends the SAME padded " + "/" - "/
+        " THRU " string the GUI numpad's own buttons do (_numpad_append in
+        right_column.py), so the two behave identically.
+
+        Gated on _other_field_has_focus() (excludes cmd_input), not
+        _cmd_input_needs_focus() (which doesn't) — same fix already applied
+        to _on_global_backspace and for the same reason: dpg.focus_item(
+        "cmd_input") runs after every command, so cmd_input holds real
+        native DPG focus most of the time, and gating on "cmd_input
+        doesn't have focus" made this handler nearly unreachable in
+        practice (reported: physical +/- silently stopped padding).
+
+        But cmd_input HAVING native focus is exactly the case that needs
+        the most care here: DPG's own input_text widget handles a raw
+        keypress itself before this handler ever runs, inserting the bare,
+        unpadded character (a literal "+"/"-"/"/") — key handlers in DPG
+        are notification-only, there's no way to cancel that native
+        insertion. So instead of preventing it, detect it (the value now
+        ends with the bare native character) and swap it for the padded
+        version after the fact — matches what the GUI button produces
+        exactly, regardless of whether cmd_input was focused or not."""
+        if self._other_field_has_focus():
             return
         is_ctrl = (dpg.is_key_down(dpg.mvKey_LControl) or
                    dpg.is_key_down(dpg.mvKey_RControl) or
                    dpg.is_key_down(dpg.mvKey_ModSuper))
         if is_ctrl:
             return
+        native_char, padded = user_data
         try:
-            dpg.set_value("cmd_input", dpg.get_value("cmd_input") + user_data)
+            val = dpg.get_value("cmd_input")
+            if val.endswith(native_char):
+                val = val[:-len(native_char)]
+            dpg.set_value("cmd_input", val + padded)
         except Exception:
             pass
     def _on_global_backspace(self, *_):

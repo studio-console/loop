@@ -125,10 +125,30 @@ class GUIEngineAIPopups:
             if dpg.is_item_shown("ai_bar_window"):
                 self._save_popup_layout()
                 dpg.hide_item("ai_bar_window")
+                dpg.focus_item("cmd_input")
+                self._ai_end_conversation()
             else:
                 dpg.show_item("ai_bar_window")
+                dpg.focus_item("ai_input")
         except Exception:
             pass
+    def _on_ai_bar_close(self, *_):
+        """Native window-X close — same cleanup as the header toggle button,
+        plus handing focus back to cmd_input (see _on_ai_send)."""
+        self._save_popup_layout()
+        try:
+            dpg.focus_item("cmd_input")
+        except Exception:
+            pass
+        self._ai_end_conversation()
+    def _ai_end_conversation(self):
+        """Closing the AI window ends the conversation — the next prompt
+        starts fresh rather than dragging in an old, unrelated exchange."""
+        if self._ai:
+            try:
+                self._ai.clear_chat_history()
+            except Exception:
+                pass
     def _on_ai_chip(self, sender, app_data, user_data):
         """Fire a quick-prompt chip — set the input text and send immediately."""
         if self._ai is None:
@@ -161,6 +181,19 @@ class GUIEngineAIPopups:
             dpg.configure_item("ai_status", default_value="thinking…", color=_C_DIM)
         except Exception:
             pass
+        # Keep the cursor in the ai window while it's in use, rather than
+        # letting it fall back to cmd_input — on_enter submission in DPG
+        # drops native focus off the input_text, and with nothing focused
+        # the global key handlers (_on_global_char etc.) route the next
+        # keystroke to cmd_input by default. Re-claim focus immediately,
+        # and again once the (threaded, possibly slow) request finishes,
+        # in case the wait itself let focus drift. Only closing the ai
+        # window (see _on_ai_bar_close/_on_ai_bar_toggle) or a manual
+        # click elsewhere should send focus back to cmd_input.
+        try:
+            dpg.focus_item("ai_input")
+        except Exception:
+            pass
 
         def _run():
             try:
@@ -174,6 +207,11 @@ class GUIEngineAIPopups:
             finally:
                 try:
                     dpg.configure_item("ai_status", default_value="", color=_C_DIM)
+                except Exception:
+                    pass
+                try:
+                    if dpg.is_item_shown("ai_bar_window"):
+                        dpg.focus_item("ai_input")
                 except Exception:
                     pass
             summary = f"{len(actions)} action(s)" if actions else "no actions"
