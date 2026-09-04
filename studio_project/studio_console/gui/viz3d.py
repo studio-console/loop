@@ -32,6 +32,12 @@ left_column.py's stage-canvas click handling already uses):
     down (clamped so it can't flip past looking straight up or down).
     Both ride the same drag rather than needing a second modifier, same
     as any standard 3D viewer's orbit+tilt control.
+  - Cmd/Ctrl+Shift+right-click-drag on a fixture: rotates that fixture's
+    yaw instead of orbiting the camera — a second way to reach the same
+    axis Ctrl+left-drag already rotates, without needing to grab the
+    fixture with the left button first. Only takes over when a fixture
+    is actually under the cursor; elsewhere on the canvas it's a normal
+    camera orbit+tilt.
   - "pause orbit" button: stops the automatic "attract mode" spin without
     affecting manual dragging.
 The camera's orbit angle (_viz3d_orbit_angle) and pitch (_viz3d_cam_pitch)
@@ -130,6 +136,9 @@ class GUIEngineViz3D:
         self._viz3d_drag_start_yaw       = 0.0
         self._viz3d_drag_start_mx        = 0.0
         self._viz3d_drag_start_my        = 0.0
+        self._viz3d_rotate_fid           = None
+        self._viz3d_rotate_start_yaw     = 0.0
+        self._viz3d_rotate_start_mx      = 0.0
         self._viz3d_screen_pos           = {}   # {fixture_id: (screen_x, screen_y)} — refreshed every tick
 
         fixtures = list(self._patch.all_fixtures())
@@ -139,7 +148,8 @@ class GUIEngineViz3D:
                            callback=self._on_viz3d_orbit_pause_toggle)
             dpg.add_text("rig viz — glow = live RGB output, dim wire = unlit  "
                          "(1 grid square = 1ft. drag=move, shift-drag=height, "
-                         "ctrl-drag=rotate. right-drag=orbit+tilt)",
+                         "ctrl-drag=rotate. right-drag=orbit+tilt, "
+                         "cmd/ctrl+shift+right-drag on a fixture=rotate)",
                          color=_C_DIM, tag="viz3d_help_text", wrap=880)
             with dpg.drawlist(tag="viz3d_canvas", width=880, height=640):
                 dpg.draw_rectangle((0, 0), (880, 640), fill=_C_BG, color=(0, 0, 0, 0),
@@ -225,8 +235,35 @@ class GUIEngineViz3D:
             if not dpg.is_item_hovered("viz3d_canvas"):
                 return
             mouse = dpg.get_mouse_pos(local=False)
+            canvas_min = dpg.get_item_rect_min("viz3d_canvas")
         except Exception:
             return
+
+        # Cmd/Ctrl+Shift+right-drag over a fixture rotates ITS yaw
+        # instead of orbiting the camera — same axis Ctrl+left-drag
+        # already rotates, just reachable without first clicking the
+        # fixture with the left button. Only takes over when a fixture
+        # is actually under the cursor; otherwise falls through to the
+        # normal camera orbit+tilt below, same as a plain right-drag
+        # anywhere else on the canvas.
+        cmd_shift = ((dpg.is_key_down(dpg.mvKey_LControl) or dpg.is_key_down(dpg.mvKey_RControl)
+                      or dpg.is_key_down(dpg.mvKey_ModSuper))
+                     and (dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift)))
+        if cmd_shift:
+            mx, my = mouse[0] - canvas_min[0], mouse[1] - canvas_min[1]
+            best_fid, best_d2 = None, self._VIZ3D_DRAG_HIT_PX ** 2
+            for fid, (sx, sy) in self._viz3d_screen_pos.items():
+                d2 = (mx - sx) ** 2 + (my - sy) ** 2
+                if d2 < best_d2:
+                    best_fid, best_d2 = fid, d2
+            if best_fid is not None:
+                master = self._patch.get(best_fid)
+                eff = next((p for p in self._viz3d_fixture_positions() if p[0] is master), None)
+                self._viz3d_rotate_fid = best_fid
+                self._viz3d_rotate_start_yaw = math.degrees(eff[4]) if eff else 0.0
+                self._viz3d_rotate_start_mx = mouse[0]
+                return   # don't also start a camera orbit on this press
+
         self._viz3d_orbit_dragging = True
         self._viz3d_orbit_drag_start_x = mouse[0]
         self._viz3d_orbit_drag_start_y = mouse[1]
@@ -236,6 +273,13 @@ class GUIEngineViz3D:
     def _on_viz3d_right_up(self, sender, app_data):
         if app_data != 1:
             return
+        if self._viz3d_rotate_fid is not None:
+            self._viz3d_rotate_fid = None
+            try:
+                if self._save:
+                    self._save()
+            except Exception:
+                pass
         self._viz3d_orbit_dragging = False
 
     # ------------------------------------------------------------
@@ -416,6 +460,30 @@ class GUIEngineViz3D:
         elif not self._viz3d_orbit_paused and last is not None:
             dt = max(0.0, min(0.25, now - last))  # clamp so a long-hidden window doesn't jump on reshow
             self._viz3d_orbit_angle += dt * (2.0 * math.pi / self._VIZ3D_CAM_PERIOD)
+
+        # ---- apply an in-progress Cmd/Ctrl+Shift+right-drag fixture rotation ----
+        if self._viz3d_rotate_fid is not None:
+            if dpg.is_mouse_button_down(dpg.mvMouseButton_Right):
+                try:
+                    mouse = dpg.get_mouse_pos(local=False)
+                except Exception:
+                    mouse = None
+                master = self._patch.get(self._viz3d_rotate_fid)
+                if mouse is not None and master is not None:
+                    eff = next((p for p in self._viz3d_fixture_positions() if p[0] is master), None)
+                    cx, cy, cz = (eff[1], eff[2], eff[3]) if eff else (0.0, self._VIZ3D_MARKER, 0.0)
+                    dx_screen = mouse[0] - self._viz3d_rotate_start_mx
+                    new_yaw = (self._viz3d_rotate_start_yaw
+                               + dx_screen * self._VIZ3D_YAW_DRAG_SENSITIVITY) % 360.0
+                    master.viz_position = {"x": cx, "y": cy, "z": cz, "yaw": round(new_yaw, 1)}
+            else:
+                # Same released-outside-canvas safety net as the other drags.
+                self._viz3d_rotate_fid = None
+                try:
+                    if self._save:
+                        self._save()
+                except Exception:
+                    pass
 
         cam = self._viz3d_camera_pose()
         screen_cx, screen_cy = w / 2.0, h / 2.0
