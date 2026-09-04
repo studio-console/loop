@@ -25,7 +25,7 @@ import re as _re
 from studio_console.state import (
     LIGHTFORM_CUE_MAP, STUDIO_DRY_RUN, STUDIO_HEADLESS, _NET_BIND, _NET_UNIVERSES, _active_fader,
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
-    _fader_dim, _fixture_defaults, _fx_params, _macro_play_stack, _macro_recording, _make_set_speed_master,
+    _fader_dim, _fixture_defaults, _fx_params, _group_live_sync, _macro_play_stack, _macro_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
@@ -1247,6 +1247,21 @@ def cmd_125_update_main(t0, tokens, raw):
             _preset_live_push('dim', upd_id)
             return f"updated: {p}  (live-pushed to playing cues)"
 
+        elif upd_type == 'group':
+            # UPDATE GROUP doesn't re-record from the programmer like
+            # color/dim/fx — group membership is edited separately (GROUP n
+            # ADD/REMOVE), and there's no single "current value" to push
+            # since a group is a set of fixtures, not a value. This just
+            # resyncs any cue that recalled this group to its now-current
+            # membership — see _group_live_sync's docstring.
+            g = group_pool.get(upd_id)
+            if not g:
+                return f"UPDATE GROUP: group {upd_id} not found — use RECORD GROUP {upd_id} first"
+            n = _group_live_sync(upd_id)
+            if n:
+                return f"updated: {g}  ({n} cue(s) resynced to current membership, show saved)"
+            return f"updated: {g}  (no cues reference this group yet — nothing to resync)"
+
         elif upd_type == 'fx':
             # Re-snapshot current programmer FX (same as RECORD FX but with live push)
             seen, defs = set(), []
@@ -1289,7 +1304,7 @@ def cmd_125_update_main(t0, tokens, raw):
             # Generic attribute pool
             ap = _attr_pools.get(upd_type)
             if ap is None:
-                return f"UPDATE: unknown preset type '{upd_type}'  (valid: color, dim, fx, position, gobo, zoom, focus, beam, control)"
+                return f"UPDATE: unknown preset type '{upd_type}'  (valid: color, dim, fx, group, position, gobo, zoom, focus, beam, control)"
             existing_p = ap.get(upd_id)
             old_name = existing_p.name if existing_p else f"{upd_type} {upd_id}"
             _snapshot_undo(ap.presets, upd_id, f"update {upd_type} {upd_id}")

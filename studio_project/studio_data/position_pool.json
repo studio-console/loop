@@ -1,5 +1,17 @@
 {
   "version": "3.0",
   "attribute": "position",
-  "presets": {}
+  "presets": {
+    "90": {
+      "preset_id": 90,
+      "name": "test position",
+      "attribute": "position",
+      "data": {
+        "7.1": {
+          "pan": 100,
+          "tilt": 50
+        }
+      }
+    }
+  }
 }

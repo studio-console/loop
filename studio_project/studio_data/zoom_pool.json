@@ -1,5 +1,16 @@
 {
   "version": "3.0",
   "attribute": "zoom",
-  "presets": {}
+  "presets": {
+    "90": {
+      "preset_id": 90,
+      "name": "test zoom",
+      "attribute": "zoom",
+      "data": {
+        "7.1": {
+          "zoom": 200
+        }
+      }
+    }
+  }
 }

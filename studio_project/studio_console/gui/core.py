@@ -1423,6 +1423,10 @@ class GUIEngineCore:
             # live-pushes to it) rather than just copying values, which
             # wasn't visible anywhere before this.
             ref_parts = []
+            _gref = m_vals.get('group_ref')
+            if _gref is not None:
+                _p = self._groups.get(_gref) if self._groups else None
+                ref_parts.append(f"[group:{_p.name if _p else _gref}]")
             _cref = m_vals.get('color_ref')
             if _cref is not None:
                 _p = self._colors.get(_cref) if self._colors else None
@@ -1560,6 +1564,10 @@ class GUIEngineCore:
                         if _cue and fid in _cue.data:
                             _ref_src = _cue.data[fid]   # last (highest-priority) wins
             ref_parts = []
+            _gref = _ref_src.get('group_ref')
+            if _gref is not None:
+                _p = self._groups.get(_gref) if self._groups else None
+                ref_parts.append(f"[group:{_p.name if _p else _gref}]")
             _cref = _ref_src.get('color_ref')
             if _cref is not None:
                 _p = self._colors.get(_cref) if self._colors else None

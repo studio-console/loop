@@ -130,8 +130,21 @@ class FixtureLibrary:
         print(f"Profile registered: {profile}")
 
     def get(self, name):
-        """Look up a profile by name."""
-        return self.profiles.get(name, None)
+        """Look up a profile by name, case-insensitively.
+        Every command token arrives here already uppercased (the
+        dispatcher tokenizes with raw.upper() — see CLAUDE.md, "all
+        commands are case-insensitive"), but profiles are registered
+        under their real mixed-case name ("Generic_Moving", not
+        "GENERIC_MOVING"). An exact-case dict lookup made PATCH ADD
+        unreachable for any profile name that wasn't already all-caps —
+        "SGM_RGB_54" only ever worked by coincidence."""
+        if name in self.profiles:
+            return self.profiles[name]
+        name_u = name.upper()
+        for pname, profile in self.profiles.items():
+            if pname.upper() == name_u:
+                return profile
+        return None
 
     def load_from_folder(self, folder_path):
         """

@@ -212,11 +212,26 @@ class AttributePreset:
                 self.data[fid] = snap
 
     def apply(self, programmer):
+        # Stamp the ref on the MASTER fixture id regardless of which fid
+        # the actual channel values live under — mirrors ColorPreset.
+        # apply()'s masters_written pattern. The old "'.' not in fid"
+        # check assumed attribute data was always keyed at master level,
+        # which only holds for a multi-pixel fixture with a genuine
+        # master-level attribute entry; every 1-pixel profile (every
+        # built-in profile except the RGB pixel tubes — Generic_RGB,
+        # Generic_RGBW, Generic_Moving, Generic_Moving_Wash) stores its
+        # attribute values under its own sub-fixture key ("7.1"), so the
+        # ref was silently never written for any of those — an
+        # attribute preset applied fine but never linked back to the
+        # cue that recorded it, so UPDATE <TYPE> n never found anything
+        # to live-push to.
         ref_key = f"{self.attribute}_ref"
+        masters_written = set()
         for fid, vals in self.data.items():
             programmer.data.setdefault(fid, {}).update(vals)
-            if '.' not in str(fid):
-                programmer.data[fid][ref_key] = self.preset_id
+            masters_written.add(str(fid).split('.')[0])
+        for mfid in masters_written:
+            programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
 
     def to_dict(self):
         return {
@@ -348,11 +363,22 @@ class GroupPool:
         return g
 
     def recall(self, group_id, programmer):
-        """Select the group's fixtures into the programmer."""
+        """Select the group's fixtures into the programmer, and stamp a
+        group_ref on each member's programmer entry — mirrors color_ref/
+        dim_ref (an attribute preset stamps a ref the same way; see
+        AttributePreset.apply()). This is what lets a later RECORD CUE
+        capture "this look came from group N" and UPDATE GROUP N resync
+        cues when membership changes later, even though recall() itself
+        only ever changes selection, never programmer.data — a group
+        member with nothing else set afterward just carries a bare
+        {'group_ref': N} entry, which _resolve_cue_refs already treats
+        as pure metadata (skipped, never leaks into DMX output)."""
         g = self.get(group_id)
         if g:
             fixtures = g.recall(programmer.patch)
             programmer.select(fixtures)
+            for _type, fid in g.members:
+                programmer.data.setdefault(str(fid), {})['group_ref'] = group_id
         return g
 
     def delete(self, group_id):

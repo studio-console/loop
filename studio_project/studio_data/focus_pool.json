@@ -1,5 +1,16 @@
 {
   "version": "3.0",
   "attribute": "focus",
-  "presets": {}
+  "presets": {
+    "90": {
+      "preset_id": 90,
+      "name": "test focus",
+      "attribute": "focus",
+      "data": {
+        "7.1": {
+          "focus": 180
+        }
+      }
+    }
+  }
 }

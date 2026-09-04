@@ -1,5 +1,16 @@
 {
   "version": "3.0",
   "attribute": "control",
-  "presets": {}
+  "presets": {
+    "90": {
+      "preset_id": 90,
+      "name": "test control",
+      "attribute": "control",
+      "data": {
+        "7.1": {
+          "control": 40
+        }
+      }
+    }
+  }
 }

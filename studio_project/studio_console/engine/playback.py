@@ -133,12 +133,15 @@ def _resolve_cue_refs(cue_data, patch, color_pool, dim_pool, attr_pools=None):
     dim_ref    → master dim via DimmerPool
     <x>_ref    → master/fixture channel values via attr_pools dict
                  e.g. attr_pools={"position": position_pool, "gobo": gobo_pool}
+    group_ref  → pure metadata (which group this entry's membership came
+                 from, for UPDATE GROUP n to resync later) — never
+                 resolves to a channel value, always skipped.
 
     Returns a new dict safe to pass to FadeEngine (no ref metadata, no lists).
     """
     attr_pools   = attr_pools or {}
     attr_ref_keys = {f"{name}_ref" for name in attr_pools}
-    _SKIP_KEYS   = {'fx', 'color_ref', 'dim_ref', 'color_baked'} | attr_ref_keys
+    _SKIP_KEYS   = {'fx', 'color_ref', 'dim_ref', 'color_baked', 'group_ref'} | attr_ref_keys
     masters_with_color_ref = set()
     resolved = {}
 
@@ -154,16 +157,6 @@ def _resolve_cue_refs(cue_data, patch, color_pool, dim_pool, attr_pools=None):
             dp = dim_pool.get(int(dim_ref))
             if dp:
                 master_vals['dim'] = dp.level
-
-        # Generic attribute ref expansion (position_ref, gobo_ref, zoom_ref, etc.)
-        for attr_name, pool in attr_pools.items():
-            ref_id = vals.get(f"{attr_name}_ref")
-            if ref_id is not None:
-                ap = pool.get(int(ref_id))
-                if ap:
-                    src = ap.data.get(fid)
-                    if src:
-                        master_vals.update(src)
 
         if master_vals:
             resolved[fid] = master_vals
@@ -193,6 +186,32 @@ def _resolve_cue_refs(cue_data, patch, color_pool, dim_pool, attr_pools=None):
             continue  # already written by color_ref expansion
         if fid not in resolved:
             resolved[fid] = {k: v for k, v in vals.items() if k not in _SKIP_KEYS}
+
+    # Third pass: attribute-ref expansion. Like dim_ref, an <attr>_ref
+    # is resolved fresh from its pool and OVERRIDES whatever raw value
+    # the second pass copied through from the baked snapshot — so a
+    # later UPDATE <TYPE> n changes what this cue resolves to on every
+    # future fire (BACK/GOTO/reload), not just the currently-active
+    # fader's in-memory layer (that's _preset_live_push's job, for a
+    # cue that's already playing right now). ap.data is keyed by
+    # whichever fid the channels actually live under — the sub fid for
+    # any 1-pixel profile, so this walks ap.data's own keys rather than
+    # looking values up under the master fid (which is empty for those
+    # profiles and would silently resolve nothing).
+    for fid, vals in cue_data.items():
+        if '.' in fid:
+            continue
+        for attr_name, pool in attr_pools.items():
+            ref_id = vals.get(f"{attr_name}_ref")
+            if ref_id is None:
+                continue
+            ap = pool.get(int(ref_id))
+            if not ap:
+                continue
+            for raw_fid, src in ap.data.items():
+                if not src or str(raw_fid).split('.')[0] != fid:
+                    continue
+                resolved.setdefault(str(raw_fid), {}).update(src)
 
     return resolved
 

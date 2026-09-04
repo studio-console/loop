@@ -34692,6 +34692,38 @@
         }
       },
       "note": "colour crossfades slow (6s), dim snaps fast (1s) -- watch the two decouple"
+    },
+    "20": {
+      "name": "attr test",
+      "allow_exec_time": true,
+      "wrap": false,
+      "cues": {
+        "1.0": {
+          "name": "all attrs",
+          "fade_time": 2.0,
+          "delay_time": 0.0,
+          "data": {
+            "7.1": {
+              "pan": 100,
+              "tilt": 50,
+              "gobo": 30,
+              "zoom": 200,
+              "focus": 180,
+              "iris": 90,
+              "control": 40
+            },
+            "7": {
+              "position_ref": 90,
+              "gobo_ref": 90,
+              "zoom_ref": 90,
+              "focus_ref": 90,
+              "beam_ref": 90,
+              "control_ref": 90,
+              "dim": 1.0
+            }
+          }
+        }
+      }
     }
   }
 }

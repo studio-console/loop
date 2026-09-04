@@ -1,5 +1,16 @@
 {
   "version": "3.0",
   "attribute": "beam",
-  "presets": {}
+  "presets": {
+    "90": {
+      "preset_id": 90,
+      "name": "test beam",
+      "attribute": "beam",
+      "data": {
+        "7.1": {
+          "iris": 90
+        }
+      }
+    }
+  }
 }

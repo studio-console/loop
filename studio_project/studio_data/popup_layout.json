@@ -65,9 +65,9 @@
   "monitors_window": {
     "pos": [
       0,
-      263
+      472
     ],
-    "width": 1919,
+    "width": 2248,
     "height": 373,
     "show": false
   },
@@ -127,12 +127,12 @@
   },
   "fader_page_window": {
     "pos": [
-      76,
-      182
+      22,
+      444
     ],
     "width": 1826,
-    "height": 825,
-    "show": false
+    "height": 562,
+    "show": true
   },
   "audio_window": {
     "pos": [

@@ -1298,7 +1298,14 @@ def _preset_live_push(preset_type, preset_id):
                 ex._start_cue_fx(cue, patch, default_infade=0.0, default_outfade=0.0)
 
         else:
-            # generic attribute pool
+            # generic attribute pool. The ref is always stamped at
+            # master level (AttributePreset.apply()'s masters_written
+            # pattern), but the preset's own raw values can live under
+            # a sub-fixture fid (any 1-pixel profile) — so push by
+            # walking p.data's own keys and deriving each one's master
+            # id to check the ref, not by walking cue.data's keys and
+            # looking up p.data under the master id (which is empty
+            # for a 1-pixel fixture and silently pushed nothing).
             ref_key = f"{preset_type}_ref"
             ap = _attr_pools.get(preset_type)
             if not ap:
@@ -1306,20 +1313,168 @@ def _preset_live_push(preset_type, preset_id):
             p = ap.get(preset_id)
             if not p:
                 continue
-            for fid, vals in cue.data.items():
-                if '.' in fid or vals.get(ref_key) != preset_id:
+            for raw_fid, src in p.data.items():
+                if not src:
                     continue
-                src = p.data.get(fid, {})
-                if src:
-                    ex.layer.setdefault(fid, {}).update(src)
+                master_vals = cue.data.get(str(raw_fid).split('.')[0])
+                if not master_vals or master_vals.get(ref_key) != preset_id:
+                    continue
+                ex.layer.setdefault(str(raw_fid), {}).update(src)
 
+
+def _group_live_sync(group_id):
+    """
+    Resync every cue that references group_id to its CURRENT membership.
+
+    Unlike color/dim/attribute presets — a single value pushed wherever
+    its ref appears — a group is a *set of fixtures*, so "live-push"
+    means something different here: each cue that recalled this group
+    keeps its own previously-recorded look (whatever values its other
+    group_ref-tagged entries already carry), and this only reconciles
+    WHO'S IN the group for that cue —
+      - a fixture newly added to the group (GROUP n ADD) gets the same
+        values as whatever other group_ref-tagged member already has
+        content, so it joins the look already in progress;
+      - a fixture removed from the group (GROUP n REMOVE) has its
+        group_ref stamp cleared from that cue — its recorded values are
+        left in place (not deleted), it just stops being live-linked to
+        future edits of this group.
+    Applying "whatever's currently in the programmer" globally to every
+    cue would be wrong — it would overwrite each cue's own distinct look
+    with one snapshot. Membership is what's shared; values stay per-cue.
+
+    A whole-fixture ("master") member only ever carries group_ref on its
+    own master key (GroupPool.recall()'s stamping), but for a multi-pixel
+    fixture the fixture's actual channel values live on its SUB keys
+    ("1.1".."1.54"), not the master key — same split AttributePreset had
+    to account for. So propagating a new master-type member's look means
+    copying the template master's whole *footprint* (its master entry
+    plus every "<master>.<n>" sub entry it has in this cue), remapped
+    onto the new master's own id — not just the one master-level dict. A
+    "sub"-type member (one specific pixel) has no such split: the pixel's
+    own key carries both the group_ref and its values directly.
+
+    Also live-pushes to any fader currently playing a cue this touches,
+    same as _preset_live_push does for color/dim/attributes.
+
+    Returns the number of cues that were actually changed.
+    """
+    import copy as _copy
+    g = group_pool.get(group_id)
+    if not g:
+        return 0
+    current_masters = {str(fid) for _type, fid in g.members if _type == 'master'}
+    current_subs    = {str(fid) for _type, fid in g.members if _type == 'sub'}
+    n_changed = 0
+
+    for stk in stack_pool.stacks.values():
+        for cue in stk.cues.values():
+            tagged_masters = {fid for fid, vals in cue.data.items()
+                               if '.' not in fid and vals.get('group_ref') == group_id}
+            tagged_subs    = {fid for fid, vals in cue.data.items()
+                               if '.' in fid and vals.get('group_ref') == group_id}
+            if not tagged_masters and not tagged_subs:
+                continue
+            changed = False
+
+            # ---- master-type members: propagate a whole fixture footprint ----
+            footprint = None  # {suffix ('' or '.N'): vals}
+            for tm in tagged_masters:
+                foot = {'': {k: v for k, v in cue.data[tm].items() if k != 'group_ref'}}
+                prefix = f"{tm}."
+                for fid, vals in cue.data.items():
+                    if fid.startswith(prefix):
+                        foot[fid[len(tm):]] = dict(vals)
+                if any(foot.values()):
+                    footprint = foot
+                    break
+
+            for mkey in current_masters:
+                entry = cue.data.get(mkey)
+                is_new = entry is None
+                if is_new:
+                    entry = {}
+                    cue.data[mkey] = entry
+                if entry.get('group_ref') != group_id:
+                    entry['group_ref'] = group_id
+                    changed = True
+                    if is_new and footprint:
+                        for suffix, vals in footprint.items():
+                            if suffix == '':
+                                entry.update({k: v for k, v in vals.items()
+                                              if k != 'group_ref'})
+                            else:
+                                cue.data[f"{mkey}{suffix}"] = _copy.deepcopy(vals)
+
+            for mkey in list(tagged_masters):
+                if mkey in current_masters:
+                    continue
+                cue.data[mkey].pop('group_ref', None)
+                if not cue.data[mkey]:
+                    del cue.data[mkey]
+                changed = True
+
+            # ---- sub-type members: single-key template, no footprint split ----
+            sub_template = None
+            for sk in tagged_subs:
+                content = {k: v for k, v in cue.data[sk].items() if k != 'group_ref'}
+                if content:
+                    sub_template = content
+                    break
+
+            for skey in current_subs:
+                entry = cue.data.get(skey)
+                if entry is None:
+                    entry = {'group_ref': group_id}
+                    if sub_template:
+                        entry.update(_copy.deepcopy(sub_template))
+                    cue.data[skey] = entry
+                    changed = True
+                elif entry.get('group_ref') != group_id:
+                    entry['group_ref'] = group_id
+                    changed = True
+
+            for skey in list(tagged_subs):
+                if skey in current_subs:
+                    continue
+                cue.data[skey].pop('group_ref', None)
+                if not cue.data[skey]:
+                    del cue.data[skey]
+                changed = True
+
+            if changed:
+                n_changed += 1
+
+            # Live-push: if this cue is the currently-active cue on any
+            # playing fader, reflect the resync in its live output too —
+            # every current member's full footprint (master's own
+            # non-meta values plus every one of its sub entries).
+            for ex in fader_pool.faders.values():
+                if not (ex.is_active and ex.stack is stk and ex.stack.current == cue.cue_number):
+                    continue
+                for mkey in current_masters:
+                    prefix = f"{mkey}."
+                    for fid, vals in cue.data.items():
+                        if fid == mkey or fid.startswith(prefix):
+                            content = {k: v for k, v in vals.items() if k != 'group_ref'}
+                            if content:
+                                ex.layer.setdefault(fid, {}).update(content)
+                for skey in current_subs:
+                    entry = cue.data.get(skey, {})
+                    content = {k: v for k, v in entry.items() if k != 'group_ref'}
+                    if content:
+                        ex.layer.setdefault(skey, {}).update(content)
+
+    if n_changed:
+        save_show()
+    return n_changed
 
 
 
 __all__ = [
     "LIGHTFORM_CUE_MAP", "STUDIO_DRY_RUN", "STUDIO_HEADLESS", "_NET_BIND", "_NET_UNIVERSES", "_active_fader",
     "_active_stack", "_apply_fixture_defaults", "_apply_timing_edit", "_attr_pools", "_blackout_saved_level", "_cs_loaded",
-    "_fader_dim", "_fixture_defaults", "_fx_params", "_macro_play_stack", "_macro_recording", "_make_set_speed_master",
+    "_fader_dim", "_fixture_defaults", "_fx_params", "_group_live_sync", "_macro_play_stack", "_macro_recording", "_make_set_speed_master",
     "_midi_doc", "_name_after", "_on_cue_fire", "_osc_cmd", "_osc_fader", "_osc_key",
     "_preset_live_push", "_prog_fx_ids", "_prog_snapshots", "_prog_time", "_start_magenta_sine", "_stop_fx",
     "_stop_prog_fx_preview", "_tap_times", "active_fader", "active_fx", "ai", "all_subs",
