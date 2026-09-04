@@ -90,6 +90,9 @@ class GUIEngineHeader:
             dpg.add_spacer(width=2)
             dpg.add_button(label="mon", width=50, height=24,
                            callback=self._on_monitors_toggle)
+            dpg.add_spacer(width=2)
+            dpg.add_button(label="3d viz", width=55, height=24,
+                           callback=self._on_viz3d_toggle)
             dpg.add_spacer(width=8)
             dpg.add_text("│", color=_C_BORDER)
             dpg.add_spacer(width=6)

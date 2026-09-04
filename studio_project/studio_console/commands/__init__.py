@@ -142,6 +142,7 @@ from .patch import (
     cmd_093_fixture_info,
     cmd_104_copy_fixture_to,
     cmd_126_viz_layout,
+    cmd_127_viz_position,
 )
 from .presets import (
     cmd_074_group,
@@ -280,6 +281,7 @@ _DISPATCH = [
     cmd_124_list_refs,
     cmd_125_update_main,
     cmd_126_viz_layout,
+    cmd_127_viz_position,
 ]
 
 

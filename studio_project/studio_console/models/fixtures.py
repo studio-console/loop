@@ -453,6 +453,13 @@ class MasterFixture:
         # before moving to the next (colmajor) rather than left-to-right/
         # top-to-bottom like the generic auto layout assumes.
         self.viz_layout     = None
+        # Optional 3D rig-viz placement — {"x": float, "y": float,
+        # "z": float, "yaw": float} in the 3D viz window's own arbitrary
+        # units, or None to fall back to gui/viz3d.py's auto-arrange (a
+        # line/grid ordered by patch id). Set via the VIZ POSITION
+        # command (commands/patch.py), same "sensible default, explicit
+        # override wins" shape as viz_layout above.
+        self.viz_position   = None
 
     def build_sub_fixtures(self):
         """Creates all SubFixture objects based on the profile."""

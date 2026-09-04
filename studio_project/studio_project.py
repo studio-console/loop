@@ -102,13 +102,14 @@ from studio_console.gui.color_picker import GUIEngineColorPicker
 from studio_console.gui.speed_master import GUIEngineSpeedMaster
 from studio_console.gui.fader_page import GUIEngineFaderPage
 from studio_console.gui.audio_monitors import GUIEngineAudioMonitors
+from studio_console.gui.viz3d import GUIEngineViz3D
 
 
 class GUIEngine(GUIEngineCore, GUIEngineHeader, GUIEngineLeftColumn,
                  GUIEngineRightColumn, GUIEngineStage, GUIEnginePoolsPanel,
                  GUIEngineHardwarePopups, GUIEngineMiscPopups, GUIEngineFXEditor,
                  GUIEngineAIPopups, GUIEngineColorPicker, GUIEngineSpeedMaster,
-                 GUIEngineFaderPage, GUIEngineAudioMonitors):
+                 GUIEngineFaderPage, GUIEngineAudioMonitors, GUIEngineViz3D):
     pass
 
 

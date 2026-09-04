@@ -246,7 +246,12 @@ Rules:
         from __main__ import Fader
         fixtures = [
             {"id": m.fixture_id, "name": m.name,
-             "pixels": len(list(m.all_subs()))}
+             "pixels": len(list(m.all_subs())),
+             # 3D rig-viz placement — None means auto-arranged (a line
+             # along x ordered by patch id), not "no fixture here".
+             # Included so a request like "arrange them in a circle" can
+             # see what's already placed instead of arranging blind.
+             "viz_position": getattr(m, 'viz_position', None)}
             for m in self._patch.all_fixtures()
         ]
         stacks = {}
@@ -403,6 +408,17 @@ Rules:
             "stk N CLEAR) — only use those when the user explicitly asked for "
             "that specific removal, never as an improvised part of a creative "
             "lighting request.\n\n"
+            "House style, when interpreting a creative request: build looks "
+            "incrementally (select, set colour, set dim, set movement) rather "
+            "than one giant blast of every fixture at once. Vary cue timing "
+            "intentionally — a moody wash and a hard snap cue should not "
+            "share the same fade time. Think in terms of contrast and "
+            "balance, not just colour: a look with a few fixtures lit and the "
+            "rest dark often reads better than everything matching. For a "
+            "vague request like 'moody' or 'dramatic', lean toward slower "
+            "fades (2-4s) and lower saturation/dim; for 'energetic' or "
+            "'party', faster and brighter. Prefer fewer, more decisive "
+            "changes over constant small tweaks.\n\n"
             "This is a real conversation, not one-shot requests — a short "
             "window of your own recent turns (prompt + your reply, exactly "
             "as you sent it) is included as prior messages below, so you can "

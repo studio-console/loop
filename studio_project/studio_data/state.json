@@ -1,7 +1,7 @@
 {
   "version": "3.0",
   "master_level": 1.0,
-  "active_fader": 21,
+  "active_fader": 20,
   "faders": {
     "1": {
       "stack_id": 1,
@@ -86,7 +86,7 @@
     },
     "10": {
       "stack_id": 10,
-      "current": 2.0,
+      "current": null,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
@@ -95,7 +95,7 @@
     },
     "11": {
       "stack_id": 11,
-      "current": null,
+      "current": 2.0,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
@@ -167,7 +167,7 @@
     },
     "19": {
       "stack_id": 19,
-      "current": null,
+      "current": 2.0,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
@@ -176,7 +176,7 @@
     },
     "20": {
       "stack_id": 20,
-      "current": null,
+      "current": 1.0,
       "priority": 0,
       "level": 1.0,
       "time_on": false,
@@ -184,7 +184,7 @@
       "time_delay": null
     },
     "21": {
-      "stack_id": 21,
+      "stack_id": null,
       "current": null,
       "priority": 0,
       "level": 1.0,

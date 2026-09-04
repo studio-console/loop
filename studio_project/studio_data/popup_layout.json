@@ -1,11 +1,11 @@
 {
   "patch_window": {
     "pos": [
-      100,
-      100
+      264,
+      334
     ],
-    "width": 691,
-    "height": 553,
+    "width": 772,
+    "height": 592,
     "show": false
   },
   "osc_window": {
@@ -65,9 +65,9 @@
   "monitors_window": {
     "pos": [
       0,
-      472
+      393
     ],
-    "width": 2248,
+    "width": 2176,
     "height": 373,
     "show": false
   },
@@ -105,7 +105,7 @@
     ],
     "width": 760,
     "height": 230,
-    "show": true
+    "show": false
   },
   "color_picker_window": {
     "pos": [
@@ -127,12 +127,12 @@
   },
   "fader_page_window": {
     "pos": [
-      22,
-      444
+      41,
+      395
     ],
     "width": 1826,
     "height": 562,
-    "show": true
+    "show": false
   },
   "audio_window": {
     "pos": [
@@ -150,6 +150,15 @@
     ],
     "width": 434,
     "height": 221,
+    "show": false
+  },
+  "viz3d_window": {
+    "pos": [
+      380,
+      79
+    ],
+    "width": 1389,
+    "height": 932,
     "show": false
   },
   "__values__": {

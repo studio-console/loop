@@ -35,7 +35,7 @@ class GUIEngineCore:
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
         "color_picker_window", "speed_master_window", "fader_page_window",
-        "audio_window", "fx_params_window",
+        "audio_window", "fx_params_window", "viz3d_window",
     ]
     # Was os.path.dirname(os.path.abspath(__file__)) — that resolved
     # relative to studio_project.py itself when this class lived there
@@ -384,6 +384,7 @@ class GUIEngineCore:
         self._build_speed_master_popup()
         self._build_fader_page_popup()
         self._build_audio_popup()
+        self._build_viz3d_popup()
 
         with dpg.handler_registry():
             dpg.add_key_press_handler(dpg.mvKey_Delete,
@@ -484,6 +485,10 @@ class GUIEngineCore:
                                       user_data="NEXT")
             dpg.add_mouse_click_handler(callback=self._on_global_mouse_click)
             dpg.add_mouse_click_handler(callback=self._on_global_right_click)
+            dpg.add_mouse_click_handler(callback=self._on_viz3d_left_down)
+            dpg.add_mouse_click_handler(callback=self._on_viz3d_right_down)
+            dpg.add_mouse_release_handler(callback=self._on_viz3d_left_up)
+            dpg.add_mouse_release_handler(callback=self._on_viz3d_right_up)
 
         # Apply per-item themes after widgets are built
         try:
@@ -680,6 +685,7 @@ class GUIEngineCore:
 
         self._tick_pools()
         self._tick_stage()
+        self._tick_viz3d()
         self._tick_fader_page()
         self._tick_audio()
 

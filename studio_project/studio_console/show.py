@@ -888,6 +888,8 @@ class ShowFile:
             }
             if getattr(master, 'viz_layout', None):
                 fx_doc["viz_layout"] = master.viz_layout
+            if getattr(master, 'viz_position', None):
+                fx_doc["viz_position"] = master.viz_position
             fixtures.append(fx_doc)
         doc = {"version": ShowFile.VERSION, "fixtures": fixtures}
         _write_file(ShowFile.PATCH, doc)
@@ -909,6 +911,8 @@ class ShowFile:
             )
             if master is not None and f.get("viz_layout"):
                 master.viz_layout = f["viz_layout"]
+            if master is not None and f.get("viz_position"):
+                master.viz_position = f["viz_position"]
         print(f"  Loaded patch    — {len(patch.fixtures)} fixture(s)")
         return True
 

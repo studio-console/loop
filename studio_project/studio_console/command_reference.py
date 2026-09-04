@@ -416,6 +416,11 @@ COMMAND_REFERENCE = [
         ("VIZ LAYOUT GRID 6x9 COLMAJOR", "no fixture range given — applies to whatever's currently selected (select first, e.g. '1 THRU 4', same as any other command)"),
         ("VIZ LAYOUT 5 AUTO",      "remove fixture 5's custom grid, back to auto-fit (picks the squarest shape that fits the panel)"),
         ("cols x rows",            "cols = pixels across, rows = pixels down, in physical order — for a 54-pixel fixture wired as 6 strips of 9, that's GRID 6x9, not 9x6"),
+        ("VIZ POSITION",           "list every fixture with a custom 3D viz placement (none listed = all fixtures auto-arranged)"),
+        ("VIZ POSITION 5 AT 3,0.5,-2", "place fixture 5 at x=3ft y=0.5ft (resting on the floor) z=-2ft in the 3D rig viz window"),
+        ("VIZ POSITION 5 AT 3,0.5,-2 90", "same, plus a 90-degree yaw (rotation around the vertical axis)"),
+        ("VIZ POSITION 1 THRU 4 CLEAR", "remove fixtures 1-4's custom placement, back to auto-arrange (a line/grid ordered by patch id)"),
+        ("3D viz coordinate system", "units are FEET — one ground-grid square is 1x1ft, and each fixture's marker cube is exactly 1x1x1ft, so distances read directly off the grid. y is up — y=0 is the ground plane the grid is drawn on, a fixture sitting ON the floor has y=0.5 (its cube resting on the floor, not its center in the floor) — a truss-mounted fixture would use a larger y. x is left/right, z is depth (toward/away from the camera). yaw is degrees, 0 = facing +z, rotating around the vertical (y) axis. Auto-arrange (no VIZ POSITION set) lines fixtures up along x at y=0.5 (resting on the floor), 2.5ft apart centre-to-centre, centered on x=0, ordered by fixture id — a reasonable starting layout to build a request like 'arrange in a circle' or 'put the movers upstage, 6ft back' from, since fixtures.viz_position in the console state shows what's currently set (None = still auto-arranged) rather than requiring a guess."),
     ]),
     ("macros", [
         ("MACRO RECORD 1 LookA",  "start recording commands to slot 1 (name is optional)"),

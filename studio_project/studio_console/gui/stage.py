@@ -94,6 +94,63 @@ class GUIEngineStage:
                             fill=(8, 6, 18, 255),
                             color=(0, 0, 0, 0), thickness=0,
                         )
+    def _compute_sub_rgb_dim(self, master, sub, cue_merged, gm):
+        """Resolve one sub-fixture's live RGB (dim/grandmaster-scaled,
+        clamped 0-255) plus the raw dim fraction that produced it.
+
+        Shared by _tick_stage() below (the 2D stage view — the master
+        bar samples this via its first sub-fixture as a colour stand-in
+        for the whole bar; the sub-pixel dot grid calls it per pixel)
+        and gui/viz3d.py's 3D tick — this used to be duplicated inline
+        in both blocks of _tick_stage() before this extraction, and a
+        third viz would have meant a third copy-paste.
+        """
+        fid  = str(master.fixture_id)
+        sfid = str(sub.fixture_id)
+        prog_s = self._out.programmer_layer.get(sfid, {})
+        cue_s  = cue_merged.get(sfid, {})
+        fx_s   = self._out.fx_layer.get(sfid, {})
+        base_r = prog_s.get('red',   cue_s.get('red',   0))
+        base_g = prog_s.get('green', cue_s.get('green', 0))
+        base_b = prog_s.get('blue',  cue_s.get('blue',  0))
+        # Envelope-blended merge (matches get_dmx_for_universe)
+        if 'red' in fx_s:
+            env_r = fx_s.get('_env_red', 1.0)
+            r = max(0, min(255, int(int(base_r) * (1.0 - env_r) + fx_s['red'])))
+        else:
+            r = int(base_r)
+        if 'green' in fx_s:
+            env_g = fx_s.get('_env_green', 1.0)
+            g = max(0, min(255, int(int(base_g) * (1.0 - env_g) + fx_s['green'])))
+        else:
+            g = int(base_g)
+        if 'blue' in fx_s:
+            env_b = fx_s.get('_env_blue', 1.0)
+            b = max(0, min(255, int(int(base_b) * (1.0 - env_b) + fx_s['blue'])))
+        else:
+            b = int(base_b)
+
+        mp  = self._out.programmer_layer.get(fid, {})
+        mc  = cue_merged.get(fid, {})
+        fxm = self._out.fx_layer.get(fid, {})
+        fdr = fxm.get('dim')
+        # pixel-scope dim FX lives under the sub fixture ID, not master
+        if fdr is None:
+            fdr = fx_s.get('dim')
+        ron = any(fx_s.get(f'_env_{c}', 0.0) > 0.001 for c in ('red', 'green', 'blue'))
+        if fdr is not None:
+            dim = max(0.0, min(1.0, mp.get('dim', mc.get('dim', master.virtual_dimmer)) * (fdr / 255.0)))
+        elif ron:
+            cd  = mc.get('dim')
+            dim = mp.get('dim', cd if cd is not None else 1.0)
+        else:
+            dim = mp.get('dim', mc.get('dim', master.virtual_dimmer))
+
+        r = max(0, min(255, int(r * dim * gm)))
+        g = max(0, min(255, int(g * dim * gm)))
+        b = max(0, min(255, int(b * dim * gm)))
+        return r, g, b, dim
+
     def _tick_stage(self):
         """Recompute fixture colours from output state and update stage canvas.
         All geometry is computed here from the actual canvas size so the layout
@@ -139,48 +196,7 @@ class GUIEngineStage:
             if self._out:
                 first_sub = next(iter(master.sub_fixtures.values()), None)
                 if first_sub:
-                    sfid   = str(first_sub.fixture_id)
-                    prog_s = self._out.programmer_layer.get(sfid, {})
-                    cue_s  = cue_merged.get(sfid, {})
-                    fx_s   = self._out.fx_layer.get(sfid, {})
-                    base_r = prog_s.get('red',   cue_s.get('red',   0))
-                    base_g = prog_s.get('green', cue_s.get('green', 0))
-                    base_b = prog_s.get('blue',  cue_s.get('blue',  0))
-                    # Envelope-blended merge (matches get_dmx_for_universe)
-                    if 'red' in fx_s:
-                        env_r = fx_s.get('_env_red', 1.0)
-                        r = max(0, min(255, int(base_r * (1.0 - env_r) + fx_s['red'])))
-                    else:
-                        r = int(base_r)
-                    if 'green' in fx_s:
-                        env_g = fx_s.get('_env_green', 1.0)
-                        g = max(0, min(255, int(base_g * (1.0 - env_g) + fx_s['green'])))
-                    else:
-                        g = int(base_g)
-                    if 'blue' in fx_s:
-                        env_b = fx_s.get('_env_blue', 1.0)
-                        b = max(0, min(255, int(base_b * (1.0 - env_b) + fx_s['blue'])))
-                    else:
-                        b = int(base_b)
-                    mp  = self._out.programmer_layer.get(fid, {})
-                    mc  = cue_merged.get(fid, {})
-                    fxm = self._out.fx_layer.get(fid, {})
-                    fdr = fxm.get('dim')
-                    # pixel-scope dim FX lives under the sub fixture ID, not master
-                    if fdr is None:
-                        fdr = fx_s.get('dim')
-                    ron = any(fx_s.get(f'_env_{c}', 0.0) > 0.001
-                              for c in ('red', 'green', 'blue'))
-                    if fdr is not None:
-                        dim = max(0.0, min(1.0, mp.get('dim', mc.get('dim', master.virtual_dimmer)) * (fdr / 255.0)))
-                    elif ron:
-                        cd  = mc.get('dim')
-                        dim = mp.get('dim', cd if cd is not None else 1.0)
-                    else:
-                        dim = mp.get('dim', mc.get('dim', master.virtual_dimmer))
-                    r = max(0, min(255, int(r * dim * gm)))
-                    g = max(0, min(255, int(g * dim * gm)))
-                    b = max(0, min(255, int(b * dim * gm)))
+                    r, g, b, dim = self._compute_sub_rgb_dim(master, first_sub, cue_merged, gm)
             hl_active = (self._out and self._out.highlight_mode and
                          (master.fixture_id in self._out.highlight_fids
                           or any(str(s.fixture_id) in self._out.highlight_fids
@@ -253,46 +269,7 @@ class GUIEngineStage:
                 sx0  = x0 + col * dot_s
                 sy0  = sub_y0 + row * dot_s
                 sfid = str(sub.fixture_id)
-                ps   = self._out.programmer_layer.get(sfid, {})
-                stk   = cue_merged.get(sfid, {})
-                fs   = self._out.fx_layer.get(sfid, {})
-                br   = ps.get('red',   stk.get('red',   0))
-                bg2  = ps.get('green', stk.get('green', 0))
-                bb   = ps.get('blue',  stk.get('blue',  0))
-                # Envelope-blended merge (matches get_dmx_for_universe)
-                if 'red' in fs:
-                    env_r = fs.get('_env_red', 1.0)
-                    sr = max(0, min(255, int(int(br) * (1.0 - env_r) + fs['red'])))
-                else:
-                    sr = int(br)
-                if 'green' in fs:
-                    env_g = fs.get('_env_green', 1.0)
-                    sg = max(0, min(255, int(int(bg2) * (1.0 - env_g) + fs['green'])))
-                else:
-                    sg = int(bg2)
-                if 'blue' in fs:
-                    env_b = fs.get('_env_blue', 1.0)
-                    sb2 = max(0, min(255, int(int(bb) * (1.0 - env_b) + fs['blue'])))
-                else:
-                    sb2 = int(bb)
-                mp   = self._out.programmer_layer.get(fid, {})
-                mc   = cue_merged.get(fid, {})
-                fxm  = self._out.fx_layer.get(fid, {})
-                fdr  = fxm.get('dim')
-                # pixel-scope dim FX lives under the sub fixture ID, not master
-                if fdr is None:
-                    fdr = fs.get('dim')
-                ron  = any(fs.get(f'_env_{c}', 0.0) > 0.001 for c in ('red', 'green', 'blue'))
-                if fdr is not None:
-                    sdim = max(0.0, min(1.0, mp.get('dim', mc.get('dim', master.virtual_dimmer)) * (fdr / 255.0)))
-                elif ron:
-                    cd   = mc.get('dim')
-                    sdim = mp.get('dim', cd if cd is not None else 1.0)
-                else:
-                    sdim = mp.get('dim', mc.get('dim', master.virtual_dimmer))
-                sr  = max(0, min(255, int(sr  * sdim * gm)))
-                sg  = max(0, min(255, int(sg  * sdim * gm)))
-                sb2 = max(0, min(255, int(sb2 * sdim * gm)))
+                sr, sg, sb2, sdim = self._compute_sub_rgb_dim(master, sub, cue_merged, gm)
                 if hl_active:
                     sfill = (255, 255, 255, 255)
                 elif sr or sg or sb2:

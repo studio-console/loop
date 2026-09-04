@@ -389,3 +389,82 @@ def cmd_126_viz_layout(t0, tokens, raw):
     return f"viz layout: {cols}x{rows} {order} set on fixture(s) {applied}{warn}"
 
 
+def cmd_127_viz_position(t0, tokens, raw):
+    """VIZ POSITION — set/clear/list a per-fixture placement in the 3D
+    rig viz window. Stored on the fixture itself (MasterFixture.
+    viz_position) and persisted in patch.json, mirroring VIZ LAYOUT
+    above almost exactly — same dispatch shape, same range-parsing
+    fallback to the current selection, same whole-fixture collapse, same
+    list/set/clear three-way.
+
+    VIZ POSITION                                  — list all overrides
+    VIZ POSITION [<range>] AT x,y,z [yaw]          — set a placement
+    VIZ POSITION [<range>] CLEAR                   — clear (auto-arrange)
+    <range> defaults to the current programmer selection if omitted.
+    x,y,z are in the 3D viz window's own arbitrary units; yaw is degrees,
+    default 0.
+    """
+    if t0 != 'VIZ' or len(tokens) < 2 or tokens[1] != 'POSITION':
+        return None
+
+    if len(tokens) == 2:
+        overrides = [(m.fixture_id, m.viz_position) for m in patch.all_fixtures()
+                     if getattr(m, 'viz_position', None)]
+        if not overrides:
+            return "VIZ POSITION: no fixtures have a custom placement (all auto-arranged)"
+        lines = [f"  {fid}: x={p['x']:.1f} y={p['y']:.1f} z={p['z']:.1f} yaw={p.get('yaw', 0.0):.0f}"
+                 for fid, p in overrides]
+        return "custom viz positions:\n" + "\n".join(lines)
+
+    rest = tokens[2:]
+    kw_idx = next((i for i, t in enumerate(rest) if t in ('AT', 'CLEAR')), None)
+    if kw_idx is None:
+        return ("usage: VIZ POSITION [<range>] AT x,y,z [yaw]"
+                 "  |  VIZ POSITION [<range>] CLEAR  |  VIZ POSITION")
+    range_tokens  = rest[:kw_idx]
+    action_tokens = rest[kw_idx:]
+
+    targets = prog._parse_selection(range_tokens) if range_tokens else list(prog.selection)
+    if not targets:
+        return "VIZ POSITION: no fixtures specified — give a range (e.g. 1 THRU 4) or select fixtures first"
+
+    master_ids = set()
+    for f in targets:
+        if isinstance(f, SubFixture):
+            master_ids.add(f.master_id)
+        elif isinstance(f, MasterFixture):
+            master_ids.add(f.fixture_id)
+    masters = [m for m in (patch.get(mid) for mid in sorted(master_ids)) if m]
+    if not masters:
+        return "VIZ POSITION: no valid fixtures in that range"
+
+    if action_tokens[0] == 'CLEAR':
+        for m in masters:
+            m.viz_position = None
+        save_show()
+        return f"viz position: {len(masters)} fixture(s) reset to auto-arrange"
+
+    if len(action_tokens) < 2:
+        return "usage: VIZ POSITION [<range>] AT x,y,z [yaw]"
+    coord_spec = _re.match(r'^(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)$', action_tokens[1])
+    if not coord_spec:
+        return f"VIZ POSITION: bad coordinate '{action_tokens[1]}' — expected x,y,z, e.g. 3,0,-2"
+    try:
+        x, y, z = (float(coord_spec.group(i)) for i in (1, 2, 3))
+    except ValueError:
+        return f"VIZ POSITION: bad coordinate '{action_tokens[1]}'"
+
+    yaw = 0.0
+    if len(action_tokens) >= 3:
+        try:
+            yaw = float(action_tokens[2])
+        except ValueError:
+            return f"VIZ POSITION: bad yaw '{action_tokens[2]}' — expected a number in degrees"
+
+    for m in masters:
+        m.viz_position = {"x": x, "y": y, "z": z, "yaw": yaw}
+    save_show()
+    applied = [m.fixture_id for m in masters]
+    return f"viz position: x={x} y={y} z={z} yaw={yaw} set on fixture(s) {applied}"
+
+

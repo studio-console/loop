@@ -12,6 +12,12 @@
         "cols": 6,
         "rows": 9,
         "order": "colmajor"
+      },
+      "viz_position": {
+        "x": 2.348,
+        "y": 0.5,
+        "z": -2.977,
+        "yaw": 0.0
       }
     },
     {
@@ -25,6 +31,12 @@
         "cols": 6,
         "rows": 9,
         "order": "colmajor"
+      },
+      "viz_position": {
+        "x": -4.043,
+        "y": 0.5,
+        "z": -3.019,
+        "yaw": 0.0
       }
     },
     {
@@ -38,6 +50,12 @@
         "cols": 6,
         "rows": 9,
         "order": "colmajor"
+      },
+      "viz_position": {
+        "x": 2.637,
+        "y": 0.5,
+        "z": 2.493,
+        "yaw": 0.0
       }
     },
     {
@@ -51,6 +69,12 @@
         "cols": 6,
         "rows": 9,
         "order": "colmajor"
+      },
+      "viz_position": {
+        "x": -3.202,
+        "y": 0.5,
+        "z": 1.93,
+        "yaw": 0.0
       }
     },
     {
@@ -64,6 +88,12 @@
         "cols": 1,
         "rows": 54,
         "order": "colmajor"
+      },
+      "viz_position": {
+        "x": -4.317,
+        "y": 0.5,
+        "z": 8.537,
+        "yaw": 0.0
       }
     },
     {
@@ -77,6 +107,12 @@
         "cols": 1,
         "rows": 54,
         "order": "colmajor"
+      },
+      "viz_position": {
+        "x": 2.995,
+        "y": 0.5,
+        "z": 8.168,
+        "yaw": 0.0
       }
     },
     {
@@ -85,7 +121,13 @@
       "profile": "Generic_Moving",
       "universe": 3,
       "start_address": 1,
-      "extra_outputs": []
+      "extra_outputs": [],
+      "viz_position": {
+        "x": 7.35,
+        "y": 0.5,
+        "z": 0.622,
+        "yaw": 0.0
+      }
     }
   ]
 }
