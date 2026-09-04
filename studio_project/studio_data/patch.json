@@ -7,7 +7,12 @@
       "profile": "SGM_RGB_54",
       "universe": 1,
       "start_address": 1,
-      "extra_outputs": []
+      "extra_outputs": [],
+      "viz_layout": {
+        "cols": 6,
+        "rows": 9,
+        "order": "colmajor"
+      }
     },
     {
       "fixture_id": 2,
@@ -15,7 +20,12 @@
       "profile": "SGM_RGB_54",
       "universe": 1,
       "start_address": 163,
-      "extra_outputs": []
+      "extra_outputs": [],
+      "viz_layout": {
+        "cols": 6,
+        "rows": 9,
+        "order": "colmajor"
+      }
     },
     {
       "fixture_id": 3,
@@ -23,7 +33,12 @@
       "profile": "SGM_RGB_54",
       "universe": 1,
       "start_address": 325,
-      "extra_outputs": []
+      "extra_outputs": [],
+      "viz_layout": {
+        "cols": 6,
+        "rows": 9,
+        "order": "colmajor"
+      }
     },
     {
       "fixture_id": 4,
@@ -31,7 +46,12 @@
       "profile": "SGM_RGB_54",
       "universe": 2,
       "start_address": 1,
-      "extra_outputs": []
+      "extra_outputs": [],
+      "viz_layout": {
+        "cols": 6,
+        "rows": 9,
+        "order": "colmajor"
+      }
     },
     {
       "fixture_id": 5,

@@ -179,14 +179,22 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
     _KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY', 'FOLLOW',
            'CFADE', 'CINFADE', 'DFADE', 'DINFADE', 'CDELAY', 'DDELAY',
            'GROUP', 'COLOR', 'COLOUR', 'DIM'}
-    up  = raw_str.upper()
 
     # Quoted name wins; otherwise build from leading non-keyword tokens.
     # If no name is given and a cue already exists at this number, keep its name.
     name_match = _re.search(r'"([^"]*)"', raw_str)
     if name_match:
         name = name_match.group(1)
+        # Everything below scans `up` with plain \bKEYWORD\s+<number>
+        # regexes (_get_timing/_extract_int) that have no concept of
+        # quote boundaries — a cue literally named e.g. "dim 25" or
+        # "fade 3 to black" would otherwise get misread as FADE/DIM/etc.
+        # keyword+value pairs baked into the quoted name text. Mask the
+        # quoted span out before building `up` so only real keyword
+        # tokens outside the name are ever matched.
+        _scan_str = raw_str[:name_match.start()] + raw_str[name_match.end():]
     else:
+        _scan_str = raw_str
         name_parts = []
         for tok in suffix_tokens:
             if tok in _KW or (tok and tok[0].isdigit()):
@@ -197,6 +205,8 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
         else:
             existing = stk.get_cue(cue_num)
             name = existing.name if existing else f"cue {cue_num:.0f}"
+
+    up = _scan_str.upper()
 
     # Timing extraction helper — tries multiple keyword aliases in order
     def _get_timing(*kws):
@@ -293,7 +303,13 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
         existing = stk.get_cue(cue_num)
         if existing:
             _push_cue_undo(f"{'update' if merge else 'record'} cue {cue_num} timing")
-            _apply_timing_edit(existing, raw_str)
+            # _scan_str (not raw_str) — same quoted-name mask computed
+            # above, so a rename like RECORD CUE 1 "cfade 9 rename" can't
+            # also silently set a colour-group fade override from text
+            # inside the name (_apply_timing_edit does its own
+            # raw_str.upper() + \bKEYWORD\s+<number> scan internally,
+            # with no awareness of quote boundaries either).
+            _apply_timing_edit(existing, _scan_str)
             if name:
                 existing.name = name
             save_show()
@@ -310,7 +326,7 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
             return f"UPDATE CUE: cue {cue_num} not found — create it first with RECORD CUE"
         _push_cue_undo(f"update cue {cue_num}")
         cue.update(prog)
-        _apply_timing_edit(cue, raw_str)
+        _apply_timing_edit(cue, _scan_str)   # _scan_str — see comment above
         if name:
             cue.name = name
         if cue_num == int(cue_num):

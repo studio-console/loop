@@ -50,7 +50,7 @@ from studio_console.models.presets import (
     Group, GroupPool, Cue, Stack, CuePool, StackPool,
     Fader, FaderPool, FXPreset, FXPool, Fade,
 )
-from studio_console.commands._shared import _prog_fx_rebuild, _delete_with_undo
+from studio_console.commands._shared import _prog_fx_rebuild, _delete_with_undo, _resolve_fx_selection_targets
 
 from studio_console.engine.playback import (
     FadeEngine, OutputState, _resolve_cue_refs, _vfade_apply, _exec_fader_mode_hook, _stack_fire_cue,
@@ -209,7 +209,14 @@ def cmd_049_park(t0, tokens, raw):
         off = len(tokens) > 1 and tokens[1] in ('OFF', 'RELEASE')
         if off:
             return run_command("UNPARK")
-        sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
+        # Resolve through _resolve_fx_selection_targets() rather than an
+        # isinstance(f, MasterFixture)-only filter — a sub-fixture-only
+        # selection (e.g. "1.5") used to leave sel_masters empty here and
+        # PARK would refuse ("select fixtures first") even though a
+        # fixture genuinely was selected. PARK only ever freezes at
+        # whole-fixture granularity anyway, so resolving subs up to
+        # their master is the right behavior, not a partial-park feature.
+        sel_masters = [m for m in (patch.get(fid) for fid in _resolve_fx_selection_targets()[0]) if m]
         if not sel_masters:
             return "PARK: select fixtures first"
         for master in sel_masters:
@@ -239,11 +246,21 @@ def cmd_050_unpark(t0, tokens, raw):
             output_state.parked_fids.clear()
             output_state.parked_addresses.clear()
             return "UNPARK ALL — all fixtures released"
-        sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
-        if not sel_masters:
+        # Same fix as PARK above: resolve through
+        # _resolve_fx_selection_targets() so a sub-fixture-only selection
+        # (e.g. "1.5") releases just that fixture instead of falling
+        # through to this "nothing selected" branch — which used to
+        # UNPARK EVERY parked fixture, not just the one actually
+        # selected, silently discarding park state on other fixtures the
+        # operator never asked to touch. Only a genuinely empty
+        # selection (prog.selection == []) should mean "unpark all".
+        if not prog.selection:
             output_state.parked_fids.clear()
             output_state.parked_addresses.clear()
             return "UNPARK ALL — all fixtures released"
+        sel_masters = [m for m in (patch.get(fid) for fid in _resolve_fx_selection_targets()[0]) if m]
+        if not sel_masters:
+            return "UNPARK: no valid fixtures in selection"
         for master in sel_masters:
             output_state.parked_fids.discard(master.fixture_id)
             for sub in master.all_subs():

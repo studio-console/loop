@@ -142,7 +142,7 @@
       "label": ""
     },
     "11": {
-      "stack_id": 11,
+      "stack_id": null,
       "level": 1.0,
       "priority": 0,
       "trigger_mode": "toggle",
@@ -156,7 +156,7 @@
       "label": ""
     },
     "12": {
-      "stack_id": 12,
+      "stack_id": null,
       "level": 1.0,
       "priority": 0,
       "trigger_mode": "moment",
@@ -170,7 +170,7 @@
       "label": ""
     },
     "13": {
-      "stack_id": 13,
+      "stack_id": null,
       "level": 1.0,
       "priority": 1,
       "trigger_mode": "toggle",
@@ -184,7 +184,7 @@
       "label": ""
     },
     "14": {
-      "stack_id": 14,
+      "stack_id": null,
       "level": 1.0,
       "priority": 0,
       "trigger_mode": "toggle",
@@ -198,7 +198,7 @@
       "label": ""
     },
     "15": {
-      "stack_id": 15,
+      "stack_id": null,
       "level": 1.0,
       "priority": 0,
       "trigger_mode": "toggle",
@@ -212,7 +212,7 @@
       "label": ""
     },
     "16": {
-      "stack_id": 16,
+      "stack_id": null,
       "level": 0.56,
       "priority": 0,
       "trigger_mode": "toggle",

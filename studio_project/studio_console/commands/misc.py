@@ -215,11 +215,19 @@ def cmd_072_status_state(t0, tokens, raw):
                      + ("  [solo]" if solo else "")
                      + ("  [park]" if parked else "")
                      + (f"  [rec macro {rec_slot}]" if rec_slot is not None else ""))
-        # Selection + programmer
+        # Selection + programmer — same isinstance(f, MasterFixture)-only
+        # display bug fixed for cmd_sel_count (gui/core.py) earlier: a
+        # sub-fixture-only selection (e.g. "1.5") used to print "none"
+        # here even though something genuinely was selected.
         sel_masters = [f for f in prog.selection if isinstance(f, MasterFixture)]
-        if sel_masters:
-            lines.append(f"  selection: {len(sel_masters)} fixture(s) "
-                         f"({', '.join(str(m.fixture_id) for m in sel_masters)})")
+        sel_masters_ids = {m.fixture_id for m in sel_masters}
+        sel_subs_only = sorted(
+            {f.fixture_id for f in prog.selection
+             if isinstance(f, SubFixture) and f.master_id not in sel_masters_ids},
+            key=lambda s: tuple(int(p) for p in s.split('.')))
+        if sel_masters or sel_subs_only:
+            _parts = [str(m.fixture_id) for m in sel_masters] + sel_subs_only
+            lines.append(f"  selection: {len(_parts)} item(s) ({', '.join(_parts)})")
         else:
             lines.append("  selection: none")
         prog_active = any(v for v in prog.data.values() if v)
