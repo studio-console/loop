@@ -488,6 +488,8 @@ COMMAND_REFERENCE = [
         ("PAGES button",          "open pages editor (assign stacks to pages)"),
         ("attr button",           "open the attribute pools (position/gobo/zoom/focus/beam)"),
         ("mon button",            "open the programmer/output monitor popup (per-fixture RGB/dim/FX tables) — shows in brackets which pool preset (colour/dim/attribute/FX) the programmer is referencing for a fixture, if any"),
+        ("output monitor 'refs' column", "shows whether a fixture's CURRENT live output — from an active cue as well as the live programmer, not just the programmer — is tracking a saved pool preset (e.g. [color:Warm Wash]) or was set from a raw/hard value with no preset behind it (shown as —)"),
+        ("hard value vs. pool item", "a hard value is a raw number typed straight in (e.g. R 255 G 0 B 0); a pool item is a saved preset (COLOR n / DIM PRESET n / FIRE FX n / POSITION n / etc.) applied instead — recalling a preset keeps the cue LINKED to it, so editing the preset later (UPDATE COLOR n) live-pushes the change to every cue still referencing it. A hard value is a one-off snapshot with no such link. Prefer a pool item whenever one already matches what you want — check the output monitor's refs column (or the programmer monitor) to see which one any given fixture is actually using"),
         ("ai button",             "open the AI prompt pool (only shown when an AI provider key is set)"),
         ("log button",            "open the changelog popup (studio_data/changelog.json)"),
         ("spd button",            "open the speed master panel (16 live BPM faders, MA-style)"),

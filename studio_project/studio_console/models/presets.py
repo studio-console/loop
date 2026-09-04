@@ -944,6 +944,7 @@ class Fader:
         self.is_active = False
         self.layer.clear()
         self._follow_at = None
+        self._chase_next_at = None
         # stack.current intentionally not reset — position is preserved
 
     def stop(self):
@@ -951,6 +952,7 @@ class Fader:
         self.is_active = False
         self.layer.clear()
         self._follow_at = None
+        self._chase_next_at = None
         if self.stack:
             self.stack.current = None
 

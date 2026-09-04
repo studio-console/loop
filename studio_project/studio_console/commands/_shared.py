@@ -176,7 +176,7 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
             save_show()
         prog.push_delete_undo(description, _restore)
 
-    _KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY', 'FOLLOW',
+    _KW = {'FADE', 'INFADE', 'OUTFADE', 'DELAY', 'FOLLOW', 'FXOUTFADE',
            'CFADE', 'CINFADE', 'DFADE', 'DINFADE', 'CDELAY', 'DDELAY',
            'GROUP', 'COLOR', 'COLOUR', 'DIM'}
 
@@ -223,6 +223,12 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
     delay  = _dt if _dt is not None else 0.0
     _fw = _get_timing('FOLLOW')
     follow = _fw if _fw is not None else 0.0
+    # 0 resets to auto, same convention _apply_timing_edit already uses
+    # for an existing cue — see the plain-RECORD branch below, which used
+    # to never set this at all: FXOUTFADE only ever worked via a
+    # follow-up UPDATE CUE, silently dropped on a brand-new RECORD CUE.
+    _fxo = _get_timing('FXOUTFADE')
+    fx_outfade = (None if _fxo == 0.0 else _fxo) if _fxo is not None else None
 
     # Per-attribute-group overrides: CFade / DFade / CDelay / DDelay
     fade_times, delay_times = {}, {}
@@ -271,20 +277,35 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
         if not p: return f"RECORD CUE: dim {dim_n} not found"
         p.apply(prog)
 
-    # Name-based preset tokens (any token not a keyword/number that
-    # wasn't consumed by the above — i.e. the leading name tokens)
-    for tok in suffix_tokens:
-        if tok in _KW or (tok and tok[0].isdigit()):
-            break   # hit a keyword or number — stop
-        hit = _find_by_name(tok)
-        if hit:
-            kind, preset = hit
-            if kind == 'color':
-                preset.apply(prog)
-            elif kind == 'dim':
-                preset.apply(prog)
-            elif kind == 'group':
-                prog.select(preset.recall(patch))
+    # Name-based preset tokens — lets a BARE (unquoted) leading word
+    # double as both the cue's name and a preset recall, e.g.
+    # "RECORD CUE 1 red" naming the cue "red" AND applying a color
+    # preset literally named "red" if one exists. Only runs when there's
+    # no quoted name: with one (name_match truthy), the whole quoted
+    # string is the name and nothing about it should be reinterpreted as
+    # command syntax. This used to run unconditionally, scanning suffix_
+    # tokens (which include a quoted name's own words) for anything
+    # that happened to match a saved preset — so naming a cue e.g.
+    # "violet low (both pool)" silently applied whatever preset was
+    # named exactly "low" to the live programmer before recording,
+    # overwriting a dim value that had nothing to do with the name at
+    # all. Same bug class as the *_ref keyword-scanning fix a few
+    # commits back (quoted user text getting reparsed as command
+    # syntax), different mechanism (exact-name token match, not a
+    # regex), so that fix didn't cover this one.
+    if not name_match:
+        for tok in suffix_tokens:
+            if tok in _KW or (tok and tok[0].isdigit()):
+                break   # hit a keyword or number — stop
+            hit = _find_by_name(tok)
+            if hit:
+                kind, preset = hit
+                if kind == 'color':
+                    preset.apply(prog)
+                elif kind == 'dim':
+                    preset.apply(prog)
+                elif kind == 'group':
+                    prog.select(preset.recall(patch))
 
     # Any non-empty per-fixture entry counts as real programmer content —
     # including one that's fx_kill-only (from CLEAR FX / KILL FX). This used
@@ -350,6 +371,7 @@ def _record_cue_into(stk, cue_num, suffix_tokens, raw_str, merge=False):
     cue.follow_time = follow
     cue.fade_times  = fade_times
     cue.delay_times = delay_times
+    cue.fx_outfade  = fx_outfade
     if cue_num == int(cue_num):
         cue_pool.store(int(cue_num), cue)
     save_show()

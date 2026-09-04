@@ -153,6 +153,55 @@
           "fixture_id": "4.1"
         }
       ]
+    },
+    "90": {
+      "name": "advtest mix",
+      "members": [
+        {
+          "type": "master",
+          "fixture_id": 5
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.1"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.2"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.3"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.4"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.5"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.6"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.7"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.8"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.9"
+        },
+        {
+          "type": "sub",
+          "fixture_id": "6.10"
+        }
+      ]
     }
   }
 }

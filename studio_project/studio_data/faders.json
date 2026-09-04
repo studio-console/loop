@@ -142,11 +142,11 @@
       "label": ""
     },
     "11": {
-      "stack_id": null,
+      "stack_id": 11,
       "level": 1.0,
       "priority": 0,
       "trigger_mode": "toggle",
-      "output_mode": "vfade",
+      "output_mode": "normal",
       "off_time": 0.0,
       "btn_a": "GO",
       "btn_b": "BACK",
@@ -156,12 +156,12 @@
       "label": ""
     },
     "12": {
-      "stack_id": null,
+      "stack_id": 12,
       "level": 1.0,
       "priority": 0,
-      "trigger_mode": "moment",
-      "output_mode": "moment",
-      "off_time": 0.8,
+      "trigger_mode": "toggle",
+      "output_mode": "normal",
+      "off_time": 0.0,
       "btn_a": "GO",
       "btn_b": "BACK",
       "btn_c": "STOP",
@@ -170,7 +170,7 @@
       "label": ""
     },
     "13": {
-      "stack_id": null,
+      "stack_id": 13,
       "level": 1.0,
       "priority": 1,
       "trigger_mode": "toggle",
@@ -184,9 +184,9 @@
       "label": ""
     },
     "14": {
-      "stack_id": null,
+      "stack_id": 14,
       "level": 1.0,
-      "priority": 0,
+      "priority": -1,
       "trigger_mode": "toggle",
       "output_mode": "normal",
       "off_time": 0.0,
@@ -198,7 +198,35 @@
       "label": ""
     },
     "15": {
-      "stack_id": null,
+      "stack_id": 15,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "output_mode": "vfade",
+      "off_time": 0.0,
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0,
+      "size_factor": 1.0,
+      "label": ""
+    },
+    "16": {
+      "stack_id": 16,
+      "level": 0.56,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "output_mode": "moment",
+      "off_time": 1.5,
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0,
+      "size_factor": 1.0,
+      "label": ""
+    },
+    "17": {
+      "stack_id": 17,
       "level": 1.0,
       "priority": 0,
       "trigger_mode": "toggle",
@@ -211,9 +239,23 @@
       "size_factor": 1.0,
       "label": ""
     },
-    "16": {
-      "stack_id": null,
-      "level": 0.56,
+    "18": {
+      "stack_id": 18,
+      "level": 1.0,
+      "priority": 0,
+      "trigger_mode": "toggle",
+      "output_mode": "normal",
+      "off_time": 0.0,
+      "btn_a": "GO",
+      "btn_b": "BACK",
+      "btn_c": "STOP",
+      "rate_factor": 1.0,
+      "size_factor": 1.0,
+      "label": ""
+    },
+    "19": {
+      "stack_id": 19,
+      "level": 1.0,
       "priority": 0,
       "trigger_mode": "toggle",
       "output_mode": "normal",

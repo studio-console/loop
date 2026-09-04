@@ -24,6 +24,10 @@
     "6": {
       "name": "out",
       "level": 0.0
+    },
+    "90": {
+      "name": "advtest low",
+      "level": 0.35
     }
   }
 }

@@ -1053,12 +1053,19 @@ class GUIEngineCore:
                     except Exception:
                         pass
 
-        # Auto-chase: fire GO on faders whose stack is in chase mode
+        # Auto-chase: fire GO on faders whose stack is in chase mode.
+        # chase_enabled lives on the STACK, not the fader, so STOPping the
+        # fader alone doesn't touch it — this loop used to fire GO purely
+        # off the timer with no check on ex.is_active, so a stopped
+        # fader's chase stack immediately restarted itself on the next
+        # beat (same bug class as the earlier follow-time fix). stop()/
+        # flash_off() clear _chase_next_at now too, but guard here as
+        # well so a stopped fader can never auto-fire.
         if self._fader_pool and self._cmd:
             _now_ch = time.monotonic()
             for ex in self._fader_pool.faders.values():
                 stk = ex.stack
-                if not (stk and stk.chase_enabled and stk.cues):
+                if not (stk and stk.chase_enabled and stk.cues and ex.is_active):
                     ex._chase_next_at = None
                     continue
                 # Resolve BPM: speed master > inline
@@ -1528,6 +1535,53 @@ class GUIEngineCore:
             out_attr_parts = [f"{abbr}:{_merged_sub[ch]}" for ch, abbr in _OUT_ATTR
                               if ch in _merged_sub]
             has_out_attr = bool(out_attr_parts) and not (r or g or b)
+
+            # Pool references — is this fixture's CURRENT output tracking a
+            # saved preset (color/dim/attribute/FX) or just a raw recorded/
+            # typed value? Mirrors _tick_programmer_monitor's ref display,
+            # but for whatever is actually driving live output right now,
+            # not just the uncommitted programmer. cue_merged
+            # (_merged_cue_layer) only carries resolved numeric values —
+            # Fade.tick() deliberately strips non-numeric keys like *_ref —
+            # so a cue-sourced ref has to be read off the raw Cue object on
+            # whichever active fader is actually driving this fixture, not
+            # off cue_merged. Programmer wins here the same way it wins for
+            # the RGB values above.
+            if pl_master or pl_sub:
+                _ref_src = pl_master
+            else:
+                _ref_src = {}
+                if self._fader_pool:
+                    for _ex in sorted(self._fader_pool.faders.values(),
+                                      key=lambda e: getattr(e, 'priority', 0)):
+                        if not (_ex.is_active and _ex.stack and _ex.stack.current is not None):
+                            continue
+                        _cue = _ex.stack.cues.get(_ex.stack.current)
+                        if _cue and fid in _cue.data:
+                            _ref_src = _cue.data[fid]   # last (highest-priority) wins
+            ref_parts = []
+            _cref = _ref_src.get('color_ref')
+            if _cref is not None:
+                _p = self._colors.get(_cref) if self._colors else None
+                ref_parts.append(f"[color:{_p.name if _p else _cref}]")
+            _dref = _ref_src.get('dim_ref')
+            if _dref is not None:
+                _p = self._dims.get(_dref) if self._dims else None
+                ref_parts.append(f"[dim:{_p.name if _p else _dref}]")
+            for _attr_name, _attr_pool in (self._attr_pools or {}).items():
+                _rk = _ref_src.get(f"{_attr_name}_ref")
+                if _rk is not None:
+                    _p = _attr_pool.get(_rk) if _attr_pool else None
+                    ref_parts.append(f"[{_attr_name}:{_p.name if _p else _rk}]")
+            _out_fx_defs = _ref_src.get('fx', [])
+            _fx_ref = next((ld.get('fx_preset_ref') for ld in _out_fx_defs
+                            if ld.get('fx_preset_ref') is not None), None)
+            if _fx_ref is not None:
+                _p = self._fx_pool.get(_fx_ref) if self._fx_pool else None
+                ref_parts.append(f"[fx:{_p.name if _p else _fx_ref}]")
+            has_out_refs = bool(ref_parts)
+            dpg.set_value(f"out_ref_{fid}", ' '.join(ref_parts) if has_out_refs else "—")
+            dpg.configure_item(f"out_ref_{fid}", color=_C_ACCENT if has_out_refs else _C_DIM)
 
             dpg.set_value(f"out_r_{fid}",   str(r))
             dpg.set_value(f"out_g_{fid}",   str(g))

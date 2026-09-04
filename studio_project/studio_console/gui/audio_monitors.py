@@ -140,12 +140,13 @@ class GUIEngineAudioMonitors:
                     with dpg.table(tag="out_table", header_row=True,
                                    borders_innerV=True, borders_outerV=True,
                                    borders_outerH=True, row_background=True,
-                                   width=650, scrollY=False):
+                                   width=850, scrollY=False):
                         dpg.add_table_column(label="fixture", width_fixed=True, init_width_or_weight=110)
                         dpg.add_table_column(label="r",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="g",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="b",   width_fixed=True, init_width_or_weight=42)
                         dpg.add_table_column(label="dim", width_fixed=True, init_width_or_weight=56)
+                        dpg.add_table_column(label="refs (pool item vs. hard value)", width_fixed=True, init_width_or_weight=180)
                         dpg.add_table_column(label="bar", width_stretch=True)
 
                         for master in self._patch.all_fixtures():
@@ -156,6 +157,7 @@ class GUIEngineAudioMonitors:
                                 dpg.add_text("0",  tag=f"out_g_{fid}",   color=(80,  200, 80,  255))
                                 dpg.add_text("0",  tag=f"out_b_{fid}",   color=(80,  130, 220, 255))
                                 dpg.add_text("--", tag=f"out_dim_{fid}", color=_C_DIM)
+                                dpg.add_text("—",  tag=f"out_ref_{fid}", color=_C_DIM)
                                 dpg.add_progress_bar(default_value=0.0,
                                                      tag=f"out_bar_{fid}", width=-1)
 
