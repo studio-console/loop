@@ -27,13 +27,17 @@ left_column.py's stage-canvas click handling already uses):
         point, x/y/z held at whatever they currently are.
     Toggling modifiers mid-drag composes rather than resets, since each
     mode only ever touches its own axis/axes off the live current value.
-  - Right-click-drag: manually orbits the camera (horizontal only).
+  - Right-click-drag: manually orbits the camera — horizontal mouse
+    delta orbits (as before), vertical mouse delta tilts the camera up/
+    down (clamped so it can't flip past looking straight up or down).
+    Both ride the same drag rather than needing a second modifier, same
+    as any standard 3D viewer's orbit+tilt control.
   - "pause orbit" button: stops the automatic "attract mode" spin without
     affecting manual dragging.
-The camera's orbit angle is an accumulator (_viz3d_orbit_angle),
-advanced each tick by elapsed wall-clock time unless paused or a manual
-drag is in progress — not derived straight from time.monotonic() like
-the first version, since that can't be paused or offset by a drag.
+The camera's orbit angle (_viz3d_orbit_angle) and pitch (_viz3d_cam_pitch)
+are both accumulators, advanced/adjusted each tick rather than derived
+straight from time.monotonic() like the first version's orbit angle,
+since that can't be paused or offset by a drag.
 
 This is a stylised spatial read for the operator and a target surface
 for the AI to arrange (VIZ POSITION is in the AI's command reference),
@@ -64,9 +68,12 @@ class GUIEngineViz3D:
     _VIZ3D_GRID_SPACING = 1.0    # feet between grid lines
     _VIZ3D_CAM_DIST     = 16.0   # camera orbit radius, feet
     _VIZ3D_CAM_HEIGHT   = 6.0    # camera height above the ground plane
-    _VIZ3D_CAM_PITCH    = 0.30   # radians, fixed downward tilt
+    _VIZ3D_CAM_PITCH    = 0.30   # radians, initial downward tilt (adjustable via right-drag)
+    _VIZ3D_CAM_PITCH_MIN = math.radians(-15)   # slightly looking up
+    _VIZ3D_CAM_PITCH_MAX = math.radians(80)    # nearly straight down — stops short of gimbal flip
     _VIZ3D_CAM_PERIOD   = 40.0   # seconds per full auto orbit — slow "attract mode"
-    _VIZ3D_ORBIT_DRAG_SENSITIVITY = 0.006   # radians of orbit per screen pixel dragged
+    _VIZ3D_ORBIT_DRAG_SENSITIVITY = 0.006   # radians of orbit per screen pixel dragged (horizontal)
+    _VIZ3D_PITCH_DRAG_SENSITIVITY = 0.006   # radians of pitch per screen pixel dragged (vertical)
     _VIZ3D_FOV          = 50.0   # degrees, vertical field of view
     _VIZ3D_MARKER       = 0.5    # half-size of each fixture's wireframe cube
     _VIZ3D_BEAM_LEN_FACTOR = 3.0 # mover beam length, as a multiple of _VIZ3D_MARKER
@@ -110,10 +117,13 @@ class GUIEngineViz3D:
         # this mixin has no __init__ of its own, GUIEngineCore's is the
         # only one in the composed class (see studio_project.py).
         self._viz3d_orbit_angle          = 0.0
+        self._viz3d_cam_pitch            = self._VIZ3D_CAM_PITCH
         self._viz3d_orbit_paused         = False
         self._viz3d_orbit_dragging       = False
         self._viz3d_orbit_drag_start_x   = 0.0
+        self._viz3d_orbit_drag_start_y   = 0.0
         self._viz3d_orbit_drag_start_angle = 0.0
+        self._viz3d_orbit_drag_start_pitch = 0.0
         self._viz3d_last_tick_t          = None
         self._viz3d_drag_fid             = None
         self._viz3d_drag_start_y         = 0.0
@@ -125,14 +135,12 @@ class GUIEngineViz3D:
         fixtures = list(self._patch.all_fixtures())
         with dpg.window(tag="viz3d_window", label="3d viz", width=900, height=680,
                         show=False, pos=(10, 10), no_collapse=False):
-            with dpg.group(horizontal=True):
-                dpg.add_text("rig viz — glow = live RGB output, dim wire = unlit  "
-                             "(1 grid square = 1ft. drag=move, shift-drag=height, "
-                             "ctrl-drag=rotate. right-drag or the button below to orbit)",
-                             color=_C_DIM)
-                dpg.add_spacer(width=12)
-                dpg.add_button(label="pause orbit", tag="viz3d_pause_btn", width=110,
-                               callback=self._on_viz3d_orbit_pause_toggle)
+            dpg.add_button(label="pause orbit", tag="viz3d_pause_btn", width=110,
+                           callback=self._on_viz3d_orbit_pause_toggle)
+            dpg.add_text("rig viz — glow = live RGB output, dim wire = unlit  "
+                         "(1 grid square = 1ft. drag=move, shift-drag=height, "
+                         "ctrl-drag=rotate. right-drag=orbit+tilt)",
+                         color=_C_DIM, tag="viz3d_help_text", wrap=880)
             with dpg.drawlist(tag="viz3d_canvas", width=880, height=640):
                 dpg.draw_rectangle((0, 0), (880, 640), fill=_C_BG, color=(0, 0, 0, 0),
                                    tag="viz3d_bg")
@@ -221,7 +229,9 @@ class GUIEngineViz3D:
             return
         self._viz3d_orbit_dragging = True
         self._viz3d_orbit_drag_start_x = mouse[0]
+        self._viz3d_orbit_drag_start_y = mouse[1]
         self._viz3d_orbit_drag_start_angle = self._viz3d_orbit_angle
+        self._viz3d_orbit_drag_start_pitch = self._viz3d_cam_pitch
 
     def _on_viz3d_right_up(self, sender, app_data):
         if app_data != 1:
@@ -251,7 +261,7 @@ class GUIEngineViz3D:
         cam_y = self._VIZ3D_CAM_HEIGHT
         # Yaw that points the camera back at the centre.
         yaw = math.atan2(cx0 - cam_x, cz0 - cam_z)
-        return cam_x, cam_y, cam_z, yaw, self._VIZ3D_CAM_PITCH
+        return cam_x, cam_y, cam_z, yaw, self._viz3d_cam_pitch
 
     def _viz3d_project(self, wx, wy, wz, cam, focal, screen_cx, screen_cy):
         """World point -> (screen_x, screen_y, depth) or None if behind
@@ -348,6 +358,26 @@ class GUIEngineViz3D:
     def _tick_viz3d(self):
         if not dpg.is_item_shown("viz3d_window"):
             return
+        # Resize the canvas (and the help text's wrap width) to fill
+        # whatever the floating window's current size is — same
+        # resize-to-fit idea as gui/stage.py's _tick_stage(), just
+        # tracking both dimensions since this is a free-floating,
+        # user-resizable window rather than a fixed-height panel
+        # embedded in the main layout.
+        try:
+            win_size = dpg.get_item_rect_size("viz3d_window")
+        except Exception:
+            win_size = None
+        if win_size and win_size[0] > 40 and win_size[1] > 80:
+            target_w = max(200, int(win_size[0]) - 20)
+            target_h = max(150, int(win_size[1]) - 60)
+            try:
+                cur = dpg.get_item_rect_size("viz3d_canvas")
+                if abs(cur[0] - target_w) > 1 or abs(cur[1] - target_h) > 1:
+                    dpg.configure_item("viz3d_canvas", width=target_w, height=target_h)
+                dpg.configure_item("viz3d_help_text", wrap=target_w)
+            except Exception:
+                pass
         try:
             rect = dpg.get_item_rect_size("viz3d_canvas")
             w, h = rect[0], rect[1]
@@ -369,8 +399,13 @@ class GUIEngineViz3D:
                 if dpg.is_mouse_button_down(dpg.mvMouseButton_Right):
                     mouse = dpg.get_mouse_pos(local=False)
                     ddx = mouse[0] - self._viz3d_orbit_drag_start_x
+                    ddy = mouse[1] - self._viz3d_orbit_drag_start_y
                     self._viz3d_orbit_angle = (self._viz3d_orbit_drag_start_angle
                                                + ddx * self._VIZ3D_ORBIT_DRAG_SENSITIVITY)
+                    new_pitch = (self._viz3d_orbit_drag_start_pitch
+                                 + ddy * self._VIZ3D_PITCH_DRAG_SENSITIVITY)
+                    self._viz3d_cam_pitch = max(self._VIZ3D_CAM_PITCH_MIN,
+                                                min(self._VIZ3D_CAM_PITCH_MAX, new_pitch))
                 else:
                     # Button released without the up-event reaching us
                     # (e.g. released outside the canvas) — stop dragging

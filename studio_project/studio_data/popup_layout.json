@@ -154,10 +154,10 @@
   },
   "viz3d_window": {
     "pos": [
-      380,
-      79
+      56,
+      30
     ],
-    "width": 1389,
+    "width": 1782,
     "height": 932,
     "show": false
   },

@@ -2,6 +2,11 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-09-04",
+      "summary": "Add 3D rig viz (Tron-style wireframe) with interactive placement",
+      "details": []
+    },
+    {
       "date": "2026-08-26",
       "summary": "Load studio_data/.env before any studio_console import",
       "details": []
