@@ -12,35 +12,56 @@ pan/tilt (a mover) gets a beam line instead, showing live pan/tilt
 direction — stylised (DMX 0-255 mapped straight to a sweep angle, no
 per-profile range calibration), not physically exact.
 
+Four view modes (buttons at the top of the window): 'iso', the original
+perspective/orbiting camera; 'top' (plan), 'front', and 'side', three
+flat orthographic views with no perspective and no camera to orbit —
+each shows exactly two world axes at a fixed pixel-per-foot scale,
+centred on the rig's average position (_viz3d_scene_center()). The iso
+view is the best spatial read but placing something precisely in a
+perspective view is genuinely hard (foreshortening means "up" and
+"away" both look similar); the ortho views trade that spatial context
+for exact, unambiguous 2-axis placement, which is what "drag it to the
+right spot" actually needs most of the time. Added together with a
+fixture list panel (a table below the canvas: one row per fixture,
+editable x/y/z/yaw/pitch fields) for precise numeric entry when even
+an ortho view's drag isn't exact enough.
+
 Interactive controls, all scoped to hovering viz3d_canvas at the moment
 the button goes down (same is_item_hovered-gated pattern
 left_column.py's stage-canvas click handling already uses):
-  - Left-click-drag a fixture: moves it along its current height plane
-    (x/z only), writing straight into MasterFixture.viz_position — same
-    effect as VIZ POSITION, just interactive. Uses _viz3d_unproject_to_ground,
-    the algebraic inverse of _viz3d_project's yaw+pitch rotation. A plain
-    2D mouse position only disambiguates two axes at once, so the third
-    (height) needs a modifier instead of a plane intersection:
+  - Left-click-drag a fixture: moves it along the two axes the CURRENT
+    view shows — x/z in 'top', x/y in 'front', z/y in 'side' — via a
+    direct (non-perspective) inverse in the ortho views
+    (_viz3d_unproject_ortho), or _viz3d_unproject_to_ground's ray-cast
+    in 'iso' (x/z only there, since perspective makes a screen position
+    ambiguous along the height axis). Writes straight into
+    MasterFixture.viz_position — same effect as VIZ POSITION, just
+    interactive.
       - Shift-drag: adjusts height (world y) via vertical mouse delta
-        from the press point, x/z held at whatever they currently are.
+        from the press point, x/z held at whatever they currently are
+        — works the same in every view (redundant with plain-drag in
+        'front'/'side', where the vertical mouse axis already IS
+        height, but harmless).
     Toggling the modifier mid-drag composes rather than resets, since
     each mode only ever touches its own axis/axes off the live current
     value.
-  - Right-click-drag: manually orbits the camera — horizontal mouse
-    delta orbits (as before), vertical mouse delta tilts the camera up/
-    down (clamped so it can't flip past looking straight up or down).
-    Both ride the same drag rather than needing a second modifier, same
-    as any standard 3D viewer's orbit+tilt control. Both fixture
-    rotation axes live on this SAME button too, gated by a modifier —
+  - Right-click-drag: in 'iso', manually orbits the camera — horizontal
+    mouse delta orbits, vertical mouse delta tilts the camera up/down
+    (clamped so it can't flip past looking straight up or down). Both
+    ride the same drag rather than needing a second modifier, same as
+    any standard 3D viewer's orbit+tilt control. (In an ortho view this
+    still updates the orbit angle/pitch harmlessly in the background —
+    they just don't affect a flat projection — so switching back to
+    'iso' picks up wherever the drag left it.) Both fixture rotation
+    axes live on this SAME button in every view, gated by a modifier —
     each only takes over when a fixture is actually under the cursor at
-    press time; elsewhere on the canvas it's always the plain camera
-    orbit+tilt above:
+    press time; elsewhere on the canvas it's the orbit+tilt above:
       - Ctrl+right-drag on a fixture: rotates its YAW (spin left/right
         around the vertical axis) via horizontal mouse delta.
       - Alt+right-drag on a fixture: rotates its PITCH (nose up/down —
         tilting the housing itself) via vertical mouse delta.
   - "pause orbit" button: stops the automatic "attract mode" spin without
-    affecting manual dragging.
+    affecting manual dragging (only matters in 'iso').
 Pitch is a fixture's own placement property (how it's physically
 mounted — e.g. a truss par angled down at the stage), stored in
 viz_position alongside x/y/z/yaw and rendered as an actual tilt of its
@@ -96,6 +117,8 @@ class GUIEngineViz3D:
     _VIZ3D_FIXTURE_PITCH_DRAG_SENSITIVITY = 0.5   # degrees of fixture pitch per pixel of Alt+right-drag
     _VIZ3D_FIXTURE_PITCH_MIN = -90.0   # degrees — straight up
     _VIZ3D_FIXTURE_PITCH_MAX = 90.0    # degrees — straight down
+    _VIZ3D_ORTHO_SCALE  = 40.0   # pixels per foot in the top/front/side orthographic views
+    _VIZ3D_LIST_PANEL_H = 170    # fixed height of the fixture coordinate list, scrolls if it overflows
     _VIZ3D_GRID_COLOR       = (90,  66, 168, 130)
     _VIZ3D_GRID_COLOR_FAR   = (90,  66, 168, 40)
     _VIZ3D_MARKER_OFF_COLOR = (100, 78, 190, 255)   # dim violet — unlit fixture, still visible
@@ -117,6 +140,41 @@ class GUIEngineViz3D:
         try:
             dpg.set_item_label("viz3d_pause_btn",
                                "resume orbit" if self._viz3d_orbit_paused else "pause orbit")
+        except Exception:
+            pass
+
+    def _on_viz3d_view_mode(self, sender, app_data, user_data):
+        self._viz3d_view_mode = user_data
+        # Bracket the active mode's button so it's clear which view is
+        # live — plain label toggling, no theme dependency.
+        for mode in ('iso', 'top', 'front', 'side'):
+            try:
+                dpg.configure_item(f"viz3d_view_{mode}_btn",
+                                   label=f"[{mode}]" if mode == user_data else mode)
+            except Exception:
+                pass
+
+    def _on_viz3d_list_edit(self, sender, app_data, user_data):
+        """One coordinate field in the fixture list was typed into —
+        write it straight into viz_position (creating one from the
+        fixture's current effective position if it didn't have one
+        yet, same "don't snap the other axes to zero" care as the
+        drag handlers) and save."""
+        fid, field = user_data
+        master = self._patch.get(fid)
+        if not master:
+            return
+        eff = next((p for p in self._viz3d_fixture_positions() if p[0] is master), None)
+        if eff:
+            vals = {"x": eff[1], "y": eff[2], "z": eff[3],
+                    "yaw": math.degrees(eff[4]), "pitch": math.degrees(eff[5])}
+        else:
+            vals = {"x": 0.0, "y": self._VIZ3D_MARKER, "z": 0.0, "yaw": 0.0, "pitch": 0.0}
+        vals[field] = float(app_data)
+        master.viz_position = vals
+        try:
+            if self._save:
+                self._save()
         except Exception:
             pass
 
@@ -153,15 +211,23 @@ class GUIEngineViz3D:
         self._viz3d_rotate_start_mx      = 0.0
         self._viz3d_rotate_start_my      = 0.0
         self._viz3d_screen_pos           = {}   # {fixture_id: (screen_x, screen_y)} — refreshed every tick
+        self._viz3d_view_mode            = 'iso'   # 'iso' | 'top' | 'front' | 'side'
 
         fixtures = list(self._patch.all_fixtures())
-        with dpg.window(tag="viz3d_window", label="3d viz", width=900, height=680,
+        with dpg.window(tag="viz3d_window", label="3d viz", width=900, height=900,
                         show=False, pos=(10, 10), no_collapse=False):
-            dpg.add_button(label="pause orbit", tag="viz3d_pause_btn", width=110,
-                           callback=self._on_viz3d_orbit_pause_toggle)
+            with dpg.group(horizontal=True):
+                dpg.add_text("view:", color=_C_DIM)
+                for mode, label, w in (('iso', 'iso', 45), ('top', 'top', 45),
+                                       ('front', 'front', 55), ('side', 'side', 50)):
+                    dpg.add_button(label=label, tag=f"viz3d_view_{mode}_btn", width=w,
+                                   callback=self._on_viz3d_view_mode, user_data=mode)
+                dpg.add_spacer(width=12)
+                dpg.add_button(label="pause orbit", tag="viz3d_pause_btn", width=110,
+                               callback=self._on_viz3d_orbit_pause_toggle)
             dpg.add_text("rig viz — glow = live RGB output, dim wire = unlit  "
                          "(1 grid square = 1ft. drag=move, shift-drag=height. "
-                         "right-drag=orbit+tilt, ctrl+right-drag on a fixture=yaw, "
+                         "right-drag=orbit+tilt in iso, ctrl+right-drag on a fixture=yaw, "
                          "alt+right-drag on a fixture=pitch)",
                          color=_C_DIM, tag="viz3d_help_text", wrap=880)
             with dpg.drawlist(tag="viz3d_canvas", width=880, height=640):
@@ -192,6 +258,33 @@ class GUIEngineViz3D:
                     elif m.profile.is_moving():
                         dpg.draw_line((0, 0), (0, 0), color=self._VIZ3D_BEAM_OFF_COLOR,
                                       thickness=2, tag=f"viz3d_beam_{i}")
+
+            # Fixture coordinate list — precise numeric placement for
+            # when even an ortho view's drag isn't exact enough. Synced
+            # from live viz_position each tick (skipping any field the
+            # operator currently has focused, so typing isn't clobbered
+            # mid-edit — same "don't fight the user" precedent as the
+            # fixture-dim sliders in gui/left_column.py).
+            with dpg.child_window(tag="viz3d_list_panel", height=self._VIZ3D_LIST_PANEL_H, border=True):
+                with dpg.table(tag="viz3d_pos_table", header_row=True,
+                               borders_innerV=True, borders_outerV=True,
+                               borders_outerH=True, row_background=True, scrollY=True):
+                    dpg.add_table_column(label="fixture", width_fixed=True, init_width_or_weight=120)
+                    dpg.add_table_column(label="x (ft)")
+                    dpg.add_table_column(label="y (ft)")
+                    dpg.add_table_column(label="z (ft)")
+                    dpg.add_table_column(label="yaw (deg)")
+                    dpg.add_table_column(label="pitch (deg)")
+                    for m in fixtures:
+                        fid = m.fixture_id
+                        with dpg.table_row():
+                            dpg.add_text(m.name[:16])
+                            for field, fmt in (('x', '%.2f'), ('y', '%.2f'), ('z', '%.2f'),
+                                               ('yaw', '%.1f'), ('pitch', '%.1f')):
+                                dpg.add_input_float(tag=f"viz3d_list_{field}_{fid}", width=-1,
+                                                    step=0, format=fmt,
+                                                    callback=self._on_viz3d_list_edit,
+                                                    user_data=(fid, field))
 
     # ------------------------------------------------------------
     # Mouse handlers — registered from gui/core.py's build(), same
@@ -299,19 +392,28 @@ class GUIEngineViz3D:
     # Projection
     # ------------------------------------------------------------
 
+    def _viz3d_scene_center(self):
+        """Average (x, y, z) of every patched fixture's current
+        position — the origin the iso camera orbits around AND the
+        ortho views centre on, so switching view modes never re-centres
+        the rig differently. Origin if there are no fixtures."""
+        fixtures = self._viz3d_fixture_positions()
+        if not fixtures:
+            return 0.0, 0.0, 0.0
+        n = len(fixtures)
+        cx0 = sum(p[1] for p in fixtures) / n
+        cy0 = sum(p[2] for p in fixtures) / n
+        cz0 = sum(p[3] for p in fixtures) / n
+        return cx0, cy0, cz0
+
     def _viz3d_camera_pose(self):
         """Camera position + facing yaw for "now" — slow auto-orbit
-        around the scene's centre (average of all fixture x/z
-        positions, or the origin if there are none/no overrides).
-        Orbit angle is an accumulator advanced in _tick_viz3d(), not
-        derived straight from wall-clock time, so it can be paused or
-        manually dragged without a discontinuous jump."""
-        fixtures = self._viz3d_fixture_positions()
-        if fixtures:
-            cx0 = sum(p[1] for p in fixtures) / len(fixtures)
-            cz0 = sum(p[3] for p in fixtures) / len(fixtures)
-        else:
-            cx0 = cz0 = 0.0
+        around the scene's centre. Orbit angle is an accumulator
+        advanced in _tick_viz3d(), not derived straight from wall-clock
+        time, so it can be paused or manually dragged without a
+        discontinuous jump. Only meaningful in 'iso' view — the ortho
+        views don't have a camera to orbit."""
+        cx0, _cy0, cz0 = self._viz3d_scene_center()
         orbit = self._viz3d_orbit_angle
         cam_x = cx0 + self._VIZ3D_CAM_DIST * math.sin(orbit)
         cam_z = cz0 + self._VIZ3D_CAM_DIST * math.cos(orbit)
@@ -368,6 +470,39 @@ class GUIEngineViz3D:
         if t <= 0:
             return None
         return cam_x + t * dx, cam_z + t * dz
+
+    def _viz3d_project_ortho(self, wx, wy, wz, view_mode, cx0, cy0, cz0, screen_cx, screen_cy, scale):
+        """Flat (no perspective) projection for the 'top'/'front'/'side'
+        views — each shows exactly two world axes at a fixed pixel-per-
+        foot scale, centred on the rig's average position, matching a
+        CAD-style plan/elevation rather than 'iso''s perspective camera.
+        Returns (screen_x, screen_y, scale) — same 3-tuple shape as
+        _viz3d_project (whose 3rd element is depth, used by the caller
+        to size pixel dots via focal/depth); here the 3rd element is
+        just the constant scale directly, since there's no perspective
+        foreshortening to convert away."""
+        if view_mode == 'top':
+            a, b = wx - cx0, wz - cz0
+        elif view_mode == 'front':
+            a, b = wx - cx0, -(wy - cy0)
+        else:   # 'side'
+            a, b = wz - cz0, -(wy - cy0)
+        return screen_cx + a * scale, screen_cy + b * scale, scale
+
+    def _viz3d_unproject_ortho(self, sx, sy, view_mode, cx0, cy0, cz0, screen_cx, screen_cy, scale):
+        """Exact (linear, no ray-casting needed) inverse of
+        _viz3d_project_ortho. Returns the two world values the current
+        view's plane represents — (x,z) for 'top', (x,y) for 'front',
+        (z,y) for 'side' — for the caller to combine with whichever
+        third axis this view doesn't show, left untouched."""
+        a = (sx - screen_cx) / scale
+        b = (sy - screen_cy) / scale
+        if view_mode == 'top':
+            return cx0 + a, cz0 + b
+        elif view_mode == 'front':
+            return cx0 + a, cy0 - b
+        else:   # 'side'
+            return cz0 + a, cy0 - b
 
     def _viz3d_local_to_world(self, fx, fy, fz, cos_y, sin_y, cos_p, sin_p, lx, ly, lz):
         """One point in a fixture's own local space (lx,ly,lz) -> world
@@ -445,7 +580,7 @@ class GUIEngineViz3D:
             win_size = None
         if win_size and win_size[0] > 40 and win_size[1] > 80:
             target_w = max(200, int(win_size[0]) - 20)
-            target_h = max(150, int(win_size[1]) - 60)
+            target_h = max(150, int(win_size[1]) - 60 - self._VIZ3D_LIST_PANEL_H - 10)
             try:
                 cur = dpg.get_item_rect_size("viz3d_canvas")
                 if abs(cur[0] - target_w) > 1 or abs(cur[1] - target_h) > 1:
@@ -529,20 +664,37 @@ class GUIEngineViz3D:
                 except Exception:
                     pass
 
-        cam = self._viz3d_camera_pose()
+        view_mode = self._viz3d_view_mode
         screen_cx, screen_cy = w / 2.0, h / 2.0
-        focal = (h / 2.0) / math.tan(math.radians(self._VIZ3D_FOV) / 2.0)
+        cx0, cy0, cz0 = self._viz3d_scene_center()
 
-        def proj(wx, wy, wz):
-            return self._viz3d_project(wx, wy, wz, cam, focal, screen_cx, screen_cy)
+        if view_mode == 'iso':
+            cam = self._viz3d_camera_pose()
+            focal = (h / 2.0) / math.tan(math.radians(self._VIZ3D_FOV) / 2.0)
+
+            def proj(wx, wy, wz):
+                return self._viz3d_project(wx, wy, wz, cam, focal, screen_cx, screen_cy)
+
+            def size_scale(p):
+                return focal / p[2]
+        else:
+            ortho_scale = self._VIZ3D_ORTHO_SCALE
+
+            def proj(wx, wy, wz):
+                return self._viz3d_project_ortho(wx, wy, wz, view_mode, cx0, cy0, cz0,
+                                                 screen_cx, screen_cy, ortho_scale)
+
+            def size_scale(p):
+                return p[2]
 
         # ---- apply an in-progress fixture drag before laying out this frame ----
-        # Plain drag moves along the floor plane (x/z, height fixed) —
-        # the two axes a straight 2D mouse position maps onto without
-        # ambiguity. The third axis needs a modifier to disambiguate
-        # which 1D mouse motion (dx or dy from the press point) it means:
+        # Plain drag moves along the two axes the CURRENT VIEW shows —
+        # x/z in 'iso' and 'top' (perspective makes height ambiguous
+        # from a single screen position in 'iso'; 'top' just doesn't
+        # show height at all), x/y in 'front', z/y in 'side'. The one
+        # axis a view doesn't show needs a modifier to touch instead:
         #   Shift-drag  -> height (world y): vertical mouse delta
-        #   Ctrl-drag   -> yaw rotation:      horizontal mouse delta
+        #   Ctrl-drag   -> yaw rotation:      horizontal mouse delta (on the right button)
         # Each mode leaves the OTHER axes at whatever they currently are
         # (not reset to the drag-start values), so toggling the modifier
         # mid-drag composes naturally instead of undoing prior motion.
@@ -578,12 +730,24 @@ class GUIEngineViz3D:
                                     + dy_screen * self._VIZ3D_HEIGHT_DRAG_SENSITIVITY)
                         master.viz_position = {"x": cur_x, "y": round(new_y, 3), "z": cur_z,
                                                "yaw": cur_yaw, "pitch": cur_pitch}
-                    else:
+                    elif view_mode == 'iso':
                         hit = self._viz3d_unproject_to_ground(mx, my, cam, focal, screen_cx, screen_cy, cur_y)
                         if hit:
                             wx, wz = hit
                             master.viz_position = {"x": round(wx, 3), "y": cur_y, "z": round(wz, 3),
                                                    "yaw": cur_yaw, "pitch": cur_pitch}
+                    else:
+                        a, b = self._viz3d_unproject_ortho(mx, my, view_mode, cx0, cy0, cz0,
+                                                           screen_cx, screen_cy, ortho_scale)
+                        if view_mode == 'top':
+                            new_pos = {"x": round(a, 3), "y": cur_y, "z": round(b, 3)}
+                        elif view_mode == 'front':
+                            new_pos = {"x": round(a, 3), "y": round(max(0.05, b), 3), "z": cur_z}
+                        else:   # 'side'
+                            new_pos = {"x": cur_x, "y": round(max(0.05, b), 3), "z": round(a, 3)}
+                        new_pos["yaw"] = cur_yaw
+                        new_pos["pitch"] = cur_pitch
+                        master.viz_position = new_pos
             else:
                 # Same released-outside-canvas safety net as the orbit drag.
                 self._viz3d_drag_fid = None
@@ -628,8 +792,9 @@ class GUIEngineViz3D:
         gm = self._out.master_level if self._out else 1.0
         hs = self._VIZ3D_MARKER
         self._viz3d_screen_pos = {}
+        positions = self._viz3d_fixture_positions()   # reused below for the coordinate list sync too
 
-        for i, (master, fx, fy, fz, fyaw, fpitch) in enumerate(self._viz3d_fixture_positions()):
+        for i, (master, fx, fy, fz, fyaw, fpitch) in enumerate(positions):
             cos_y, sin_y = math.cos(fyaw), math.sin(fyaw)
             cos_p, sin_p = math.cos(fpitch), math.sin(fpitch)
             multi_pixel = master.pixel_count > 1
@@ -703,8 +868,8 @@ class GUIEngineViz3D:
                     tag = f"viz3d_pixel_{i}_{j}"
                     try:
                         if p:
-                            sx, sy, depth = p
-                            hr = max(1.5, half_world * focal / depth)
+                            sx, sy, _pscale = p
+                            hr = max(1.5, half_world * size_scale(p))
                             r, g, b, _pd = self._compute_sub_rgb_dim(master, sub, cue_merged, gm)
                             pcolor = (r, g, b, 255) if (r or g or b) else self._VIZ3D_MARKER_OFF_COLOR
                             dpg.configure_item(tag, pmin=(sx - hr, sy - hr), pmax=(sx + hr, sy + hr),
@@ -764,3 +929,18 @@ class GUIEngineViz3D:
                     dpg.configure_item(f"viz3d_label_{i}", show=False)
             except Exception:
                 pass
+
+        # ---- sync the fixture coordinate list from live positions ----
+        # Skips any field the operator currently has focused so a
+        # background sync (from a drag, or another view's edit) never
+        # clobbers text mid-keystroke.
+        for master, x, y, z, yaw_rad, pitch_rad in positions:
+            fid = master.fixture_id
+            for field, val in (('x', x), ('y', y), ('z', z),
+                               ('yaw', math.degrees(yaw_rad)), ('pitch', math.degrees(pitch_rad))):
+                tag = f"viz3d_list_{field}_{fid}"
+                try:
+                    if not dpg.is_item_active(tag):
+                        dpg.set_value(tag, round(val, 3))
+                except Exception:
+                    pass

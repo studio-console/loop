@@ -100,12 +100,12 @@
   },
   "ai_bar_window": {
     "pos": [
-      1140,
-      375
+      1139,
+      374
     ],
     "width": 760,
     "height": 230,
-    "show": false
+    "show": true
   },
   "color_picker_window": {
     "pos": [
@@ -154,8 +154,8 @@
   },
   "viz3d_window": {
     "pos": [
-      56,
-      30
+      78,
+      22
     ],
     "width": 1429,
     "height": 971,
