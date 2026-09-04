@@ -23,8 +23,9 @@ left_column.py's stage-canvas click handling already uses):
     (height) needs a modifier instead of a plane intersection:
       - Shift-drag: adjusts height (world y) via vertical mouse delta
         from the press point, x/z held at whatever they currently are.
-      - Ctrl-drag: rotates yaw via horizontal mouse delta from the press
-        point, x/y/z held at whatever they currently are.
+      - Ctrl-drag: rotates yaw (spin around the vertical axis) via
+        horizontal mouse delta from the press point, x/y/z held at
+        whatever they currently are.
     Toggling modifiers mid-drag composes rather than resets, since each
     mode only ever touches its own axis/axes off the live current value.
   - Right-click-drag: manually orbits the camera — horizontal mouse
@@ -32,14 +33,20 @@ left_column.py's stage-canvas click handling already uses):
     down (clamped so it can't flip past looking straight up or down).
     Both ride the same drag rather than needing a second modifier, same
     as any standard 3D viewer's orbit+tilt control.
-  - Cmd/Ctrl+Shift+right-click-drag on a fixture: rotates that fixture's
-    yaw instead of orbiting the camera — a second way to reach the same
-    axis Ctrl+left-drag already rotates, without needing to grab the
-    fixture with the left button first. Only takes over when a fixture
-    is actually under the cursor; elsewhere on the canvas it's a normal
-    camera orbit+tilt.
+  - Alt+right-click-drag on a fixture: rotates that fixture's PITCH
+    (nose up/down — tilting the housing itself, distinct from yaw's
+    left/right spin) via vertical mouse delta, instead of orbiting the
+    camera. Only takes over when a fixture is actually under the cursor
+    at press time; elsewhere on the canvas Alt+right-drag is still a
+    normal camera orbit+tilt.
   - "pause orbit" button: stops the automatic "attract mode" spin without
     affecting manual dragging.
+Pitch is a fixture's own placement property (how it's physically
+mounted — e.g. a truss par angled down at the stage), stored in
+viz_position alongside x/y/z/yaw and rendered as an actual tilt of its
+wireframe housing/pixel grid — distinct from a mover's live pan/tilt
+beam (driven by real DMX output, see below), which composes with this
+static mount pitch rather than replacing it.
 The camera's orbit angle (_viz3d_orbit_angle) and pitch (_viz3d_cam_pitch)
 are both accumulators, advanced/adjusted each tick rather than derived
 straight from time.monotonic() like the first version's orbit angle,
@@ -86,6 +93,9 @@ class GUIEngineViz3D:
     _VIZ3D_DRAG_HIT_PX  = 30     # click-drag hit radius around a fixture's screen anchor
     _VIZ3D_HEIGHT_DRAG_SENSITIVITY = 0.02   # feet of height per pixel of Shift-drag
     _VIZ3D_YAW_DRAG_SENSITIVITY    = 0.5    # degrees of yaw per pixel of Ctrl-drag
+    _VIZ3D_FIXTURE_PITCH_DRAG_SENSITIVITY = 0.5   # degrees of fixture pitch per pixel of Alt+right-drag
+    _VIZ3D_FIXTURE_PITCH_MIN = -90.0   # degrees — straight up
+    _VIZ3D_FIXTURE_PITCH_MAX = 90.0    # degrees — straight down
     _VIZ3D_GRID_COLOR       = (90,  66, 168, 130)
     _VIZ3D_GRID_COLOR_FAR   = (90,  66, 168, 40)
     _VIZ3D_MARKER_OFF_COLOR = (100, 78, 190, 255)   # dim violet — unlit fixture, still visible
@@ -136,9 +146,9 @@ class GUIEngineViz3D:
         self._viz3d_drag_start_yaw       = 0.0
         self._viz3d_drag_start_mx        = 0.0
         self._viz3d_drag_start_my        = 0.0
-        self._viz3d_rotate_fid           = None
-        self._viz3d_rotate_start_yaw     = 0.0
-        self._viz3d_rotate_start_mx      = 0.0
+        self._viz3d_pitch_fid            = None
+        self._viz3d_pitch_start_pitch    = 0.0
+        self._viz3d_pitch_start_my       = 0.0
         self._viz3d_screen_pos           = {}   # {fixture_id: (screen_x, screen_y)} — refreshed every tick
 
         fixtures = list(self._patch.all_fixtures())
@@ -239,17 +249,13 @@ class GUIEngineViz3D:
         except Exception:
             return
 
-        # Cmd/Ctrl+Shift+right-drag over a fixture rotates ITS yaw
-        # instead of orbiting the camera — same axis Ctrl+left-drag
-        # already rotates, just reachable without first clicking the
-        # fixture with the left button. Only takes over when a fixture
+        # Alt+right-drag over a fixture rotates ITS pitch (nose up/down)
+        # instead of orbiting the camera. Only takes over when a fixture
         # is actually under the cursor; otherwise falls through to the
         # normal camera orbit+tilt below, same as a plain right-drag
         # anywhere else on the canvas.
-        cmd_shift = ((dpg.is_key_down(dpg.mvKey_LControl) or dpg.is_key_down(dpg.mvKey_RControl)
-                      or dpg.is_key_down(dpg.mvKey_ModSuper))
-                     and (dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift)))
-        if cmd_shift:
+        alt = dpg.is_key_down(dpg.mvKey_LAlt) or dpg.is_key_down(dpg.mvKey_RAlt)
+        if alt:
             mx, my = mouse[0] - canvas_min[0], mouse[1] - canvas_min[1]
             best_fid, best_d2 = None, self._VIZ3D_DRAG_HIT_PX ** 2
             for fid, (sx, sy) in self._viz3d_screen_pos.items():
@@ -259,9 +265,9 @@ class GUIEngineViz3D:
             if best_fid is not None:
                 master = self._patch.get(best_fid)
                 eff = next((p for p in self._viz3d_fixture_positions() if p[0] is master), None)
-                self._viz3d_rotate_fid = best_fid
-                self._viz3d_rotate_start_yaw = math.degrees(eff[4]) if eff else 0.0
-                self._viz3d_rotate_start_mx = mouse[0]
+                self._viz3d_pitch_fid = best_fid
+                self._viz3d_pitch_start_pitch = math.degrees(eff[5]) if eff else 0.0
+                self._viz3d_pitch_start_my = mouse[1]
                 return   # don't also start a camera orbit on this press
 
         self._viz3d_orbit_dragging = True
@@ -273,8 +279,8 @@ class GUIEngineViz3D:
     def _on_viz3d_right_up(self, sender, app_data):
         if app_data != 1:
             return
-        if self._viz3d_rotate_fid is not None:
-            self._viz3d_rotate_fid = None
+        if self._viz3d_pitch_fid is not None:
+            self._viz3d_pitch_fid = None
             try:
                 if self._save:
                     self._save()
@@ -356,13 +362,30 @@ class GUIEngineViz3D:
             return None
         return cam_x + t * dx, cam_z + t * dz
 
+    def _viz3d_local_to_world(self, fx, fy, fz, cos_y, sin_y, cos_p, sin_p, lx, ly, lz):
+        """One point in a fixture's own local space (lx,ly,lz) -> world
+        space, applying the fixture's placement pitch (rotation around
+        its own local X — nose up/down) THEN yaw (rotation around world
+        Y — spin left/right), then translating to its position. Shared
+        by the cube-corner and pixel-grid transforms below so pitch
+        composes with yaw identically in both — a fixture's housing and
+        its pixel grid should tilt together, not separately."""
+        ly1 = ly * cos_p - lz * sin_p
+        lz1 = ly * sin_p + lz * cos_p
+        wx = fx + (lx * cos_y - lz1 * sin_y)
+        wz = fz + (lx * sin_y + lz1 * cos_y)
+        wy = fy + ly1
+        return wx, wy, wz
+
     def _viz3d_fixture_positions(self):
-        """Every patched master's (fixture, x, y, z, yaw) in feet. Uses
-        viz_position when set; otherwise auto-arranges in a line along
-        x at ground level (z=0), 2.5ft apart centre-to-centre (1.5ft of
-        clear space either side of each 1x1ft cube), ordered by patch
-        id — same "sensible default, explicit override wins" shape as
-        VIZ LAYOUT."""
+        """Every patched master's (fixture, x, y, z, yaw, pitch) in feet/
+        radians. Uses viz_position when set; otherwise auto-arranges in
+        a line along x at ground level (z=0), 2.5ft apart centre-to-
+        centre (1.5ft of clear space either side of each 1x1ft cube),
+        ordered by patch id — same "sensible default, explicit override
+        wins" shape as VIZ LAYOUT. pitch is a placement property (how
+        the fixture is physically mounted — a truss par angled down at
+        the stage, say), separate from a mover's live pan/tilt beam."""
         fixtures = list(self._patch.all_fixtures())
         n = len(fixtures)
         out = []
@@ -370,10 +393,11 @@ class GUIEngineViz3D:
             pos = getattr(m, 'viz_position', None)
             if pos:
                 out.append((m, pos['x'], pos['y'], pos['z'],
-                            math.radians(pos.get('yaw', 0.0))))
+                            math.radians(pos.get('yaw', 0.0)),
+                            math.radians(pos.get('pitch', 0.0))))
             else:
                 x = (i - (n - 1) / 2.0) * 2.5
-                out.append((m, x, self._VIZ3D_MARKER, 0.0, 0.0))
+                out.append((m, x, self._VIZ3D_MARKER, 0.0, 0.0, 0.0))
         return out
 
     def _viz3d_pixel_grid(self, master):
@@ -461,24 +485,30 @@ class GUIEngineViz3D:
             dt = max(0.0, min(0.25, now - last))  # clamp so a long-hidden window doesn't jump on reshow
             self._viz3d_orbit_angle += dt * (2.0 * math.pi / self._VIZ3D_CAM_PERIOD)
 
-        # ---- apply an in-progress Cmd/Ctrl+Shift+right-drag fixture rotation ----
-        if self._viz3d_rotate_fid is not None:
+        # ---- apply an in-progress Alt+right-drag fixture pitch rotation ----
+        if self._viz3d_pitch_fid is not None:
             if dpg.is_mouse_button_down(dpg.mvMouseButton_Right):
                 try:
                     mouse = dpg.get_mouse_pos(local=False)
                 except Exception:
                     mouse = None
-                master = self._patch.get(self._viz3d_rotate_fid)
+                master = self._patch.get(self._viz3d_pitch_fid)
                 if mouse is not None and master is not None:
                     eff = next((p for p in self._viz3d_fixture_positions() if p[0] is master), None)
-                    cx, cy, cz = (eff[1], eff[2], eff[3]) if eff else (0.0, self._VIZ3D_MARKER, 0.0)
-                    dx_screen = mouse[0] - self._viz3d_rotate_start_mx
-                    new_yaw = (self._viz3d_rotate_start_yaw
-                               + dx_screen * self._VIZ3D_YAW_DRAG_SENSITIVITY) % 360.0
-                    master.viz_position = {"x": cx, "y": cy, "z": cz, "yaw": round(new_yaw, 1)}
+                    if eff:
+                        cx, cy, cz, cyaw = eff[1], eff[2], eff[3], math.degrees(eff[4])
+                    else:
+                        cx, cy, cz, cyaw = 0.0, self._VIZ3D_MARKER, 0.0, 0.0
+                    dy_screen = mouse[1] - self._viz3d_pitch_start_my
+                    new_pitch = (self._viz3d_pitch_start_pitch
+                                 + dy_screen * self._VIZ3D_FIXTURE_PITCH_DRAG_SENSITIVITY)
+                    new_pitch = max(self._VIZ3D_FIXTURE_PITCH_MIN,
+                                    min(self._VIZ3D_FIXTURE_PITCH_MAX, new_pitch))
+                    master.viz_position = {"x": cx, "y": cy, "z": cz, "yaw": cyaw,
+                                           "pitch": round(new_pitch, 1)}
             else:
                 # Same released-outside-canvas safety net as the other drags.
-                self._viz3d_rotate_fid = None
+                self._viz3d_pitch_fid = None
                 try:
                     if self._save:
                         self._save()
@@ -522,10 +552,11 @@ class GUIEngineViz3D:
                     # below, which always computes x/z fresh) touched it.
                     eff = next((p for p in self._viz3d_fixture_positions() if p[0] is master), None)
                     if eff:
-                        _, cur_x, cur_y, cur_z, cur_yaw_rad = eff
-                        cur_yaw = math.degrees(cur_yaw_rad)
+                        _, cur_x, cur_y, cur_z, cur_yaw_rad, cur_pitch_rad = eff
+                        cur_yaw   = math.degrees(cur_yaw_rad)
+                        cur_pitch = math.degrees(cur_pitch_rad)
                     else:
-                        cur_x = cur_y = cur_z = cur_yaw = 0.0
+                        cur_x = cur_y = cur_z = cur_yaw = cur_pitch = 0.0
                     shift = dpg.is_key_down(dpg.mvKey_LShift) or dpg.is_key_down(dpg.mvKey_RShift)
                     ctrl  = (dpg.is_key_down(dpg.mvKey_LControl) or dpg.is_key_down(dpg.mvKey_RControl)
                              or dpg.is_key_down(dpg.mvKey_ModSuper))
@@ -533,20 +564,20 @@ class GUIEngineViz3D:
                         dy_screen = self._viz3d_drag_start_my - my   # mouse up = higher
                         new_y = max(0.05, self._viz3d_drag_start_y
                                     + dy_screen * self._VIZ3D_HEIGHT_DRAG_SENSITIVITY)
-                        master.viz_position = {"x": cur_x, "y": round(new_y, 3),
-                                               "z": cur_z, "yaw": cur_yaw}
+                        master.viz_position = {"x": cur_x, "y": round(new_y, 3), "z": cur_z,
+                                               "yaw": cur_yaw, "pitch": cur_pitch}
                     elif ctrl:
                         dx_screen = mx - self._viz3d_drag_start_mx
                         new_yaw = (self._viz3d_drag_start_yaw
                                    + dx_screen * self._VIZ3D_YAW_DRAG_SENSITIVITY) % 360.0
-                        master.viz_position = {"x": cur_x, "y": cur_y,
-                                               "z": cur_z, "yaw": round(new_yaw, 1)}
+                        master.viz_position = {"x": cur_x, "y": cur_y, "z": cur_z,
+                                               "yaw": round(new_yaw, 1), "pitch": cur_pitch}
                     else:
                         hit = self._viz3d_unproject_to_ground(mx, my, cam, focal, screen_cx, screen_cy, cur_y)
                         if hit:
                             wx, wz = hit
-                            master.viz_position = {"x": round(wx, 3), "y": cur_y,
-                                                   "z": round(wz, 3), "yaw": cur_yaw}
+                            master.viz_position = {"x": round(wx, 3), "y": cur_y, "z": round(wz, 3),
+                                                   "yaw": cur_yaw, "pitch": cur_pitch}
             else:
                 # Same released-outside-canvas safety net as the orbit drag.
                 self._viz3d_drag_fid = None
@@ -592,8 +623,9 @@ class GUIEngineViz3D:
         hs = self._VIZ3D_MARKER
         self._viz3d_screen_pos = {}
 
-        for i, (master, fx, fy, fz, fyaw) in enumerate(self._viz3d_fixture_positions()):
+        for i, (master, fx, fy, fz, fyaw, fpitch) in enumerate(self._viz3d_fixture_positions()):
             cos_y, sin_y = math.cos(fyaw), math.sin(fyaw)
+            cos_p, sin_p = math.cos(fpitch), math.sin(fpitch)
             multi_pixel = master.pixel_count > 1
 
             center_p = proj(fx, fy, fz)
@@ -613,15 +645,14 @@ class GUIEngineViz3D:
                     if r or g or b:
                         color = (r, g, b, 255)
 
-            # 8 cube corners in the fixture's own local space, then yaw +
-            # translate into world space.
+            # 8 cube corners in the fixture's own local space, then
+            # pitch + yaw + translate into world space.
             corners = []
             for lx in (-hs, hs):
                 for ly in (-hs, hs):
                     for lz in (-hs, hs):
-                        wx = fx + (lx * cos_y - lz * sin_y)
-                        wz = fz + (lx * sin_y + lz * cos_y)
-                        wy = fy + ly
+                        wx, wy, wz = self._viz3d_local_to_world(
+                            fx, fy, fz, cos_y, sin_y, cos_p, sin_p, lx, ly, lz)
                         corners.append(proj(wx, wy, wz))
 
             # Corner order above is binary-counted (lx,ly,lz), so edges
@@ -660,9 +691,8 @@ class GUIEngineViz3D:
                     lx = -hs + (col + 0.5) * stride_x
                     ly =  hs - (row + 0.5) * stride_y   # row 0 at top
                     lz = hs + 0.02   # just proud of the front face
-                    wx = fx + (lx * cos_y - lz * sin_y)
-                    wz = fz + (lx * sin_y + lz * cos_y)
-                    wy = fy + ly
+                    wx, wy, wz = self._viz3d_local_to_world(
+                        fx, fy, fz, cos_y, sin_y, cos_p, sin_p, lx, ly, lz)
                     p = proj(wx, wy, wz)
                     tag = f"viz3d_pixel_{i}_{j}"
                     try:
@@ -684,6 +714,12 @@ class GUIEngineViz3D:
                 # tilt: -90..+90 from level), not calibrated per profile's
                 # real physical range. Programmer wins over cue, same
                 # precedent as _tick_output_monitor's own attr merge.
+                # Composes with the fixture's own placement pitch (how
+                # it's physically mounted) rather than ignoring it — a
+                # fixture installed angled down should show its beam
+                # angled down even at a level (centred) tilt channel.
+                # tilt_angle's "positive = up" and fpitch's "positive =
+                # down" are opposite sign conventions, hence the minus.
                 sub_fid = f"{master.fixture_id}.1"
                 pl = self._out.programmer_layer.get(sub_fid, {}) if self._out else {}
                 cm = cue_merged.get(sub_fid, {})
@@ -691,7 +727,7 @@ class GUIEngineViz3D:
                 pan_frac  = max(0.0, min(1.0, merged.get('pan', 127.5) / 255.0))
                 tilt_frac = max(0.0, min(1.0, merged.get('tilt', 127.5) / 255.0))
                 pan_angle  = pan_frac * 2.0 * math.pi
-                tilt_angle = (tilt_frac - 0.5) * math.pi
+                tilt_angle = (tilt_frac - 0.5) * math.pi - fpitch
                 beam_yaw = fyaw + pan_angle
                 cos_b, sin_b = math.cos(beam_yaw), math.sin(beam_yaw)
                 dir_y = math.sin(tilt_angle)
