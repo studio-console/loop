@@ -504,6 +504,11 @@ COMMAND_REFERENCE = [
         ("fdrs button",           "open the 10-slot fader page panel — ◀/▶ page through banks of 10 faders (page 2 = faders 11-20, etc.); click a slot's id badge to give it focus, click a cue in its list to GOTO"),
         ("color button",          "open the HSV colour wheel for RGB control"),
         ("audio button",          "open the audio reactive panel (device, capture, mapping, gain, live meters)"),
+        ("3d viz button",         "open the 3D rig visualizer — an old-school vector-arcade wireframe view of the rig, driven by real fixture output. 1 grid square = 1ft; see VIZ POSITION under 'patch commands' for placement via the command line/AI"),
+        ("3d viz — what you see", "multi-pixel fixtures (e.g. RGB tubes) show a real grid of pixel dots on their front face (same layout as VIZ LAYOUT/the 2D stage view); a 1-pixel mover shows a beam line instead, pointing in a stylised direction from its live pan/tilt DMX values, composed with its mount pitch if set"),
+        ("3d viz — move a fixture", "left-click-drag it along its current height (x/z); Shift-drag adjusts height (y) instead"),
+        ("3d viz — rotate a fixture", "Ctrl+right-drag it to rotate yaw (spin left/right); Alt+right-drag to rotate pitch (nose up/down — how it's physically mounted, e.g. a truss par angled down at the stage)"),
+        ("3d viz — camera",       "right-drag empty space to orbit the camera (horizontal) and tilt it (vertical); the 'pause orbit' button stops/starts the automatic slow auto-orbit without affecting manual dragging"),
     ]),
     ("status bar & quick controls", [
         ("blind button",          "click to toggle BLIND — programmer hidden from DMX output; glows red when active"),
