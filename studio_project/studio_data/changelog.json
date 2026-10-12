@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-10-12",
+      "summary": "Audio routing matrix + AUDIO ROUTE commands; fix meter tick (484/484)",
+      "details": []
+    },
+    {
+      "date": "2026-10-12",
       "summary": "Audio-reactive framework: pitch->MIDI bridge, key->colour, sub-harmonic strobe",
       "details": []
     },
