@@ -3,6 +3,11 @@
   "entries": [
     {
       "date": "2026-10-12",
+      "summary": "Audio-reactive framework: pitch->MIDI bridge, key->colour, sub-harmonic strobe",
+      "details": []
+    },
+    {
+      "date": "2026-10-12",
       "summary": "Rename MACRO to CODE, add code delays, pool pagination",
       "details": []
     },

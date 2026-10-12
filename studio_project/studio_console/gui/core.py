@@ -171,7 +171,8 @@ class GUIEngineCore:
                  speed_master_pool=None, code_pool=None, code_recording=None,
                  attr_pools=None, osc=None,
                  library=None, save_patch_fn=None, fx_params=None,
-                 audio_engine=None, audio_mapper=None, prog_fx_ids=None):
+                 audio_engine=None, audio_mapper=None, audio_router=None,
+                 prog_fx_ids=None):
         self._midi       = midi
         self._fx         = fx_engine
         self._fade       = fade_engine
@@ -208,6 +209,7 @@ class GUIEngineCore:
         self._cmd         = cmd_fn          # cmd_fn(str) → result str
         self._audio_engine = audio_engine   # AudioEngine — capture + level/band analysis
         self._audio_mapper = audio_mapper   # AudioMapper — level/band → output_state.audio_layer
+        self._audio_router = audio_router   # AudioRouter — band threshold → target_registry callbacks
         self._prog_fx_ids  = prog_fx_ids if prog_fx_ids is not None else []  # live-tracked list, shared by reference with state.py
 
         self._cmd_log     = []         # command history lines
@@ -423,6 +425,7 @@ class GUIEngineCore:
         self._build_speed_master_popup()
         self._build_fader_page_popup()
         self._build_audio_popup()
+        self._build_audio_routing_popup()
         self._build_viz3d_popup()
 
         with dpg.handler_registry():
@@ -738,6 +741,7 @@ class GUIEngineCore:
         self._tick_viz3d()
         self._tick_fader_page()
         self._tick_audio()
+        self._tick_audio_routing()
 
         self._tick_status_bar()
         self._tick_playbacks_and_faders()

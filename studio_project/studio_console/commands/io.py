@@ -29,7 +29,7 @@ from studio_console.state import (
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
-    audio_engine, audio_mapper, beam_pool, color_pool, control_pool, cs1,
+    audio_engine, audio_mapper, audio_router, beam_pool, color_pool, control_pool, cs1,
     cue_back, cue_go, cue_pool, cue_reload, dim_pool, export_presets,
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
@@ -223,6 +223,70 @@ def cmd_067_osc(t0, tokens, raw):
         return "OSC usage: TARGET name host port | REMOVE name | LIST | FEEDBACK host port | SEND /addr [args]"
 
 
+def _audio_route_cmd(args):
+    """AUDIO ROUTE ADD|REMOVE|LIST|ON|OFF|THRESHOLD — the routing matrix.
+
+    Targets are names from GUIEngine.target_registry — the exact same
+    namespace MIDI NOTE mappings use (MIDI TARGETS lists them), so any
+    target learnable from a pad is routable from an audio threshold.
+    """
+    if not args:
+        return ("AUDIO ROUTE usage: ADD <level|low|mid|high> <threshold 0-1> "
+                "<target name> | REMOVE <id> | LIST | ON | OFF | THRESHOLD <n>")
+    sub = args[0].upper()
+    if sub == 'LIST':
+        return audio_router.describe()
+    if sub == 'ON':
+        audio_router.enabled = True
+        ShowFile.save_audio_routes(audio_router)
+        return (f"AUDIO ROUTE ON — {len(audio_router.routes)} route(s) live "
+                f"(capture must be running: AUDIO START)")
+    if sub == 'OFF':
+        audio_router.enabled = False
+        ShowFile.save_audio_routes(audio_router)
+        return "AUDIO ROUTE OFF"
+    if sub == 'THRESHOLD' and len(args) >= 2:
+        try:
+            thr = float(args[1])
+        except ValueError:
+            return f"AUDIO ROUTE THRESHOLD: bad value '{args[1]}'"
+        audio_router.default_threshold = max(0.01, min(1.0, thr))
+        ShowFile.save_audio_routes(audio_router)
+        return f"audio route default threshold → {audio_router.default_threshold:.2f}"
+    if sub == 'REMOVE' and len(args) >= 2:
+        try:
+            rid = int(args[1])
+        except ValueError:
+            return f"AUDIO ROUTE REMOVE: bad id '{args[1]}'"
+        if audio_router.remove_route(rid):
+            ShowFile.save_audio_routes(audio_router)
+            return f"removed audio route {rid}  (saved)"
+        return f"no audio route {rid}"
+    if sub == 'ADD' and len(args) >= 4:
+        channel  = args[1].lower()
+        try:
+            thr = float(args[2])
+        except ValueError:
+            return f"AUDIO ROUTE ADD: bad threshold '{args[2]}'"
+        target_name = " ".join(args[3:])
+        entry = GUIEngine.target_registry.get(target_name)
+        if not entry:
+            available = ", ".join(sorted(GUIEngine.target_registry.keys()))
+            return (f"AUDIO ROUTE ADD: target '{target_name}' not found\n"
+                    f"Available: {available}")
+        off_cb = entry[3] if len(entry) > 3 else None
+        rid, err = audio_router.add_route(channel, thr, target_name,
+                                          entry[0], off_cb)
+        if err:
+            return f"AUDIO ROUTE ADD: {err}"
+        ShowFile.save_audio_routes(audio_router)
+        return f"audio route {rid}: {channel} >= {thr:.2f} → {target_name}  (saved)"
+    return ("AUDIO ROUTE usage: ADD <level|low|mid|high> <threshold 0-1> "
+            "<target name> | REMOVE <id> | LIST | ON | OFF | THRESHOLD <n>\n"
+            "  e.g. AUDIO ROUTE ADD low 0.5 GO stk 1 CUE 1\n"
+            "  Use MIDI TARGETS to list available target names")
+
+
 def cmd_068_audio(t0, tokens, raw):
     if t0 == 'AUDIO':
         t1 = tokens[1] if len(tokens) > 1 else ''
@@ -266,7 +330,10 @@ def cmd_068_audio(t0, tokens, raw):
                 return f"AUDIO GAIN: bad value '{tokens[2]}'"
             audio_engine.gain = g
             return f"audio gain → {g}"
-        return "AUDIO usage: DEVICES | START [device] | STOP | on | off | STATUS | GAIN <n>"
+        if t1 == 'ROUTE':
+            return _audio_route_cmd(tokens[2:])
+        return ("AUDIO usage: DEVICES | START [device] | STOP | on | off | "
+                "STATUS | GAIN <n> | ROUTE ADD|REMOVE|LIST|ON|OFF|THRESHOLD ...")
 
 
 def cmd_069_midi(t0, tokens, raw):

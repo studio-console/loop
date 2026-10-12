@@ -102,6 +102,7 @@ from studio_console.gui.color_picker import GUIEngineColorPicker
 from studio_console.gui.speed_master import GUIEngineSpeedMaster
 from studio_console.gui.fader_page import GUIEngineFaderPage
 from studio_console.gui.audio_monitors import GUIEngineAudioMonitors
+from studio_console.gui.audio_routing import GUIEngineAudioRouting
 from studio_console.gui.viz3d import GUIEngineViz3D
 
 
@@ -109,7 +110,8 @@ class GUIEngine(GUIEngineCore, GUIEngineHeader, GUIEngineLeftColumn,
                  GUIEngineRightColumn, GUIEngineStage, GUIEnginePoolsPanel,
                  GUIEngineHardwarePopups, GUIEngineMiscPopups, GUIEngineFXEditor,
                  GUIEngineAIPopups, GUIEngineColorPicker, GUIEngineSpeedMaster,
-                 GUIEngineFaderPage, GUIEngineAudioMonitors, GUIEngineViz3D):
+                 GUIEngineFaderPage, GUIEngineAudioMonitors, GUIEngineAudioRouting,
+                 GUIEngineViz3D):
     pass
 
 
@@ -125,6 +127,7 @@ from studio_console.state import (
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
     audio_engine, audio_mapper, audio_midi, key_color, strobe_engine,
+    audio_router,
     beam_pool, color_pool, control_pool, cs1,
     cue_back, cue_go, cue_pool, cue_reload, dim_pool, export_presets,
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
@@ -181,6 +184,7 @@ gui = GUIEngine(
     fx_params        = _fx_params,
     audio_engine     = audio_engine,
     audio_mapper     = audio_mapper,
+    audio_router     = audio_router,
     prog_fx_ids      = _prog_fx_ids,
 )
 # Wire run_command and GUI log into AI engine (both defined after ai was created)

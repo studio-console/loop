@@ -56,6 +56,7 @@ from studio_console.drivers.audio import AudioEngine, AudioMapper
 from studio_console.drivers.audio_midi import AudioMIDIBridge
 from studio_console.engine.key_color import KeyColorMapper
 from studio_console.engine.subharmonic import SubHarmonicStrobe
+from studio_console.engine.audio_router import AudioRouter
 from studio_console.drivers.ai import AIEngine
 
 # GUIEngine hasn't been extracted yet (a later phase) — see module docstring
@@ -171,6 +172,10 @@ audio_mapper = AudioMapper(audio_engine, output_state, patch)
 audio_midi     = AudioMIDIBridge()
 key_color      = KeyColorMapper(color_pool)
 strobe_engine  = SubHarmonicStrobe(osc)
+# audio routing matrix — threshold→target triggers over the four
+# AudioEngine bands, targets resolved from GUIEngine.target_registry
+# (same registry as MIDI NOTE mappings). Ticked from the GUI tick.
+audio_router   = AudioRouter()
 
 all_subs = [sub for master in patch.all_fixtures() for sub in master.all_subs()]
 
@@ -860,6 +865,7 @@ def save_show():
     ShowFile.save_colors(color_pool)
     ShowFile.save_dims(dim_pool)
     ShowFile.save_midi(midi)
+    ShowFile.save_audio_routes(audio_router)
     ShowFile.save_fx(_fx_params)
     ShowFile.save_fx_pool(fx_pool)
     ShowFile.save_forms(form_pool)
@@ -1201,6 +1207,49 @@ if _midi_doc:
 else:
     save_show()   # first run — write all files now
 
+# ── Audio-route restore (same deferred contract as MIDI: after
+# target_registry is built). Dynamic targets ("GO stk N CUE M" /
+# "fdr N Flash" / "CODE N") were already regenerated above from the
+# MIDI doc when present; routes saved with a dynamic target but no
+# matching MIDI mapping need the same treatment here.
+_audio_routes_doc = _read_file(ShowFile.AUDIO_ROUTES)
+if _audio_routes_doc:
+    import re as _re_ar
+    for _entry in _audio_routes_doc.get("routes", []):
+        _name = _entry.get("target", "")
+        if _name in GUIEngine.target_registry:
+            continue
+        _m = _re_ar.match(r'^GO stk (\d+) CUE (\d+(?:\.\d+)?)$', _name)
+        if _m:
+            _cs, _cue = int(_m.group(1)), float(_m.group(2))
+            def _make_go_a(c=f"GO stk {_cs} CUE {_cue}"):
+                def _go():
+                    from __main__ import run_command
+                    return run_command(c)
+                return _go
+            GUIEngine.target_registry[_name] = (_make_go_a(), False, True)
+            continue
+        _mf = _re_ar.match(r'^fdr (\d+) Flash$', _name)
+        if _mf:
+            _ex_n = int(_mf.group(1))
+            def _on_a(c=f"FADER {_ex_n} flash on"):
+                from __main__ import run_command
+                return run_command(c)
+            def _off_a(c=f"FADER {_ex_n} flash off"):
+                from __main__ import run_command
+                return run_command(c)
+            GUIEngine.target_registry[_name] = (_on_a, False, True, _off_a)
+            continue
+        _mm = _re_ar.match(r'^CODE (\d+)$', _name)
+        if _mm:
+            _code_n = int(_mm.group(1))
+            def _play_a(c=f"CODE {_code_n}"):
+                from __main__ import run_command
+                return run_command(c)
+            GUIEngine.target_registry[_name] = (_play_a, False, True)
+    ShowFile.load_audio_routes(_audio_routes_doc, audio_router,
+                               GUIEngine.target_registry)
+
 midi.print_maps()
 
 # ── Command line router ────────────────────────────────────
@@ -1515,6 +1564,7 @@ __all__ = [
     "_preset_live_push", "_prog_fx_ids", "_prog_snapshots", "_prog_time", "_start_magenta_sine", "_stop_fx",
     "_stop_prog_fx_preview", "_tap_times", "active_fader", "active_fx", "ai", "all_subs",
     "audio_engine", "audio_mapper", "audio_midi", "key_color", "strobe_engine",
+    "audio_router",
     "beam_pool", "color_pool", "control_pool", "cs1",
     "cue_back", "cue_go", "cue_pool", "cue_reload", "dim_pool", "export_presets",
     "fade_engine", "fader_pool", "flash_off", "flash_on", "focus_pool", "form_pool",

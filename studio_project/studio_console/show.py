@@ -59,6 +59,7 @@ class ShowFile:
     COLORS    = os.path.join(DATA_DIR, "colors.json")
     DIMS      = os.path.join(DATA_DIR, "dims.json")
     MIDI      = os.path.join(DATA_DIR, "midi.json")
+    AUDIO_ROUTES = os.path.join(DATA_DIR, "audio_routes.json")
     FX        = os.path.join(DATA_DIR, "fx.json")
     FX_POOL   = os.path.join(DATA_DIR, "fx_pool.json")
     FORMS     = os.path.join(DATA_DIR, "forms.json")
@@ -286,6 +287,21 @@ class ShowFile:
             doc["midi_note"].append({"channel": ch, "note": note, "target": m.name})
         _write_file(ShowFile.MIDI, doc)
         print(f"  Saved midi      → {len(midi.cc_maps)} CC, {len(midi.note_maps)} note")
+
+    @staticmethod
+    def save_audio_routes(audio_router):
+        doc = {"version": ShowFile.VERSION,
+               "enabled": audio_router.enabled,
+               "default_threshold": audio_router.default_threshold,
+               "routes": []}
+        for r in sorted(audio_router.routes.values(), key=lambda r: r.route_id):
+            doc["routes"].append({
+                "id": r.route_id, "channel": r.channel,
+                "threshold": r.threshold, "target": r.target,
+            })
+        _write_file(ShowFile.AUDIO_ROUTES, doc)
+        if doc["routes"]:
+            print(f"  Saved audio routes → {len(doc['routes'])}")
 
     @staticmethod
     def save_osc_targets(osc_engine):
@@ -564,6 +580,41 @@ class ShowFile:
             midi.map_note(entry["channel"], entry["note"], reg[0], off_cb, name=name)
         s = f", {skipped} skipped" if skipped else ""
         print(f"  Loaded midi     — {len(midi.cc_maps)} CC, {len(midi.note_maps)} note{s}")
+
+    @staticmethod
+    def load_audio_routes(doc, audio_router, target_registry):
+        """doc is already-parsed JSON — same deferred-restore contract as
+        load_midi: must run after target_registry is built (after GUI
+        setup). Targets missing from the registry are skipped, mirroring
+        the MIDI restore's behaviour for stale mappings."""
+        if not doc:
+            return
+        audio_router.clear_routes()
+        audio_router.enabled = bool(doc.get("enabled", False))
+        audio_router.default_threshold = float(
+            doc.get("default_threshold", 0.5))
+        skipped = 0
+        max_id = 0
+        for entry in doc.get("routes", []):
+            name = entry.get("target", "")
+            reg  = target_registry.get(name)
+            if reg is None:
+                skipped += 1
+                continue
+            off_cb = reg[3] if len(reg) > 3 else None
+            rid, err = audio_router.add_route(
+                entry.get("channel", "level"),
+                entry.get("threshold", 0.5),
+                name, reg[0], off_cb)
+            if err:
+                skipped += 1
+                continue
+            max_id = max(max_id, rid)
+        # preserve saved route ids so later adds don't collide with
+        # loaded ones (and LIST/REMOVE ids match what the operator saw)
+        audio_router._next_id = max(audio_router._next_id, max_id + 1)
+        s = f", {skipped} skipped" if skipped else ""
+        print(f"  Loaded audio routes — {len(audio_router.routes)}{s}")
 
     @staticmethod
     def load_fx(fx_params):

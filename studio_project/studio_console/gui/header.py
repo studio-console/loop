@@ -127,6 +127,9 @@ class GUIEngineHeader:
             dpg.add_button(label="audio", width=50, height=24,
                            callback=self._on_audio_toggle)
             dpg.add_spacer(width=2)
+            dpg.add_button(label="route", width=52, height=24,
+                           callback=self._on_audio_routing_toggle)
+            dpg.add_spacer(width=2)
             dpg.add_button(label="save show", width=90, height=24,
                            callback=self._on_save)
             dpg.add_spacer(width=6)

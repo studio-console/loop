@@ -27,7 +27,7 @@ from studio_console.state import (
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
-    audio_engine, audio_mapper, beam_pool, color_pool, control_pool, cs1,
+    audio_engine, audio_mapper, audio_router, beam_pool, color_pool, control_pool, cs1,
     cue_back, cue_go, cue_pool, cue_reload, dim_pool, export_presets,
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
@@ -58,6 +58,7 @@ from studio_console.engine.fx import (
     SizePool, SpreadPreset, SpreadPool, SpeedMaster, SpeedMasterPool, FXLayer,
     FXEngine, _bucket_fx_defs, _expand_color_fx, _expand_group_fx,
 )
+from studio_console.engine.audio_router import AudioRouter
 
 from studio_console.drivers.network import NetworkEngine
 from studio_console.drivers.midi import CCMapping, NoteMapping, MIDIEngine
@@ -694,6 +695,106 @@ def run_smoke_test(gui):
                    "failed" in r_start.lower())
         finally:
             _audio_driver._AUDIO_AVAILABLE = _prev_audio_avail
+
+        # ── Audio routing matrix (engine/audio_router.py + AUDIO ROUTE) ──
+        # Ticking is deterministic here: router.tick() runs on the GUI
+        # tick live, but headless tests drive it directly by setting
+        # AudioEngine band values — no hardware, no threads involved.
+        _check("AudioRouter constructs idle (disabled, no routes)",
+               isinstance(audio_router, AudioRouter)
+               and not audio_router.enabled
+               and not audio_router.routes)
+        _route_fired = []
+        # All-caps name: run_command() uppercases the whole command string
+        # before the target lookup, so multi-word mixed-case registry names
+        # ("GO stk 1 CUE 1") can never match through the command path —
+        # same latent constraint MIDI NOTE mappings already live under.
+        _ROUTE_T = "_SMOKE_AUDIO_ROUTE_TARGET"
+        GUIEngine.target_registry[_ROUTE_T] = (
+            lambda: _route_fired.append('on'), False, True,
+            lambda: _route_fired.append('off'))
+        try:
+            _r_route_add = run_command(f"AUDIO ROUTE ADD low 0.50 {_ROUTE_T}")
+            _check("AUDIO ROUTE ADD creates route",
+                   "route" in _r_route_add.lower()
+                   and len(audio_router.routes) == 1)
+            _route_id = next(iter(audio_router.routes))
+            _r_route_list = run_command("AUDIO ROUTE LIST")
+            _check("AUDIO ROUTE LIST names the new route and target",
+                   _ROUTE_T in _r_route_list
+                   and str(_route_id) in _r_route_list)
+            _check("AUDIO ROUTE ADD rejects bad threshold channel",
+                   "unknown channel" in run_command(
+                       f"AUDIO ROUTE ADD warp 0.5 {_ROUTE_T}").lower())
+            _check("AUDIO ROUTE ADD rejects bad threshold value",
+                   "bad threshold" in run_command(
+                       f"AUDIO ROUTE ADD low loud {_ROUTE_T}").lower())
+            _check("AUDIO ROUTE ADD rejects missing target",
+                   "not found" in run_command(
+                       "AUDIO ROUTE ADD low 0.5 no_such_target_xyz").lower())
+            run_command("AUDIO ROUTE ON")
+            _check("AUDIO ROUTE ON enables the router", audio_router.enabled)
+            audio_router.enabled = False   # start the firing sequence disabled
+            audio_engine.low = 0.90
+            audio_router.tick(audio_engine)
+            _check("disabled router never fires", _route_fired == [])
+            audio_router.enabled = True
+            audio_router.tick(audio_engine)
+            _check("route fires on first rising crossing",
+                   _route_fired == ['on'])
+            audio_router.tick(audio_engine)
+            _check("route does not refire while level stays high",
+                   _route_fired == ['on'])
+            audio_engine.low = 0.10
+            audio_router.tick(audio_engine)
+            _check("route releases (off-callback) once re-armed",
+                   _route_fired == ['on', 'off'])
+            audio_engine.low = 0.02  # park well under every threshold
+            audio_router.tick(audio_engine)
+            audio_engine.low = 0.90
+            audio_router.tick(audio_engine)
+            _check("route refires on the next rising crossing",
+                   _route_fired == ['on', 'off', 'on'])
+            audio_engine.low = 0.0
+            run_command(f"AUDIO ROUTE REMOVE {_route_id}")
+            _check("AUDIO ROUTE REMOVE deletes the route",
+                   not audio_router.routes)
+            _check("AUDIO ROUTE REMOVE on missing id says so",
+                   "no audio route" in run_command(
+                       "AUDIO ROUTE REMOVE 9999").lower())
+            _prev_thr = audio_router.default_threshold
+            run_command("AUDIO ROUTE THRESHOLD 0.77")
+            _check("AUDIO ROUTE THRESHOLD sets default",
+                   abs(audio_router.default_threshold - 0.77) < 1e-9)
+            audio_router.default_threshold = _prev_thr
+            run_command("AUDIO ROUTE OFF")
+            _check("AUDIO ROUTE OFF disables the router",
+                   not audio_router.enabled)
+            # persistence round-trip — save one route, reload, verify
+            run_command(f"AUDIO ROUTE ADD high 0.42 {_ROUTE_T}")
+            ShowFile.save_audio_routes(audio_router)
+            _ar_doc = _read_file(ShowFile.AUDIO_ROUTES)
+            _check("audio routes persist to audio_routes.json",
+                   _ar_doc is not None
+                   and len(_ar_doc.get("routes", [])) == 1
+                   and _ar_doc["routes"][0]["target"] == _ROUTE_T)
+            audio_router.clear_routes()
+            ShowFile.load_audio_routes(_ar_doc, audio_router,
+                                       GUIEngine.target_registry)
+            _reloaded = list(audio_router.routes.values())
+            _check("audio routes load back with channel/threshold",
+                   len(_reloaded) == 1 and _reloaded[0].channel == "high"
+                   and abs(_reloaded[0].threshold - 0.42) < 1e-9)
+            audio_router.clear_routes()
+            ShowFile.save_audio_routes(audio_router)
+        finally:
+            audio_router.enabled = False
+            audio_router.clear_routes()
+            audio_engine.low = 0.0
+            try:
+                del GUIEngine.target_registry[_ROUTE_T]
+            except KeyError:
+                pass
 
         # CLEAR stage 3 — should blackout output, not silently return "output_clear"
         prog.do_clear(); prog.do_clear()   # advance to stage 2 (programmer cleared)
@@ -2342,6 +2443,34 @@ def run_smoke_test(gui):
         try:
             gui.build()
             _check("gui.build() constructs all windows/widgets without error", True)
+            # ── Audio Control & Routing panel (gui/audio_routing.py) ────
+            _check("audio routing window builds", dpg.does_item_exist("audio_routing_window"))
+            _check("routing meter canvas + layer build",
+                   dpg.does_item_exist("ar_meter_canvas")
+                   and dpg.does_item_exist("ar_meter_layer"))
+            _check("routing device/gain/threshold/add controls build",
+                   all(dpg.does_item_exist(t) for t in
+                       ("ar_device_combo", "ar_gain", "ar_threshold",
+                        "ar_add_channel", "ar_add_threshold", "ar_add_target",
+                        "ar_add_status", "ar_routes_body")))
+            # meter + table ticks run against the live window without error
+            gui._tick_audio_routing()
+            _check("routing meter/table tick runs cleanly on the built window", True)
+            # _tick_audio_routing() gates its meter/table half on
+            # dpg.is_item_shown("audio_routing_window"), and the popup is
+            # built show=False, so that call above exercised only the router
+            # tick. Drive the meter half directly to cover it. Draw items
+            # live in slot **2** of a drawlist, not slot 0 (slot 0 is always
+            # empty) — asserting slot 0 can never pass.
+            gui._tick_audio_routing_meter()
+            _check("meter layer holds its 12 fixed primitives",
+                   len(dpg.get_item_children("ar_meter_layer", 2) or []) == 12)
+            # ...and they were actually reconfigured off the (0,0)-(0,0)
+            # degenerate rect they're built with, i.e. the tick really
+            # draws bars instead of silently no-opping.
+            _check("meter layer actually draws bars",
+                   dpg.get_item_configuration("ar_meter_trough_0").get("pmax")
+                   not in (None, [0.0, 0.0], (0.0, 0.0)))
             # ── fixture-dim-slider unit fix ──────────────────────────────
             # _on_fixture_dim_slider passed dim*100 into MasterFixture.
             # set_dimmer(), which expects a 0.0-1.0 fraction (per its own
