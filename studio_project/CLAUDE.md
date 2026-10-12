@@ -13,10 +13,10 @@ Package layout below). GUI: DearPyGui 2.3.1. All show data lives in
 python3 studio_project.py                                      # normal launch
 STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 python3 studio_project.py  # headless smoke test
 python3 -m py_compile studio_project.py                        # compile check only
-pytest                                                          # same 456 checks, pytest-native reporting
+pytest                                                          # same 484 checks, pytest-native reporting
 ```
 
-Smoke test must stay at **456/456 PASS**. Run it after every change (either form — see below).  
+Smoke test must stay at **484/484 PASS**. Run it after every change (either form — see below).  
 `STUDIO_DRY_RUN=1` disables sACN output. `STUDIO_HEADLESS=1` skips the GUI and runs tests.
 
 Always run `studio_project.py` directly as the entry point — most of
@@ -25,7 +25,7 @@ Always run `studio_project.py` directly as the entry point — most of
 `studio_console/` standalone (e.g. `python3 -c "import studio_console.state"`)
 does not work and isn't meant to.
 
-**Two ways to run the same 456 checks:**
+**Two ways to run the same 484 checks:**
 - `STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 python3 studio_project.py` — the
   original oracle (`studio_console/tests_smoke.py`, `run_smoke_test(gui)`).
   Every phase of the package split was verified against this; it's the
@@ -35,7 +35,7 @@ does not work and isn't meant to.
   pytest port of the exact same check sequence (`pytest.ini` points
   `testpaths` at it). Per-check pass/fail via `-v`, `-k` filtering,
   JUnit XML for CI. It's one long `test_smoke_full_pipeline` function,
-  not ~456 independent tests — the checks are genuinely sequential
+  not ~484 independent tests — the checks are genuinely sequential
   (each depends on state the earlier ones left in `fader_pool`/`patch`/
   `stack_pool`), so `pytest-subtests` reports each one individually
   without pretending they're isolated. It builds `gui` and every engine
@@ -56,7 +56,7 @@ studio_console/
                               show-file loading, MIDI/OSC setup, save_show/cue_go/
                               goto_cue and other closely-coupled helpers
   show.py                    ShowFile — save/load all studio_data/*.json
-  tests_smoke.py             the 456-case headless smoke test (run_smoke_test(gui))
+  tests_smoke.py             the 484-case headless smoke test (run_smoke_test(gui))
   models/
     fixtures.py               FixtureProfile, FixtureLibrary, GDTFLoader,
                                SubFixture, MasterFixture, Patch, programmer
@@ -76,6 +76,11 @@ studio_console/
     subharmonic.py              SubHarmonicStrobe (audio-reactive framework) —
                                  sub-harmonic division math, bass-onset strobe
                                  rates → sACN layer dict + Resolume OSC
+    audio_router.py             AudioRouter — band-level thresholds that fire
+                                 console targets (AUDIO ROUTE commands).
+                                 Threadless and deterministic: tick() is
+                                 driven externally, from the GUI tick or
+                                 directly in headless tests
   drivers/
     network.py, midi.py, osc.py, audio.py, audio_midi.py, ai.py
                                  NetworkEngine, MIDIEngine, OSCEngine,
@@ -89,8 +94,12 @@ studio_console/
                                  all class-level layout constants
     header.py, left_column.py, right_column.py, stage.py, pools_panel.py,
     hardware_popups.py, misc_popups.py, fx_editor.py, ai_popups.py,
-    color_picker.py, speed_master.py, fader_page.py, audio_monitors.py
-                                 one file per panel/popup cluster
+    color_picker.py, speed_master.py, fader_page.py, audio_monitors.py,
+    audio_routing.py
+                                 one file per panel/popup cluster — audio_routing
+                                 is the Audio Control & Routing window: device/
+                                 master controls, 4-band level meter with
+                                 threshold markers, routing matrix table
   commands/                    run_command() — composed in commands/__init__.py
                                 from 114 branch functions across 9 category files:
     __init__.py                 dispatcher: preamble + ordered dispatch list +
@@ -195,6 +204,7 @@ stk 2 wrap on
 | `midi.json` | MIDI mappings |
 | `state.json` | Runtime state (active fader, etc.) |
 | `changelog.json` | Session history log |
+| `audio_routes.json` | AudioRouter enabled flag, default threshold, routes |
 
 All pool files follow the same pattern: `{"version": "3.0", "<pool_key>": {...}}`.
 
@@ -205,6 +215,21 @@ All pool files follow the same pattern: `{"version": "3.0", "<pool_key>": {...}}
 - `fader_pool.get(n)` **auto-creates** a blank Fader if n doesn't exist — never assume a missing ID means "not assigned".
 - Smoke test runs `save_show()` repeatedly — it will overwrite `studio_data/` files. Don't pre-seed test data before running headless; use in-memory fixtures instead.
 - DPG 2.3.1 uses `num_items` (not `num_displayed_items`) for listboxes.
+- **To move a pre-built `drawlist` primitive at runtime, use
+  `configure_item(tag, pmin/pmax=...)` or `(p1/p2=...)` for lines — never
+  `draw_rectangle(tag=...)` / `draw_line(tag=...)`.** Those are *creation*
+  calls: outside an enclosing `with dpg.drawlist(...)` and with no `parent=`,
+  DPG 2.3.1 raises `SystemError` **and deregisters the existing item**, so the
+  primitive disappears and every later tick fails too. A bare
+  `except Exception: pass` in the tick path hides this completely — the widget
+  just goes permanently blank. See `gui/audio_routing.py`'s meter tick.
+- **Draw items live in child slot 2 of a `drawlist`, not slot 0.** `slot 0` is
+  always empty; `get_item_children(tag)` with no slot returns a 4-key dict.
+  Asserting slot 0 in a test can never pass.
+- `get_item_rect_size()` returns **0x0 before the first layout pass** — and
+  forever in `STUDIO_HEADLESS`, where no frame is ever laid out. Any geometry
+  math in a tick needs a fallback to the item's configured
+  `width`/`height` (`get_item_configuration(tag)`) or it divides by zero.
 - Fonts must be sized as integers; fallback to DPG built-in if font file not found.
 - `output_mode`: `'normal'` / `'moment'` / `'vfade'`
 - `trigger_mode`: `'toggle'` / `'flash'` / `'moment'`

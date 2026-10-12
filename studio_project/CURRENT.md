@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-12
 **Version:** v0.21
-**Smoke test:** 460/460 PASS
+**Smoke test:** 484/484 PASS
 **Branch:** main, up to date with origin/main
 
 ---
@@ -21,22 +21,32 @@
 - MIDI CC/note mapping (live, no code changes needed)
 - OSC input: MA3-compatible `/gma3/fader/...` routes
 - Audio-reactive framework (infrastructure): pitch→MIDI bridge, key→colour mapper, sub-harmonic strobe engine — modules wired idle, tick/command wiring pending
+- Audio routing matrix: `AUDIO ROUTE` commands + the Audio Control & Routing window — band-level thresholds (`level`/`low`/`mid`/`high`) that fire any registered console target, with rising-edge-only firing and an off-callback released once the band re-arms. Live 4-band level meter with threshold markers, add/remove route table. Persists to `audio_routes.json`
 - AI engine integration
 - Save/load show, backup, named saves in `studio_saves/`
 - Commands are case-insensitive (`stk`, `STK`, `fdr`, `FDR` all work)
-- Codebase is now a package (`studio_console/`) instead of one 21k-line file — same behavior, verified against the 456-case smoke test at every step (see below)
-- The same 456-check smoke test now also runs under pytest (`pytest` from the project root) with per-check pass/fail, `-k` filtering, JUnit XML — alongside, not instead of, the original `STUDIO_HEADLESS` oracle
+- Codebase is now a package (`studio_console/`) instead of one 21k-line file — same behavior, verified against the smoke test at every step (see below)
+- The same smoke test also runs under pytest (`pytest` from the project root) with per-check pass/fail, `-k` filtering, JUnit XML — alongside, not instead of, the original `STUDIO_HEADLESS` oracle. Both report 484 checks
 
 ## Recent changes
 
-1. **Audio-reactive framework laid down** (2026-10-12):
+1. **Audio routing matrix + AUDIO ROUTE commands; meter tick fix** (2026-10-12, commit 15c9141):
+   - New `engine/audio_router.py` — `AudioRouter`: routes keyed by band channel (`level`/`low`/`mid`/`high`) and threshold. Threadless and deterministic (no internal thread, no `tick()` side effects beyond firing), so firing order is reproducible and there is nothing to stop at shutdown. Fires on the rising edge only, and releases an off-callback once the band drops back under threshold. Enabled/route state persists via `ShowFile.save_audio_routes`/`load_audio_routes` → `audio_routes.json`
+   - New `gui/audio_routing.py` — Audio Control & Routing window: device pick + master controls, a 4-band level meter with threshold markers, and the routing matrix table with add/remove. Built hidden like the other popups; driven by `GUIEngine._tick()` → `_tick_audio_routing()`
+   - `commands/io.py` — `AUDIO ROUTE ADD/LIST/DEL/ON/OFF/THRESHOLD`, validating unknown channel, bad threshold value, and missing target
+   - **Fixed a bug that made the meter impossible to render.** `_tick_audio_routing_meter()` repositioned its 12 pre-built draw primitives with `draw_rectangle(tag=...)`/`draw_line(tag=...)` — creation calls, not updates. Outside any enclosing `with dpg.drawlist(...)` and with no `parent=`, DPG 2.3.1 raises `SystemError` *and deregisters the existing item*, so the first tick destroyed the primitives and every later tick failed too. The bare `except Exception: pass` in the tick swallowed it, so the symptom was a permanently blank meter with no error anywhere. Now `configure_item()`, which updates in place and keeps the drawlist at exactly 12 children
+   - Two related fixes in the same tick: silent bands kept a stale bar (a fill was only drawn when >1px wide and never cleared — it's now always reconfigured, collapsing to zero when inaudible), and `get_item_rect_size()` returns 0x0 forever in headless mode, making `row_h` a division by zero (now falls back to the drawlist's configured size)
+   - Smoke test: 2 checks corrected alongside the bug. The oracle asserted draw items in drawlist **slot 0** — they live in **slot 2**, slot 0 is always empty, so the check could never pass. And it called `_tick_audio_routing()`, which gates its meter half on `is_item_shown("audio_routing_window")` while the popup is built `show=False`, so the meter was never exercised at all. Both oracles now drive `_tick_audio_routing_meter()` directly and assert the primitives were reconfigured off their degenerate `(0,0)-(0,0)` rect rather than merely existing
+   - 484/484 via both `STUDIO_HEADLESS` and pytest. Confirmed the new check has teeth: reverting only the meter body to `draw_*` makes it fail again (482/483)
+
+2. **Audio-reactive framework laid down** (2026-10-12):
    - Three new modules, all construct-safe/idle at startup (opt-in, same as audio_engine):
      - `drivers/audio_midi.py` - `AudioMIDIBridge`: unbiased-autocorrelation pitch tracking (first-peak-above-85%-threshold selection rejects sub-harmonic octave errors), hysteresis-cleaned MIDI notes (stability_frames + min_hold + release_after), optional mido out port; pure-math core (`detect_freq`/`freq_to_midi`/`quantize`) testable headless
      - `engine/key_color.py` - `KeyColorMapper`: Krumhansl-Schmuckler key detection over a decaying pitch-class histogram fed by bridge note events; minor->cold (blues/concert) / major->warm (white/amber) palettes in ColorPreset channel format, 3 s crossfade, manual `set_key()` override
      - `engine/subharmonic.py` - `SubHarmonicStrobe`: octave-ladder division of tracked pitch, bass-onset transient detection on the low band, onset->clamped strobe rate (0.5-25 Hz safety band)->sACN `gate_dict()` (audio_layer format) + Resolume OSC (`/resolume/<target>/strobe/{fire,rate,gate}`)
    - `AudioEngine` gained an `on_chunk` hook (raw samples per capture, before band analysis); bridge attaches via `attach(audio_engine)`
    - Wired as idle singletons in `state.py` (`audio_midi`, `key_color`, `strobe_engine`), exported through `studio_project.py`'s state import
-   - Not yet ticked/driven anywhere (no command handlers, no GUI panel, no tick wiring) - that's the next phase; smoke test untouched, 460/460 via both STUDIO_HEADLESS and pytest
+   - Not yet ticked/driven anywhere (no command handlers, no GUI panel, no tick wiring) - that's the next phase; smoke test untouched, 460/460 via both STUDIO_HEADLESS and pytest at the time
 
 2. **`tests_smoke.py` ported to pytest** (2026-08-17):
    - New, additive `studio_console/tests/test_smoke_pytest.py` — the same 456 checks, generated by mechanically converting every `_check(label, cond)` into `with subtests.test(msg=label): assert (cond)` (`pytest-subtests`), verified via AST structural comparison against the original (457/457 identical) rather than eyeballed
@@ -85,9 +95,9 @@
 
 ## Known / pending
 
-- **File split is done** (see Recent changes #3) and pushed to origin
-- **`GUIEngine._tick()` decomposed** (see Recent changes #2) — pushed to origin
-- **`tests_smoke.py` ported to pytest** (see Recent changes #1) — the previously-deferred item; `tests_smoke.py` itself stays the untouched oracle, `pytest` is now an additional, equally-verified way to run the same 456 checks
+- **File split is done** (see Recent changes #4) and pushed to origin
+- **`GUIEngine._tick()` decomposed** (see Recent changes #3) — pushed to origin
+- **`tests_smoke.py` ported to pytest** (see Recent changes #2) — the previously-deferred item; `tests_smoke.py` itself stays the untouched oracle, `pytest` is now an additional, equally-verified way to run the same 484 checks
 - No other known outstanding scope items from the split
 - DeepSeek API ($2 budget, refilled once mid-split) used across the split's phases 1/3/4/6 plus the earlier rename/GUI-polish sessions — exact final balance not tracked here, check with whoever's account it is
 
