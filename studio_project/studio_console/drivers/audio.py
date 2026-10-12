@@ -68,6 +68,11 @@ class AudioEngine:
 
         self._stream  = None
         self._running = False
+        # Optional chunk hook (audio-reactive framework): set to a
+        # callable(samples) to receive every captured chunk raw, e.g.
+        # AudioMIDIBridge.feed_chunk for pitch tracking. Read/cleared
+        # through this module's namespace so monkeypatches observe it.
+        self.on_chunk = None
 
     @staticmethod
     def list_devices():
@@ -110,6 +115,15 @@ class AudioEngine:
 
     def _callback(self, indata, frames, time_info, status):
         samples = indata[:, 0]
+
+        # raw-chunk hook for the audio-reactive framework (pitch
+        # tracking) — runs before band analysis so it sees the samples
+        # completely unmodified
+        if self.on_chunk is not None:
+            try:
+                self.on_chunk(samples)
+            except Exception as e:
+                print(f"  !! audio on_chunk hook error: {e}")
 
         # Overall RMS level
         rms = min(1.0, float(np.sqrt(np.mean(samples ** 2))) * self.gain)

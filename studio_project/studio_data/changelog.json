@@ -2,6 +2,11 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-10-12",
+      "summary": "Rename MACRO to CODE, add code delays, pool pagination",
+      "details": []
+    },
+    {
       "date": "2026-09-04",
       "summary": "Add 3D rig viz (Tron-style wireframe) with interactive placement",
       "details": []

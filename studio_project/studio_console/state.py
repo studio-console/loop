@@ -53,6 +53,9 @@ from studio_console.drivers.network import NetworkEngine
 from studio_console.drivers.midi import MIDIEngine
 from studio_console.drivers.osc import OSCEngine
 from studio_console.drivers.audio import AudioEngine, AudioMapper
+from studio_console.drivers.audio_midi import AudioMIDIBridge
+from studio_console.engine.key_color import KeyColorMapper
+from studio_console.engine.subharmonic import SubHarmonicStrobe
 from studio_console.drivers.ai import AIEngine
 
 # GUIEngine hasn't been extracted yet (a later phase) — see module docstring
@@ -158,6 +161,16 @@ osc.list_targets()
 # operator runs AUDIO START / AUDIO ON.
 audio_engine = AudioEngine()
 audio_mapper = AudioMapper(audio_engine, output_state, patch)
+
+# audio-reactive framework (drivers/audio_midi.py + engine/key_color.py +
+# engine/subharmonic.py) — same opt-in philosophy as audio_engine: these
+# construct safely with no input device and sit idle until an operator
+# wires them up (attach the bridge to the engine, enable the mappers).
+# The bridge is attached lazily on first use so a headless/CI launch
+# never touches the capture hook.
+audio_midi     = AudioMIDIBridge()
+key_color      = KeyColorMapper(color_pool)
+strobe_engine  = SubHarmonicStrobe(osc)
 
 all_subs = [sub for master in patch.all_fixtures() for sub in master.all_subs()]
 
@@ -1501,7 +1514,8 @@ __all__ = [
     "_midi_doc", "_name_after", "_on_cue_fire", "_osc_cmd", "_osc_fader", "_osc_key",
     "_preset_live_push", "_prog_fx_ids", "_prog_snapshots", "_prog_time", "_start_magenta_sine", "_stop_fx",
     "_stop_prog_fx_preview", "_tap_times", "active_fader", "active_fx", "ai", "all_subs",
-    "audio_engine", "audio_mapper", "beam_pool", "color_pool", "control_pool", "cs1",
+    "audio_engine", "audio_mapper", "audio_midi", "key_color", "strobe_engine",
+    "beam_pool", "color_pool", "control_pool", "cs1",
     "cue_back", "cue_go", "cue_pool", "cue_reload", "dim_pool", "export_presets",
     "fade_engine", "fader_pool", "flash_off", "flash_on", "focus_pool", "form_pool",
     "fx_engine", "fx_pool", "gobo_pool", "goto_1", "goto_2", "goto_3",

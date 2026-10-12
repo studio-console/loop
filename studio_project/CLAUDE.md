@@ -69,10 +69,19 @@ studio_console/
                                 back/goto/reload
     fx.py                       Waveform, Form/Rate/Size/Spread/SpeedMaster
                                  pools, FXLayer, FXEngine
+    key_color.py                KeyColorMapper (audio-reactive framework) —
+                                 Krumhansl-Schmuckler key detection over a
+                                 pitch-class histogram, minor→cold / major→warm
+                                 palette crossfade
+    subharmonic.py              SubHarmonicStrobe (audio-reactive framework) —
+                                 sub-harmonic division math, bass-onset strobe
+                                 rates → sACN layer dict + Resolume OSC
   drivers/
-    network.py, midi.py, osc.py, audio.py, ai.py
+    network.py, midi.py, osc.py, audio.py, audio_midi.py, ai.py
                                  NetworkEngine, MIDIEngine, OSCEngine,
-                                 AudioEngine/AudioMapper, AIEngine
+                                 AudioEngine/AudioMapper, AudioMIDIBridge
+                                 (audio-reactive framework: pitch → clean MIDI notes
+                                 via AudioEngine.on_chunk hook), AIEngine
   gui/                         GUIEngine — composed in studio_project.py via
                                 multiple inheritance from 14 mixin classes:
     theme.py                    palette, DPG themes, font setup
