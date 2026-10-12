@@ -171,11 +171,7 @@ def _resolve_cue_refs(cue_data, patch, color_pool, dim_pool, attr_pools=None):
                     master = None
                 if master:
                     for sub in master.all_subs():
-                        resolved[str(sub.fixture_id)] = {
-                            'red':   preset.red,
-                            'green': preset.green,
-                            'blue':  preset.blue,
-                        }
+                        resolved[str(sub.fixture_id)] = dict(preset.channels)
 
     # Second pass: sub-fixture entries not covered by a color_ref expansion
     for fid, vals in cue_data.items():

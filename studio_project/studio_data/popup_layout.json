@@ -1,17 +1,17 @@
 {
   "patch_window": {
     "pos": [
-      264,
-      334
+      1,
+      72
     ],
-    "width": 772,
-    "height": 592,
+    "width": 734,
+    "height": 548,
     "show": false
   },
   "osc_window": {
     "pos": [
-      100,
-      100
+      0,
+      71
     ],
     "width": 620,
     "height": 360,
@@ -19,19 +19,19 @@
   },
   "midi_window": {
     "pos": [
-      100,
-      100
+      0,
+      69
     ],
-    "width": 776,
-    "height": 710,
+    "width": 863,
+    "height": 801,
     "show": false
   },
   "fx_editor_window": {
     "pos": [
-      11,
-      143
+      6,
+      274
     ],
-    "width": 1899,
+    "width": 1901,
     "height": 795,
     "show": false
   },
@@ -55,8 +55,8 @@
   },
   "pages_window": {
     "pos": [
-      100,
-      100
+      0,
+      68
     ],
     "width": 860,
     "height": 488,
@@ -64,12 +64,12 @@
   },
   "monitors_window": {
     "pos": [
-      0,
-      393
+      1138,
+      316
     ],
-    "width": 2176,
-    "height": 373,
-    "show": false
+    "width": 773,
+    "height": 726,
+    "show": true
   },
   "ai_history_window": {
     "pos": [
@@ -82,11 +82,11 @@
   },
   "attr_window": {
     "pos": [
-      2,
-      171
+      0,
+      538
     ],
     "width": 1918,
-    "height": 365,
+    "height": 545,
     "show": false
   },
   "ai_prompts_window": {
@@ -100,38 +100,38 @@
   },
   "ai_bar_window": {
     "pos": [
-      1139,
-      374
+      1137,
+      343
     ],
-    "width": 760,
+    "width": 773,
     "height": 230,
     "show": true
   },
   "color_picker_window": {
     "pos": [
-      866,
-      80
+      1137,
+      370
     ],
-    "width": 523,
-    "height": 583,
-    "show": false
+    "width": 772,
+    "height": 485,
+    "show": true
   },
   "speed_master_window": {
     "pos": [
-      100,
-      100
+      1136,
+      394
     ],
-    "width": 581,
-    "height": 397,
-    "show": false
+    "width": 775,
+    "height": 388,
+    "show": true
   },
   "fader_page_window": {
     "pos": [
-      41,
-      395
+      2,
+      309
     ],
-    "width": 1826,
-    "height": 562,
+    "width": 1910,
+    "height": 761,
     "show": false
   },
   "audio_window": {
@@ -154,14 +154,24 @@
   },
   "viz3d_window": {
     "pos": [
-      78,
-      22
+      177,
+      68
     ],
     "width": 1429,
     "height": 971,
     "show": false
   },
+  "code_editor_window": {
+    "pos": [
+      300,
+      140
+    ],
+    "width": 640,
+    "height": 520,
+    "show": false
+  },
   "__values__": {
-    "cpick_live": true
+    "cpick_live": true,
+    "pool_pages_linked": false
   }
 }

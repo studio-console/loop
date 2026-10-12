@@ -75,7 +75,7 @@ import re as _re
 from studio_console.state import (
     LIGHTFORM_CUE_MAP, STUDIO_DRY_RUN, STUDIO_HEADLESS, _NET_BIND, _NET_UNIVERSES, _active_fader,
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
-    _fader_dim, _fixture_defaults, _fx_params, _macro_play_stack, _macro_recording, _make_set_speed_master,
+    _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
@@ -84,7 +84,7 @@ from studio_console.state import (
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
     goto_4, goto_cue, group_pool, import_presets, library, list_shows,
-    load_show_from, macro_pool, midi, network, osc, output_state,
+    load_show_from, code_pool, midi, network, osc, output_state,
     patch, position_pool, prog, rate_pool, save_show, save_show_as,
     set_all_dim, set_fx_rate, set_fx_size, set_fx_spread, size_pool, speed_master_pool,
     spread_pool, stack_pool, tap_tempo, transport_back, transport_go, transport_rewind,
@@ -354,6 +354,27 @@ def test_smoke_full_pipeline(subtests):
         r_dim2 = run_command("RECORD DIM 2 Half 50%")
         with subtests.test(msg="RECORD DIM explicit level"):
             assert ("recorded" in r_dim2)
+
+        # Generic color pool: a non-RGB channel (amber) end-to-end —
+        # numeric channel grammar, generic record/apply, and the
+        # "apply to current selection, not recorded-from fixture"
+        # semantics that make color presets usable at all.
+        run_command("PATCH ADD 90 Generic_RGBAW UNIVERSE 9 AT 1 NAME rgbaw smoketest")
+        run_command("90")
+        run_command("AT AMBER 180")
+        with subtests.test(msg="AT AMBER <value> sets a real amber channel, not the named-colour shortcut"):
+            assert (prog.data.get('90.1', {}).get('amber') == 180)
+        run_command("AT R 255 G 100")
+        r_col3 = run_command("RECORD COLOR 91 AmberSmoke")
+        with subtests.test(msg="RECORD COLOR captures a non-RGB channel"):
+            assert ("recorded" in r_col3)
+        with subtests.test(msg="recorded preset carries the amber value"):
+            assert (color_pool.get(91) is not None and color_pool.get(91).channels.get('amber') == 180)
+        run_command("1")   # a different, plain RGB fixture
+        run_command("COLOR 91")
+        with subtests.test(msg="COLOR n applies to the CURRENTLY SELECTED fixture (not fixture 90)"):
+            assert (prog.data.get('1.1', {}).get('amber') == 180
+                    and prog.data.get('1.1', {}).get('red') == 255)
 
         # LIST COLOR/DIM — verify no AttributeError on pool iteration
         r_lc = run_command("LIST COLOR")
@@ -2233,63 +2254,63 @@ def test_smoke_full_pipeline(subtests):
             assert (_first_sub_51 is not None and _first_sub_51.outputs[0]['address'] == 50)
         del patch.fixtures[51]
 
-        # ── MACRO RECORD / PLAYBACK TESTS ────────────────────────────────────
+        # ── CODE RECORD / PLAYBACK TESTS ────────────────────────────────────
         prog.clear_programmer()
         run_command("1")
-        run_command("MACRO RECORD 99 SmokeTest")
-        with subtests.test(msg="MACRO RECORD starts recording"):
-            assert (_macro_recording["slot"] == 99)
-        run_command("AT FULL")          # captured inside macro
-        run_command("AT R 200")         # captured inside macro
-        r_ms = run_command("MACRO STOP")
-        with subtests.test(msg="MACRO STOP saves macro to pool"):
-            assert (99 in macro_pool)
-        with subtests.test(msg="MACRO STOP records correct command count"):
-            assert (len(macro_pool.get(99, {}).get("commands", [])) == 2)
-        with subtests.test(msg="MACRO STOP ends recording"):
-            assert (_macro_recording["slot"] is None)
+        run_command("CODE RECORD 99 SmokeTest")
+        with subtests.test(msg="CODE RECORD starts recording"):
+            assert (_code_recording["slot"] == 99)
+        run_command("AT FULL")          # captured inside code
+        run_command("AT R 200")         # captured inside code
+        r_ms = run_command("CODE STOP")
+        with subtests.test(msg="CODE STOP saves code to pool"):
+            assert (99 in code_pool)
+        with subtests.test(msg="CODE STOP records correct command count"):
+            assert (len(code_pool.get(99, {}).get("commands", [])) == 2)
+        with subtests.test(msg="CODE STOP ends recording"):
+            assert (_code_recording["slot"] is None)
         prog.clear_programmer()
         run_command("1")
-        r_mb = run_command("MACRO 99")
-        with subtests.test(msg="MACRO playback result mentions commands played"):
+        r_mb = run_command("CODE 99")
+        with subtests.test(msg="CODE playback result mentions commands played"):
             assert ("cmd" in r_mb)
-        with subtests.test(msg="MACRO playback restores dim"):
+        with subtests.test(msg="CODE playback restores dim"):
             assert (abs(prog.data.get('1', {}).get('dim', 0) - 1.0) < 0.01)
-        with subtests.test(msg="MACRO playback restores red channel"):
+        with subtests.test(msg="CODE playback restores red channel"):
             assert (prog.data.get('1.1', {}).get('red') == 200)
-        run_command("RENAME MACRO 99 Renamed")
-        with subtests.test(msg="RENAME MACRO changes name"):
-            assert (macro_pool.get(99, {}).get("name") == "renamed")
-        run_command("MACRO DELETE 99")
-        with subtests.test(msg="MACRO DELETE removes slot"):
-            assert (99 not in macro_pool)
-        # Also test MACRO RENAME <n> <name> (alternative order)
-        macro_pool[98] = {"name": "TestMacro", "commands": ["1 FULL"]}
-        r_mrn = run_command("MACRO RENAME 98 RenamedViaMAcroRename")
-        with subtests.test(msg="MACRO RENAME <n> <name> renames macro"):
-            assert (macro_pool.get(98, {}).get("name") == "renamedviamacrorename")
-        del macro_pool[98]
+        run_command("RENAME CODE 99 Renamed")
+        with subtests.test(msg="RENAME CODE changes name"):
+            assert (code_pool.get(99, {}).get("name") == "renamed")
+        run_command("CODE DELETE 99")
+        with subtests.test(msg="CODE DELETE removes slot"):
+            assert (99 not in code_pool)
+        # Also test CODE RENAME <n> <name> (alternative order)
+        code_pool[98] = {"name": "TestCode", "commands": ["1 FULL"]}
+        r_mrn = run_command("CODE RENAME 98 RenamedViaCodeRename")
+        with subtests.test(msg="CODE RENAME <n> <name> renames code"):
+            assert (code_pool.get(98, {}).get("name") == "renamedviacoderename")
+        del code_pool[98]
         prog.clear_programmer()
 
-        # ── MACRO RECURSION GUARD TESTS ───────────────────────────────────────
-        # A macro whose commands (directly or via another macro) play itself
+        # ── CODE RECURSION GUARD TESTS ───────────────────────────────────────
+        # A code whose commands (directly or via another code) play itself
         # again used to recurse with no depth limit -> RecursionError crash.
-        macro_pool[97] = {"name": "SelfRef", "commands": ["MACRO 97"]}
-        r_self = run_command("MACRO 97")
-        with subtests.test(msg="MACRO self-recursion blocked, not a crash"):
+        code_pool[97] = {"name": "SelfRef", "commands": ["CODE 97"]}
+        r_self = run_command("CODE 97")
+        with subtests.test(msg="CODE self-recursion blocked, not a crash"):
             assert ("blocked" in r_self)
-        with subtests.test(msg="MACRO play stack cleaned up after self-recursion block"):
-            assert (len(_macro_play_stack) == 0)
-        macro_pool[95] = {"name": "A", "commands": ["MACRO 96"]}
-        macro_pool[96] = {"name": "B", "commands": ["MACRO 95"]}
-        r_cycle = run_command("MACRO 95")
-        with subtests.test(msg="MACRO indirect A->B->A cycle blocked, not a crash"):
+        with subtests.test(msg="CODE play stack cleaned up after self-recursion block"):
+            assert (len(_code_active) == 0)
+        code_pool[95] = {"name": "A", "commands": ["CODE 96"]}
+        code_pool[96] = {"name": "B", "commands": ["CODE 95"]}
+        r_cycle = run_command("CODE 95")
+        with subtests.test(msg="CODE indirect A->B->A cycle blocked, not a crash"):
             assert ("blocked" in r_cycle)
-        with subtests.test(msg="MACRO play stack cleaned up after cycle block"):
-            assert (len(_macro_play_stack) == 0)
-        del macro_pool[97]
-        del macro_pool[95]
-        del macro_pool[96]
+        with subtests.test(msg="CODE play stack cleaned up after cycle block"):
+            assert (len(_code_active) == 0)
+        del code_pool[97]
+        del code_pool[95]
+        del code_pool[96]
 
         # ── PARK / UNPARK TESTS ───────────────────────────────────────────────
         prog.clear_programmer()

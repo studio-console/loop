@@ -95,7 +95,18 @@ class GUIEngineColorPicker:
         routing through run_command (which does 3 separate set_channel calls).
         During live drag (live=True), near-black values are skipped — they are
         almost always drag artifacts from the wheel's black corner, not intent.
+
+        The wheel is configured for the 0-255 display scale, but DPG's actual
+        color widget round-trips through ImGui's internal float-0..1 storage
+        during real mouse interaction (unlike a programmatic set_value(), which
+        echoes back whatever scale you gave it) — so a live drag's app_data can
+        arrive as e.g. (0.5, 0.2, 0.1) instead of (128, 51, 26). Left unhandled,
+        every live drag rounds down to near-zero and trips the near-black skip
+        below on almost every frame, which is exactly the "live mode does
+        nothing" symptom. Detect and rescale before doing anything else.
         """
+        if max(color_val[0], color_val[1], color_val[2]) <= 1.0:
+            color_val = tuple(c * 255 for c in color_val)
         r = max(0, min(255, int(color_val[0])))
         g = max(0, min(255, int(color_val[1])))
         b = max(0, min(255, int(color_val[2])))

@@ -84,7 +84,7 @@ class ShowFile:
     DEFAULTS     = os.path.join(DATA_DIR, "defaults.json")
     OSC_TARGETS  = os.path.join(DATA_DIR, "osc_targets.json")
     NETWORK      = os.path.join(DATA_DIR, "network.json")
-    MACROS       = os.path.join(DATA_DIR, "macros.json")
+    CODES        = os.path.join(DATA_DIR, "codes.json")
 
     # ── Save ────────────────────────────────────────────────
 
@@ -255,10 +255,8 @@ class ShowFile:
         doc = {"version": ShowFile.VERSION, "colors": {}}
         for pid, preset in color_pool.presets.items():
             doc["colors"][str(pid)] = {
-                "name":  preset.name,
-                "red":   preset.red,
-                "green": preset.green,
-                "blue":  preset.blue,
+                "name":     preset.name,
+                "channels": dict(preset.channels),
             }
         _write_file(ShowFile.COLORS, doc)
         print(f"  Saved colors    → {len(color_pool.presets)}")
@@ -267,7 +265,10 @@ class ShowFile:
     def save_dims(dim_pool):
         doc = {"version": ShowFile.VERSION, "dims": {}}
         for pid, preset in dim_pool.presets.items():
-            doc["dims"][str(pid)] = {"name": preset.name, "level": preset.level}
+            doc["dims"][str(pid)] = {
+                "name":     preset.name,
+                "channels": dict(preset.channels),
+            }
         _write_file(ShowFile.DIMS, doc)
         print(f"  Saved dims      → {len(dim_pool.presets)}")
 
@@ -494,17 +495,21 @@ class ShowFile:
         for pid_str, pdata in doc.get("colors", {}).items():
             pid    = int(pid_str)
             preset = ColorPreset(pid, pdata.get("name", f"color {pid}"))
-            if "data" in pdata:
-                # Migrate old per-fixture format: sample first entry
+            if "channels" in pdata:
+                # Current shape — a generic {channel: value} dict, may
+                # include white/amber/lime/uv alongside/instead of RGB.
+                preset.channels = dict(pdata["channels"])
+            elif "data" in pdata:
+                # Migrate an older per-fixture format: sample first entry
                 for fdata in pdata["data"].values():
-                    preset.red   = fdata.get("red",   0)
-                    preset.green = fdata.get("green", 0)
-                    preset.blue  = fdata.get("blue",  0)
+                    preset.channels = {k: fdata[k] for k in ('red', 'green', 'blue') if k in fdata}
                     break
             else:
-                preset.red   = pdata.get("red",   0)
-                preset.green = pdata.get("green", 0)
-                preset.blue  = pdata.get("blue",  0)
+                # Oldest flat-field shape (real studio_data/colors.json
+                # predates the generic pool) — preserve values exactly,
+                # do not "upgrade" a preset like the RGB-approximated
+                # "amber" one into a real amber channel.
+                preset.channels = {k: pdata[k] for k in ('red', 'green', 'blue') if k in pdata}
             color_pool.presets[pid] = preset
         print(f"  Loaded colors   — {len(color_pool.presets)}")
         return True
@@ -517,7 +522,9 @@ class ShowFile:
         for pid_str, pdata in doc.get("dims", {}).items():
             pid    = int(pid_str)
             preset = DimmerPreset(pid, pdata.get("name", f"Dimmer {pid}"))
-            if "data" in pdata:
+            if "channels" in pdata:
+                preset.channels = dict(pdata["channels"])
+            elif "data" in pdata:
                 # Migrate old per-fixture format: sample first entry
                 for fdata in pdata["data"].values():
                     preset.level = fdata.get("dim", 0.0)
@@ -917,29 +924,29 @@ class ShowFile:
         return True
 
     @staticmethod
-    def save_macros(macro_pool):
+    def save_codes(code_pool):
         data = {
             str(slot): {"name": m["name"], "commands": list(m["commands"])}
-            for slot, m in macro_pool.items()
+            for slot, m in code_pool.items()
         }
-        _write_file(ShowFile.MACROS, {"version": ShowFile.VERSION, "macros": data})
-        print(f"  Saved macros     → {len(macro_pool)} macro(s)")
+        _write_file(ShowFile.CODES, {"version": ShowFile.VERSION, "codes": data})
+        print(f"  Saved codes      → {len(code_pool)} code(s)")
 
     @staticmethod
-    def load_macros(macro_pool):
-        doc = _read_file(ShowFile.MACROS)
+    def load_codes(code_pool):
+        doc = _read_file(ShowFile.CODES)
         if not doc:
             return False
-        for slot_str, m in doc.get("macros", {}).items():
+        for slot_str, m in doc.get("codes", {}).items():
             try:
                 slot = int(slot_str)
             except ValueError:
                 continue
-            macro_pool[slot] = {
-                "name":     m.get("name", f"macro {slot}"),
+            code_pool[slot] = {
+                "name":     m.get("name", f"code {slot}"),
                 "commands": list(m.get("commands", [])),
             }
-        print(f"  Loaded macros    — {len(macro_pool)} macro(s)")
+        print(f"  Loaded codes     — {len(code_pool)} code(s)")
         return True
 
     @staticmethod
@@ -1002,9 +1009,7 @@ class ShowFile:
             old_data = pdata.get("data", {})
             # Take first fixture's RGB as the global value
             for fvals in old_data.values():
-                preset.red   = fvals.get("red",   0)
-                preset.green = fvals.get("green", 0)
-                preset.blue  = fvals.get("blue",  0)
+                preset.channels = {k: fvals[k] for k in ('red', 'green', 'blue') if k in fvals}
                 break
             color_pool.presets[pid] = preset
         if color_pool.presets:

@@ -2,10 +2,10 @@
 
 Phase 9 of the run_command split: the original 117-branch dispatcher
 (4,265 lines, one giant function) is now 114 small functions across 9
-category files (stack/fader/programmer/fx/misc/macro/io/patch/presets),
+category files (stack/fader/programmer/fx/misc/code/io/patch/presets),
 plus this module, which:
 
-  1. Does the exact preamble the original had (REC->RECORD alias, macro
+  1. Does the exact preamble the original had (REC->RECORD alias, code
      recording capture) — unchanged, moved verbatim.
   2. Calls every branch function in the EXACT original top-to-bottom
      order, stopping at the first one that returns non-None. This
@@ -117,8 +117,9 @@ from .misc import (
     cmd_103_rename,
     cmd_124_list_refs,
 )
-from .macro import (
-    cmd_046_macro_main,
+from .code import (
+    cmd_128_delay_info,
+    cmd_046_code_main,
 )
 from .io import (
     cmd_058_backup,
@@ -162,7 +163,7 @@ from .presets import (
     cmd_089_speed,
 )
 
-from studio_console.state import _macro_recording, prog
+from studio_console.state import _code_recording, prog
 
 
 _DISPATCH = [
@@ -203,7 +204,7 @@ _DISPATCH = [
     cmd_043_snapshot,
     cmd_044_blind,
     cmd_045_live,
-    cmd_046_macro_main,
+    cmd_046_code_main,
     cmd_047_freeze,
     cmd_048_solo,
     cmd_049_park,
@@ -282,6 +283,7 @@ _DISPATCH = [
     cmd_125_update_main,
     cmd_126_viz_layout,
     cmd_127_viz_position,
+    cmd_128_delay_info,
 ]
 
 
@@ -297,14 +299,14 @@ def run_command(cmd_str):
 
     t0 = tokens[0]
 
-    # ── macro record capture ──────────────────────────────────
-    # While recording, capture every command except MACRO STOP / MACRO ABORT.
+    # ── code record capture ──────────────────────────────────
+    # While recording, capture every command except CODE STOP / CODE ABORT.
     # The command still executes normally so the operator sees live feedback.
-    if _macro_recording["slot"] is not None:
-        is_macro_stop = (t0 == 'MACRO' and len(tokens) >= 2
+    if _code_recording["slot"] is not None:
+        is_code_stop = (t0 == 'CODE' and len(tokens) >= 2
                          and tokens[1] in ('STOP', 'ABORT'))
-        if not is_macro_stop:
-            _macro_recording["cmds"].append(raw)
+        if not is_code_stop:
+            _code_recording["cmds"].append(raw)
 
     for branch_fn in _DISPATCH:
         result = branch_fn(t0, tokens, raw)

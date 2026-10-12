@@ -25,6 +25,7 @@ doesn't exist yet.
 
 import os
 import json
+import re as _re
 import anthropic
 
 from studio_console.command_reference import COMMAND_REFERENCE
@@ -89,9 +90,17 @@ Rules:
   note on why you picked what you picked). Don't add one for routine,
   self-explanatory requests — only when it actually helps the operator
   understand or steer you.
-- Only return the JSON array. No markdown fences. "say" is the one place
-  free text belongs — it still has to be inside a JSON action object like
-  everything else, never prose before/after the array.
+- Your ENTIRE reply must be the JSON array and nothing else — no markdown
+  fences, no prose before or after it, no narrating what you're about to
+  do before the array starts. "say" is the one place free text belongs,
+  and even that text has to sit inside a JSON action object like every
+  other action — never loose prose outside the array.
+- This matters more than it looks: if your reply isn't a parseable JSON
+  array, NONE of the actions you describe actually run — the operator
+  sees your words on screen with zero effect on the console, which is
+  worse than an error because it looks like it worked. If you're not
+  sure an action is right, put your uncertainty in a "say" action inside
+  the array — don't explain in prose instead of emitting the array.
 """
 
     _CMD_HISTORY_MAX = 12
@@ -132,7 +141,7 @@ Rules:
         "moving lights / attributes", "fx", "list / inspect",
         "record (saving presets/pools)", "rename / copy / delete",
         "stack go/back", "faders & pages", "attribute pools", "programmer",
-        "direct dmx", "patch commands", "macros", "speed masters",
+        "direct dmx", "patch commands", "codes", "speed masters",
         "midi clock", "audio reactive",
     ]
 
@@ -352,6 +361,8 @@ Rules:
             return []
 
         state_json = json.dumps(self._state(), indent=2)
+        _color_channels = (", ".join(self._color_pool.relevant_channels)
+                           if self._color_pool else "red, green, blue")
         system = (
             "You are the AI control layer for Studio Console, "
             "a custom lighting console controlling 6 SGM RGB pixel tubes "
@@ -359,7 +370,10 @@ Rules:
             "Translate the user's intent into console actions. "
             "Be creative with lighting — colour, movement, mood. "
             "Available waveforms: sine, ramp, pulse, square. "
-            "Available channels: red, green, blue. "
+            f"Available colour-mix channels: {_color_channels} — not every "
+            "fixture has all of these; check pools.color and the fixture's "
+            "own patched profile before assuming a channel like amber/white/"
+            "lime/uv exists on a given fixture. "
             "programmer commands use MA3-style syntax: "
             "'FIXTURE_ID AT VALUE', 'R 255 G 0 B 0', 'AT FULL', 'AT OUT'.\n\n"
             "You are an expert operator of this specific console — you should "
@@ -374,7 +388,7 @@ Rules:
             "...), renaming/copying/deleting any preset or cue (RENAME COLOR n "
             "Name, COPY FX n TO m, DELETE FORM n, CLEAR GROUP n, ...), stack/"
             "fader playback control (GO, BACK, GOTO n, FADER n LEVEL/MODE/"
-            "OUTPUT/ASSIGN, PAGE ...), macros, patch edits, direct DMX, LIST "
+            "OUTPUT/ASSIGN, PAGE ...), codes, patch edits, direct DMX, LIST "
             "commands to inspect a pool, and everything else in the reference "
             "below — there is no dedicated action type for most of this, prog "
             "covers it. Prefer a saved preset over improvising raw values, "
@@ -483,15 +497,41 @@ Rules:
             except json.JSONDecodeError:
                 # The model replied with plain prose instead of the
                 # required JSON action array — happens even with the
-                # system prompt's "always JSON" rule, especially on a
-                # conversational/explanatory turn (e.g. answering "why
-                # did that happen") rather than a request to act. That
-                # used to surface as a bare "AI error: Expecting value:
-                # line 1 column 1 (char 0)" and silently threw away
-                # whatever the model actually said. Treat the raw text as
-                # a spoken reply instead — the say-action branch below
-                # already renders it exactly like a normal chat response.
-                actions = [{"action": "say", "text": raw}] if raw else []
+                # system prompt's "always JSON" rule. Two different
+                # situations look identical at this point and must NOT
+                # be handled the same way:
+                #   1. A genuinely conversational reply (answering "why
+                #      did that happen") — nothing was meant to execute.
+                #   2. The model narrating real actions in prose instead
+                #      of emitting them as JSON (e.g. "I've set fixture 5
+                #      to red and started the chase") — here the operator
+                #      reads a confident description of work being done,
+                #      but since this reply was never valid JSON, the old
+                #      fallback (treat the whole thing as a "say"-only
+                #      message) executed NOTHING — the console silently
+                #      never received a single command. That's strictly
+                #      worse than the crash it replaced: a crash is
+                #      obviously broken, this looks like success.
+                # First, try to salvage a real action array embedded in
+                # the prose — many models wrap required JSON in
+                # commentary even when told not to.
+                _match = _re.search(r'\[.*\]', raw, _re.DOTALL)
+                actions = None
+                if _match:
+                    try:
+                        actions = json.loads(_match.group(0))
+                    except json.JSONDecodeError:
+                        actions = None
+                if actions is None:
+                    # Genuinely unrecoverable — still show the model's
+                    # text, but say plainly that nothing ran, so this
+                    # failure mode is never confused with a real
+                    # confirmation again.
+                    actions = [{
+                        "action": "say",
+                        "text": ("[no commands executed — reply wasn't in "
+                                  "the required action format]\n" + raw),
+                    }] if raw else []
             self._push_chat_history(prompt, raw)
             # Report token usage
             try:

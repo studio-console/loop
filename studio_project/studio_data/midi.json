@@ -6,8 +6,8 @@
       "cc": 7,
       "target": "Grandmaster Dim",
       "soft_takeover": true,
-      "software_val": 0.33070866141732286,
-      "taken_over": true
+      "software_val": 0.0,
+      "taken_over": false
     },
     {
       "channel": 1,
@@ -51,14 +51,6 @@
     },
     {
       "channel": 16,
-      "cc": 117,
-      "target": "Transport GO",
-      "soft_takeover": false,
-      "software_val": 0.0,
-      "taken_over": true
-    },
-    {
-      "channel": 16,
       "cc": 116,
       "target": "Transport BACK",
       "soft_takeover": false,
@@ -86,6 +78,11 @@
       "channel": 10,
       "note": 49,
       "target": "FX Kill"
+    },
+    {
+      "channel": 1,
+      "note": 46,
+      "target": "GO"
     }
   ]
 }

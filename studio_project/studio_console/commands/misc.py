@@ -25,7 +25,7 @@ import re as _re
 from studio_console.state import (
     LIGHTFORM_CUE_MAP, STUDIO_DRY_RUN, STUDIO_HEADLESS, _NET_BIND, _NET_UNIVERSES, _active_fader,
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
-    _fader_dim, _fixture_defaults, _fx_params, _macro_play_stack, _macro_recording, _make_set_speed_master,
+    _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
@@ -34,7 +34,7 @@ from studio_console.state import (
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
     goto_4, goto_cue, group_pool, import_presets, library, list_shows,
-    load_show_from, macro_pool, midi, network, osc, output_state,
+    load_show_from, code_pool, midi, network, osc, output_state,
     patch, position_pool, prog, rate_pool, save_show, save_show_as,
     set_all_dim, set_fx_rate, set_fx_size, set_fx_spread, size_pool, speed_master_pool,
     spread_pool, stack_pool, tap_tempo, transport_back, transport_go, transport_rewind,
@@ -207,14 +207,14 @@ def cmd_072_status_state(t0, tokens, raw):
         freeze = output_state.freeze_mode if output_state else False
         solo   = output_state.solo_mode   if output_state else False
         parked = bool(output_state.parked_fids) if output_state else False
-        rec_slot = _macro_recording.get("slot")
+        rec_slot = _code_recording.get("slot")
         lines.append(f"  grand master: {gm*100:.0f}%"
                      + ("  [bbo]" if bbo else "")
                      + ("  [blind]" if blind else "")
                      + ("  [freeze]" if freeze else "")
                      + ("  [solo]" if solo else "")
                      + ("  [park]" if parked else "")
-                     + (f"  [rec macro {rec_slot}]" if rec_slot is not None else ""))
+                     + (f"  [rec code {rec_slot}]" if rec_slot is not None else ""))
         # Selection + programmer — same isinstance(f, MasterFixture)-only
         # display bug fixed for cmd_sel_count (gui/core.py) earlier: a
         # sub-fixture-only selection (e.g. "1.5") used to print "none"
@@ -282,9 +282,8 @@ def cmd_090_list_main(t0, tokens, raw):
             lines = ["color presets:"]
             for pid in sorted(color_pool.presets):
                 p = color_pool.presets[pid]
-                r, g, b = int(p.red), int(p.green), int(p.blue)
-                rgb = f"r{r} g{g} b{b}"
-                lines.append(f"  [{pid}] {p.name}  {rgb}")
+                sample = " ".join(f"{k[0]}{int(v)}" for k, v in p.channels.items())
+                lines.append(f"  [{pid}] {p.name}  {sample or '(empty)'}")
             return "\n".join(lines)
         if sub in ('DIM', 'DIMS'):
             if not dim_pool.presets:
@@ -417,8 +416,8 @@ def cmd_090_list_main(t0, tokens, raw):
                 addr_count = sum(len(v) for v in output_state.parked_addresses.values())
                 lines.append(f"  [{fid}] {name}")
             return "\n".join(lines)
-        if sub == 'MACRO':
-            return run_command("MACRO LIST")
+        if sub == 'CODE':
+            return run_command("CODE LIST")
         if sub in ('NOTES', 'NOTE'):
             lines = []
             for sid in sorted(stack_pool.stacks):
@@ -494,38 +493,6 @@ def cmd_103_rename(t0, tokens, raw):
             save_show()
             return f"cue {cue_num} → \"{cue.name}\""
 
-        # RENAME COLOR / COLOUR <n> <name>
-        if sub in ('COLOR', 'COLOUR'):
-            try:
-                n = int(tokens[2])
-            except ValueError:
-                return f"RENAME COLOR: bad number '{tokens[2]}'"
-            p = color_pool.get(n)
-            if not p:
-                return f"color preset {n} not found"
-            new_name = _name_after(raw, 3)
-            if not new_name:
-                return "RENAME COLOR: provide a new name"
-            p.name = new_name
-            save_show()
-            return f"color {n} → \"{p.name}\""
-
-        # RENAME DIM <n> <name>
-        if sub == 'DIM':
-            try:
-                n = int(tokens[2])
-            except ValueError:
-                return f"RENAME DIM: bad number '{tokens[2]}'"
-            p = dim_pool.get(n)
-            if not p:
-                return f"dim preset {n} not found"
-            new_name = _name_after(raw, 3)
-            if not new_name:
-                return "RENAME DIM: provide a new name"
-            p.name = new_name
-            save_show()
-            return f"dim {n} → \"{p.name}\""
-
         # RENAME GROUP <n> <name>
         if sub == 'GROUP':
             try:
@@ -570,6 +537,9 @@ def cmd_103_rename(t0, tokens, raw):
             'FOCUS':    focus_pool.presets,
             'BEAM':     beam_pool.presets,
             'CONTROL':  control_pool.presets,
+            'COLOR':    color_pool.presets,
+            'COLOUR':   color_pool.presets,
+            'DIM':      dim_pool.presets,
         }
         if sub in _rename_pool_map:
             try:
@@ -587,20 +557,20 @@ def cmd_103_rename(t0, tokens, raw):
             save_show()
             return f"{sub} {n} → \"{item.name}\""
 
-        # RENAME MACRO <n> <name>
-        if sub == 'MACRO':
+        # RENAME CODE <n> <name>
+        if sub == 'CODE':
             try:
                 n = int(tokens[2])
             except ValueError:
-                return f"RENAME MACRO: bad number '{tokens[2]}'"
-            if n not in macro_pool:
-                return f"macro slot {n} is empty"
+                return f"RENAME CODE: bad number '{tokens[2]}'"
+            if n not in code_pool:
+                return f"code slot {n} is empty"
             new_name = _name_after(raw, 3)
             if not new_name:
-                return "RENAME MACRO: provide a new name"
-            macro_pool[n]["name"] = new_name.lower()
-            ShowFile.save_macros(macro_pool)
-            return f"macro {n} → \"{macro_pool[n]['name']}\""
+                return "RENAME CODE: provide a new name"
+            code_pool[n]["name"] = new_name.lower()
+            ShowFile.save_codes(code_pool)
+            return f"code {n} → \"{code_pool[n]['name']}\""
 
         # RENAME FIXTURE <n> <name>
         if sub == 'FIXTURE':
@@ -620,7 +590,7 @@ def cmd_103_rename(t0, tokens, raw):
             return f"fixture {n}: \"{old_name}\" → \"{master.name}\""
 
         return (f"RENAME: unknown type '{sub}' — use STACK, CUE, COLOR, DIM, GROUP, FX, "
-                "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, MACRO, FIXTURE")
+                "RATE, SIZEP, SPREADP, FORM, POSITION, GOBO, ZOOM, FOCUS, BEAM, CONTROL, CODE, FIXTURE")
 
 
 def cmd_124_list_refs(t0, tokens, raw):

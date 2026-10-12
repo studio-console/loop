@@ -911,7 +911,7 @@ def _expand_color_fx(fx_defs_by_fid, color_pool):
                 cp = color_pool.get(cid) if color_pool else None
                 if cp:
                     base_size = ld.get('size', 100.0)
-                    for ch, val in (('red', cp.red), ('green', cp.green), ('blue', cp.blue)):
+                    for ch, val in cp.channels.items():
                         if val > 0:
                             sub = dict(ld)
                             sub['channel'] = ch

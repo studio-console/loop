@@ -58,6 +58,10 @@ _C_P_ZOOM    = (155, 175, 255, 255)  # blue-lavender
 _C_P_FOCUS   = (210, 140, 255, 255)  # light violet-pink
 _C_P_BEAM    = (145, 120, 230, 255)  # dim violet
 _C_P_CONTROL = (130, 220, 200, 255)  # teal-mint
+_C_P_CODES  = (255, 185, 110, 255)  # warm amber — deliberately off-family from
+                                      # the violet/blue palette every other pool
+                                      # uses, since codes are command sequences,
+                                      # not fixture attributes
 
 
 def _apply_theme():
@@ -412,7 +416,7 @@ __all__ = [
     "_C_FPG_ACCENT", "_C_FPG_ACCENT_DIM",
     "_C_P_GROUPS", "_C_P_COLORS", "_C_P_DIMS", "_C_P_CS", "_C_P_CUES", "_C_P_FX",
     "_C_P_FORMS", "_C_P_POSITION", "_C_P_GOBO", "_C_P_ZOOM", "_C_P_FOCUS",
-    "_C_P_BEAM", "_C_P_CONTROL",
+    "_C_P_BEAM", "_C_P_CONTROL", "_C_P_CODES",
     "_apply_theme", "_make_go_theme", "_make_fade_bar_theme", "_make_back_theme",
     "_make_alert_btn_theme", "_make_transport_go_theme", "_make_dim_btn_theme",
     "_make_fpg_id_theme", "_make_fpg_id_focused_theme",

@@ -23,7 +23,7 @@ import re as _re
 from studio_console.state import (
     LIGHTFORM_CUE_MAP, STUDIO_DRY_RUN, STUDIO_HEADLESS, _NET_BIND, _NET_UNIVERSES, _active_fader,
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
-    _fader_dim, _fixture_defaults, _fx_params, _macro_play_stack, _macro_recording, _make_set_speed_master,
+    _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
@@ -32,7 +32,7 @@ from studio_console.state import (
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
     goto_4, goto_cue, group_pool, import_presets, library, list_shows,
-    load_show_from, macro_pool, midi, network, osc, output_state,
+    load_show_from, code_pool, midi, network, osc, output_state,
     patch, position_pool, prog, rate_pool, save_show, save_show_as,
     set_all_dim, set_fx_rate, set_fx_size, set_fx_spread, size_pool, speed_master_pool,
     spread_pool, stack_pool, tap_tempo, transport_back, transport_go, transport_rewind,
@@ -279,6 +279,26 @@ def run_smoke_test(gui):
 
         r_dim2 = run_command("RECORD DIM 2 Half 50%")
         _check("RECORD DIM explicit level", "recorded" in r_dim2)
+
+        # Generic color pool: a non-RGB channel (amber) end-to-end —
+        # numeric channel grammar, generic record/apply, and the
+        # "apply to current selection, not recorded-from fixture"
+        # semantics that make color presets usable at all.
+        run_command("PATCH ADD 90 Generic_RGBAW UNIVERSE 9 AT 1 NAME rgbaw smoketest")
+        run_command("90")
+        run_command("AT AMBER 180")
+        _check("AT AMBER <value> sets a real amber channel, not the named-colour shortcut",
+               prog.data.get('90.1', {}).get('amber') == 180)
+        run_command("AT R 255 G 100")
+        r_col3 = run_command("RECORD COLOR 91 AmberSmoke")
+        _check("RECORD COLOR captures a non-RGB channel", "recorded" in r_col3)
+        _check("recorded preset carries the amber value",
+               color_pool.get(91) is not None and color_pool.get(91).channels.get('amber') == 180)
+        run_command("1")   # a different, plain RGB fixture
+        run_command("COLOR 91")
+        _check("COLOR n applies to the CURRENTLY SELECTED fixture (not fixture 90)",
+               prog.data.get('1.1', {}).get('amber') == 180
+               and prog.data.get('1.1', {}).get('red') == 255)
 
         # LIST COLOR/DIM — verify no AttributeError on pool iteration
         r_lc = run_command("LIST COLOR")
@@ -1950,57 +1970,57 @@ def run_smoke_test(gui):
                _first_sub_51 is not None and _first_sub_51.outputs[0]['address'] == 50)
         del patch.fixtures[51]
 
-        # ── MACRO RECORD / PLAYBACK TESTS ────────────────────────────────────
+        # ── CODE RECORD / PLAYBACK TESTS ────────────────────────────────────
         prog.clear_programmer()
         run_command("1")
-        run_command("MACRO RECORD 99 SmokeTest")
-        _check("MACRO RECORD starts recording", _macro_recording["slot"] == 99)
-        run_command("AT FULL")          # captured inside macro
-        run_command("AT R 200")         # captured inside macro
-        r_ms = run_command("MACRO STOP")
-        _check("MACRO STOP saves macro to pool", 99 in macro_pool)
-        _check("MACRO STOP records correct command count",
-               len(macro_pool.get(99, {}).get("commands", [])) == 2)
-        _check("MACRO STOP ends recording", _macro_recording["slot"] is None)
+        run_command("CODE RECORD 99 SmokeTest")
+        _check("CODE RECORD starts recording", _code_recording["slot"] == 99)
+        run_command("AT FULL")          # captured inside code
+        run_command("AT R 200")         # captured inside code
+        r_ms = run_command("CODE STOP")
+        _check("CODE STOP saves code to pool", 99 in code_pool)
+        _check("CODE STOP records correct command count",
+               len(code_pool.get(99, {}).get("commands", [])) == 2)
+        _check("CODE STOP ends recording", _code_recording["slot"] is None)
         prog.clear_programmer()
         run_command("1")
-        r_mb = run_command("MACRO 99")
-        _check("MACRO playback result mentions commands played", "cmd" in r_mb)
-        _check("MACRO playback restores dim",
+        r_mb = run_command("CODE 99")
+        _check("CODE playback result mentions commands played", "cmd" in r_mb)
+        _check("CODE playback restores dim",
                abs(prog.data.get('1', {}).get('dim', 0) - 1.0) < 0.01)
-        _check("MACRO playback restores red channel",
+        _check("CODE playback restores red channel",
                prog.data.get('1.1', {}).get('red') == 200)
-        run_command("RENAME MACRO 99 Renamed")
-        _check("RENAME MACRO changes name",
-               macro_pool.get(99, {}).get("name") == "renamed")
-        run_command("MACRO DELETE 99")
-        _check("MACRO DELETE removes slot", 99 not in macro_pool)
-        # Also test MACRO RENAME <n> <name> (alternative order)
-        macro_pool[98] = {"name": "TestMacro", "commands": ["1 FULL"]}
-        r_mrn = run_command("MACRO RENAME 98 RenamedViaMAcroRename")
-        _check("MACRO RENAME <n> <name> renames macro",
-               macro_pool.get(98, {}).get("name") == "renamedviamacrorename")
-        del macro_pool[98]
+        run_command("RENAME CODE 99 Renamed")
+        _check("RENAME CODE changes name",
+               code_pool.get(99, {}).get("name") == "renamed")
+        run_command("CODE DELETE 99")
+        _check("CODE DELETE removes slot", 99 not in code_pool)
+        # Also test CODE RENAME <n> <name> (alternative order)
+        code_pool[98] = {"name": "TestCode", "commands": ["1 FULL"]}
+        r_mrn = run_command("CODE RENAME 98 RenamedViaCodeRename")
+        _check("CODE RENAME <n> <name> renames code",
+               code_pool.get(98, {}).get("name") == "renamedviacoderename")
+        del code_pool[98]
         prog.clear_programmer()
 
-        # ── MACRO RECURSION GUARD TESTS ───────────────────────────────────────
-        # A macro whose commands (directly or via another macro) play itself
+        # ── CODE RECURSION GUARD TESTS ───────────────────────────────────────
+        # A code whose commands (directly or via another code) play itself
         # again used to recurse with no depth limit -> RecursionError crash.
-        macro_pool[97] = {"name": "SelfRef", "commands": ["MACRO 97"]}
-        r_self = run_command("MACRO 97")
-        _check("MACRO self-recursion blocked, not a crash", "blocked" in r_self)
-        _check("MACRO play stack cleaned up after self-recursion block",
-               len(_macro_play_stack) == 0)
-        macro_pool[95] = {"name": "A", "commands": ["MACRO 96"]}
-        macro_pool[96] = {"name": "B", "commands": ["MACRO 95"]}
-        r_cycle = run_command("MACRO 95")
-        _check("MACRO indirect A->B->A cycle blocked, not a crash",
+        code_pool[97] = {"name": "SelfRef", "commands": ["CODE 97"]}
+        r_self = run_command("CODE 97")
+        _check("CODE self-recursion blocked, not a crash", "blocked" in r_self)
+        _check("CODE play stack cleaned up after self-recursion block",
+               len(_code_active) == 0)
+        code_pool[95] = {"name": "A", "commands": ["CODE 96"]}
+        code_pool[96] = {"name": "B", "commands": ["CODE 95"]}
+        r_cycle = run_command("CODE 95")
+        _check("CODE indirect A->B->A cycle blocked, not a crash",
                "blocked" in r_cycle)
-        _check("MACRO play stack cleaned up after cycle block",
-               len(_macro_play_stack) == 0)
-        del macro_pool[97]
-        del macro_pool[95]
-        del macro_pool[96]
+        _check("CODE play stack cleaned up after cycle block",
+               len(_code_active) == 0)
+        del code_pool[97]
+        del code_pool[95]
+        del code_pool[96]
 
         # ── PARK / UNPARK TESTS ───────────────────────────────────────────────
         prog.clear_programmer()

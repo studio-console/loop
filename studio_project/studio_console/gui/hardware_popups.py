@@ -257,6 +257,17 @@ class GUIEngineHardwarePopups:
                 dpg.add_button(label="learn note", width=100,
                                callback=self._start_exec_gb_learn)
                 dpg.add_text("", tag="midi_exec_gb_status", color=_C_ACCENT)
+
+            dpg.add_separator()
+            dpg.add_text("play a code via note:", color=_C_DIM)
+            with dpg.group(horizontal=True):
+                dpg.add_text("code", color=_C_DIM)
+                dpg.add_input_int(tag="midi_code_num", label="", width=46,
+                                  default_value=1, min_value=1, max_value=999,
+                                  step=0, step_fast=0)
+                dpg.add_button(label="learn note", width=100,
+                               callback=self._start_code_learn)
+                dpg.add_text("", tag="code_learn_status", color=_C_ACCENT)
     def _build_patch_popup(self):
         """Floating patch editor — hidden by default, opened via header PATCH button."""
         profiles = list(self._library.profiles.keys()) if self._library else ["SGM_RGB_54"]
@@ -581,6 +592,29 @@ class GUIEngineHardwarePopups:
         self._learn_armed_type = 'note'
         self._midi.start_learn('note', self._on_learn_captured)
         dpg.set_value("midi_exec_gb_status", f"waiting for note → {name}...")
+    def _start_code_learn(self):
+        """
+        Learn a note that plays 'CODE <n>' — same dynamic-target pattern
+        as _start_go_cue_learn/_start_exec_gb_learn above, needed because
+        code slot numbers aren't known ahead of time and so can't live in
+        the static target_registry the way "GO"/"Grandmaster Dim" do.
+        OSC needs no equivalent here — /gma3/cmd "CODE n" already reaches
+        run_command directly (see state.py's _osc_cmd).
+        """
+        # Deferred import — see _start_go_cue_learn above for rationale.
+        from __main__ import GUIEngine
+        try:
+            code_n = int(dpg.get_value("midi_code_num"))
+        except Exception:
+            return
+        name = f"CODE {code_n}"
+        cb   = (lambda c=name: self._cmd(c)) if self._cmd else (lambda: None)
+        GUIEngine.target_registry[name] = (cb, False, True)
+        self._learn_target     = name
+        self._learn_armed      = True
+        self._learn_armed_type = 'note'
+        self._midi.start_learn('note', self._on_learn_captured)
+        dpg.set_value("code_learn_status", f"waiting for note → {name}...")
     def _on_go_cue_captured(self, ch, number):
         """MIDI-thread callback for GO stk+CUE note learn."""
         # Deferred import — see _start_go_cue_learn above for rationale.

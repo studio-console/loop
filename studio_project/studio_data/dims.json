@@ -3,31 +3,81 @@
   "dims": {
     "1": {
       "name": "full",
-      "level": 1.0
+      "channels": {
+        "dim": 1.0
+      }
     },
     "2": {
       "name": "75%",
-      "level": 0.75
+      "channels": {
+        "dim": 0.75
+      }
     },
     "3": {
       "name": "half",
-      "level": 0.5
+      "channels": {
+        "dim": 0.5
+      }
     },
     "4": {
       "name": "25%",
-      "level": 0.25
+      "channels": {
+        "dim": 0.25
+      }
     },
     "5": {
-      "name": "low",
-      "level": 0.1
+      "name": "10",
+      "channels": {
+        "dim": 0.1
+      }
     },
     "6": {
       "name": "out",
-      "level": 0.0
+      "channels": {
+        "dim": 0.0
+      }
     },
     "90": {
       "name": "advtest low",
-      "level": 0.35
+      "channels": {
+        "dim": 0.35
+      }
+    },
+    "12": {
+      "name": "1",
+      "channels": {
+        "dim": 0.01
+      }
+    },
+    "11": {
+      "name": "2",
+      "channels": {
+        "dim": 0.02
+      }
+    },
+    "10": {
+      "name": "5",
+      "channels": {
+        "dim": 0.05
+      }
+    },
+    "7": {
+      "name": "65",
+      "channels": {
+        "dim": 0.65
+      }
+    },
+    "0": {
+      "name": "7",
+      "channels": {
+        "dim": 0.07
+      }
+    },
+    "9": {
+      "name": "7",
+      "channels": {
+        "dim": 0.07
+      }
     }
   }
 }

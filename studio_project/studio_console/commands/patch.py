@@ -25,7 +25,7 @@ import re as _re
 from studio_console.state import (
     LIGHTFORM_CUE_MAP, STUDIO_DRY_RUN, STUDIO_HEADLESS, _NET_BIND, _NET_UNIVERSES, _active_fader,
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
-    _fader_dim, _fixture_defaults, _fx_params, _macro_play_stack, _macro_recording, _make_set_speed_master,
+    _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
@@ -34,7 +34,7 @@ from studio_console.state import (
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
     goto_4, goto_cue, group_pool, import_presets, library, list_shows,
-    load_show_from, macro_pool, midi, network, osc, output_state,
+    load_show_from, code_pool, midi, network, osc, output_state,
     patch, position_pool, prog, rate_pool, save_show, save_show_as,
     set_all_dim, set_fx_rate, set_fx_size, set_fx_spread, size_pool, speed_master_pool,
     spread_pool, stack_pool, tap_tempo, transport_back, transport_go, transport_rewind,
@@ -75,6 +75,23 @@ from studio_console.commands._shared import _record_cue_into, _prog_fx_stop, _pr
 # throughout this split), not at module level.
 
 
+def _refresh_monitor_rows():
+    """Keep the monitors popup's per-fixture table rows in sync with the
+    patch whenever it changes at runtime (PATCH ADD/REMOVE) — see
+    GUIEngine._rebuild_monitor_rows()'s docstring for why this matters
+    (a fixture patched after the popup was built had no row/tags, which
+    silently froze the whole output monitor table on the next tick).
+    Deferred import + broad except: `gui` may not exist yet during early
+    startup/smoke-test wiring, and this must never block PATCH ADD/REMOVE
+    itself from succeeding.
+    """
+    try:
+        from __main__ import gui
+        gui._rebuild_monitor_rows()
+    except Exception:
+        pass
+
+
 def cmd_062_patch_main(t0, tokens, raw):
     if t0 == 'PATCH' and len(tokens) >= 2:
         sub = tokens[1]
@@ -107,6 +124,7 @@ def cmd_062_patch_main(t0, tokens, raw):
             if m is None:
                 return f"PATCH ADD: profile '{profile_name}' not found"
             save_show()
+            _refresh_monitor_rows()
             return f"patched fixture {fid} '{name}' as {profile_name} U{univ}@{addr}"
         if sub == 'REMOVE':
             try:
@@ -117,6 +135,7 @@ def cmd_062_patch_main(t0, tokens, raw):
                 return f"PATCH REMOVE: fixture {fid} not patched"
             del patch.fixtures[fid]
             save_show()
+            _refresh_monitor_rows()
             return f"removed fixture {fid} from patch"
         if sub == 'RENAME':
             try:

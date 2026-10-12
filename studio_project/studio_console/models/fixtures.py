@@ -12,6 +12,15 @@ import random
 
 from studio_console.models.naming import LowercaseName
 
+# Color-mixing channels — the single source of truth for "is this channel
+# part of a fixture's color mix" (dimmer-scaled in SubFixture.get_output(),
+# and sub-fixture-targeted in programmer._get_targets_for_channel()). Was
+# two independently-maintained ('red','green','blue','white','amber')
+# tuples in those two places, both missing 'lime'/'uv' — a real fixture
+# with those channels would silently skip dimmer scaling and/or fail to
+# route AT LIME/AT UV commands to any fixture at all.
+COLOR_MIX_CHANNELS = frozenset({'red', 'green', 'blue', 'white', 'amber', 'lime', 'uv'})
+
 # ------------------------------------------------------------
 # FixtureProfile — the blueprint for a fixture type
 # ------------------------------------------------------------
@@ -102,6 +111,17 @@ class FixtureLibrary:
         self.register(FixtureProfile(
             name        = "Generic_RGBW",
             channels    = ["red", "green", "blue", "white"],
+            pixel_count = 1,
+            has_master_dim = False
+        ))
+
+        # Generic single-cell RGBAW — for testing/using the amber/lime/uv
+        # color-mixing channels beyond plain RGBW (no real fixture needs
+        # this exact channel set; it's a convenient superset for testing
+        # the generic color pool without waiting on real hardware).
+        self.register(FixtureProfile(
+            name        = "Generic_RGBAW",
+            channels    = ["red", "green", "blue", "amber", "white"],
             pixel_count = 1,
             has_master_dim = False
         ))
@@ -386,7 +406,7 @@ class SubFixture:
         combined_dim = self.virtual_dimmer * master_dimmer
         result = {}
         for ch, val in self.channels.items():
-            if ch in ("red", "green", "blue", "white", "amber"):
+            if ch in COLOR_MIX_CHANNELS:
                 result[ch] = int(val * combined_dim)
             else:
                 # Non-colour channels (pan, tilt etc) pass through unscaled
@@ -950,7 +970,7 @@ class programmer:
         """
         if channel == 'dim':
             return [f for f in self.selection if isinstance(f, MasterFixture)]
-        elif channel in ('red', 'green', 'blue', 'white', 'amber') or channel in self._ATTR_CHANNELS:
+        elif channel in COLOR_MIX_CHANNELS or channel in self._ATTR_CHANNELS:
             return self._get_sub_selection()
         elif channel == 'all':
             return self.selection
@@ -1092,6 +1112,7 @@ class programmer:
             'PRISM': 'prism', 'FROST': 'frost', 'ANIMATION': 'animation',
             'CONTROL': 'control', 'MACRO': 'macro',
             'DIMMER': 'dimmer',
+            'AMBER': 'amber', 'WHITE': 'white', 'LIME': 'lime', 'UV': 'uv',
         }
         return mapping.get(token, None)
 
@@ -1295,6 +1316,7 @@ class programmer:
                'PRISM': 'prism', 'FROST': 'frost', 'ANIMATION': 'animation',
                'CONTROL': 'control', 'MACRO': 'macro',
                'DIMMER': 'dimmer',
+               'AMBER': 'amber', 'WHITE': 'white', 'LIME': 'lime', 'UV': 'uv',
                }
         _NAMED = {
             'WHITE':   (255, 255, 255), 'WARM':    (255, 180,  60),
@@ -1714,7 +1736,11 @@ class programmer:
         if tokens[0] == 'OUT':
             self.set_dimmer(0)
             return
-        if tokens[0] in _NAMED:
+        # Bare named-color shortcut (AT AMBER) sets its fixed RGB approximation.
+        # With a value following (AT AMBER 200), that name is a REAL channel on
+        # this fixture instead — fall through to the multi-channel sequence
+        # loop below rather than silently discarding the value.
+        if tokens[0] in _NAMED and len(tokens) == 1:
             r, g, b = _NAMED[tokens[0]]
             self.set_channel('red', r)
             self.set_channel('green', g)

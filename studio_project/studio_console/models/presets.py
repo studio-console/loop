@@ -33,61 +33,143 @@ from studio_console.engine.fx import _fx_grouping_compat
 # group / GroupPool — fixture selection groups
 # ============================================================
 
-class ColorPreset:
+class ValuePreset:
     """
-    Selective colour preset — stores a single RGB value.
-    apply() pushes it to every sub-fixture in the current programmer selection.
-    record() samples from the first selected sub-fixture that carries colour data.
+    Generic "stamp a single value onto whatever's currently selected"
+    preset — record()/apply() always target the programmer's CURRENT
+    selection, unlike AttributePreset below (which always targets the
+    exact fids it was recorded from). This is the right model for
+    color/dim: "select fixture 5, hit COLOR 3" must recolor fixture 5,
+    whichever fixture preset 3 happened to be recorded from — the
+    fixture-agnostic-value model every real console's color/dim presets
+    use. AttributePreset's baked-fid model is correct for something
+    fixture-position-dependent like a moving light's pan/tilt, but would
+    be silently wrong applied to color the same way.
 
-    # Future: add a `scope` field ("selective" | "universe" | "global") to expand
-    # targeting without changing the stored RGB format.
+    channels — a flat {channel_name: value} dict (NOT per-fixture; the
+    whole point of this family is a single value-set, not a snapshot),
+    e.g. {'red':255,'green':0,'blue':0} or {'dim':0.75}. Replaces the
+    old fixed .red/.green/.blue / .level scalar fields so a preset can
+    carry whatever channels its pool cares about (see ColorPool below,
+    which covers white/amber/lime/uv too, not just RGB).
     """
     name = LowercaseName()
 
-    def __init__(self, preset_id, name=""):
-        self.preset_id = preset_id
-        self.name      = name if name else f"color {preset_id}"
-        self.red   = 0
-        self.green = 0
-        self.blue  = 0
+    def __init__(self, preset_id, name, attribute):
+        self.preset_id = int(preset_id)
+        self.name      = name or f"{attribute} {preset_id}"
+        self.attribute = attribute      # "color"/"dim" -> "{attribute}_ref"
+        self.channels  = {}
 
-    def record(self, programmer):
-        for f in programmer._get_sub_selection():
+    def record(self, programmer, relevant_channels, scope):
+        """scope='sub' samples programmer._get_sub_selection() (color);
+        scope='master' samples MasterFixtures in programmer.selection
+        (dim). First selected fixture carrying any relevant channel
+        wins — same "first match" sampling the old ColorPreset/
+        DimmerPreset.record() used, just over a wider channel set."""
+        self.channels = {}
+        candidates = (programmer._get_sub_selection() if scope == 'sub'
+                      else [f for f in programmer.selection if isinstance(f, MasterFixture)])
+        for f in candidates:
             vals = programmer.data.get(str(f.fixture_id), {})
-            if any(ch in vals for ch in ('red', 'green', 'blue')):
-                self.red   = vals.get('red',   0)
-                self.green = vals.get('green', 0)
-                self.blue  = vals.get('blue',  0)
+            snap = {ch: vals[ch] for ch in relevant_channels if ch in vals}
+            if snap:
+                self.channels = snap
                 break
         print(f"recorded: {self}")
 
-    def apply(self, programmer):
+    def apply(self, programmer, scope):
         applied = 0
         masters_written = set()
-        for f in programmer._get_sub_selection():
+        ref_key = f"{self.attribute}_ref"
+        targets = (programmer._get_sub_selection() if scope == 'sub'
+                   else [f for f in programmer.selection if isinstance(f, MasterFixture)])
+        for f in targets:
             programmer._ensure_data(f)
             fid = str(f.fixture_id)
-            programmer.data[fid]['red']   = self.red
-            programmer.data[fid]['green'] = self.green
-            programmer.data[fid]['blue']  = self.blue
-            f.set_rgb(self.red, self.green, self.blue)
+            programmer.data[fid].update(self.channels)
+            for ch, val in self.channels.items():
+                if ch == 'dim':
+                    f.set_dimmer(val)
+                else:
+                    f.set_channel(ch, val)
             applied += 1
-            masters_written.add(str(f.master_id))
+            masters_written.add(str(f.master_id) if scope == 'sub' else fid)
         for mfid in masters_written:
-            programmer.data.setdefault(mfid, {})['color_ref'] = self.preset_id
-        print(f"Applied {self} to {applied} sub-fixture(s).")
+            programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
+        unit = "sub-fixture" if scope == 'sub' else "fixture"
+        print(f"Applied {self} to {applied} {unit}(s).")
+        return applied
 
     def __repr__(self):
-        return (f"[color preset {self.preset_id}] \"{self.name}\" "
-                f"RGB({self.red},{self.green},{self.blue})")
+        body = ", ".join(f"{k}={v}" for k, v in self.channels.items()) or "empty"
+        return f"[{self.attribute} preset {self.preset_id}] \"{self.name}\" {body}"
 
 
-class ColorPool:
-    def __init__(self):
-        self.presets = {}   # { preset_id (int): Colorpreset }
+class ValuePool:
+    """Registry of ValuePresets for one value family (color, dim)."""
+    def __init__(self, attribute, relevant_channels, scope):
+        self.attribute         = attribute
+        self.relevant_channels = list(relevant_channels)
+        self.scope             = scope       # 'sub' or 'master'
+        self.presets           = {}
 
     def get(self, pid):
         return self.presets.get(int(pid))
+
+    def record(self, preset_id, programmer, name=""):
+        preset = ValuePreset(preset_id, name, self.attribute)
+        preset.record(programmer, self.relevant_channels, self.scope)
+        self.presets[preset.preset_id] = preset
+        return preset
+
+    def apply(self, preset_id, programmer):
+        p = self.get(preset_id)
+        if p:
+            p.apply(programmer, self.scope)
+        else:
+            print(f"{self.attribute} preset {preset_id} not found.")
+
+    def delete(self, preset_id):
+        self.presets.pop(int(preset_id), None)
+
+    def print_pool(self):
+        print(f"\n===== {self.attribute.upper()} PRESETS =====")
+        for p in self.presets.values():
+            print(f"  {p}")
+
+
+class ColorPreset(ValuePreset):
+    """Selective colour preset — a flat {channel: value} dict, defaulting
+    to red/green/blue but able to carry white/amber/lime/uv too on any
+    fixture that has those channels (see COLOR_MIX_CHANNELS in
+    models/fixtures.py). apply() pushes it to every sub-fixture in the
+    current programmer selection; record() samples from the first
+    selected sub-fixture carrying any of these channels."""
+    RELEVANT_CHANNELS = ('red', 'green', 'blue', 'white', 'amber', 'lime', 'uv')
+    SCOPE = 'sub'
+
+    def __init__(self, preset_id, name=""):
+        super().__init__(preset_id, name, attribute="color")
+
+    def record(self, programmer):
+        super().record(programmer, self.RELEVANT_CHANNELS, self.SCOPE)
+
+    def apply(self, programmer):
+        return super().apply(programmer, self.SCOPE)
+
+    def __repr__(self):
+        ch = self.channels
+        if ch and set(ch) <= {'red', 'green', 'blue'}:
+            r, g, b = ch.get('red', 0), ch.get('green', 0), ch.get('blue', 0)
+            return f"[color preset {self.preset_id}] \"{self.name}\" RGB({r},{g},{b})"
+        body = ", ".join(f"{k}={v}" for k, v in ch.items()) or "RGB(0,0,0)"
+        return f"[color preset {self.preset_id}] \"{self.name}\" {body}"
+
+
+class ColorPool(ValuePool):
+    def __init__(self):
+        super().__init__("color", ColorPreset.RELEVANT_CHANNELS, ColorPreset.SCOPE)
 
     def record(self, preset_id, programmer, name=""):
         preset = ColorPreset(preset_id, name or f"color {preset_id}")
@@ -95,90 +177,45 @@ class ColorPool:
         self.presets[preset.preset_id] = preset
         return preset
 
-    def apply(self, preset_id, programmer):
-        p = self.get(preset_id)
-        if p:
-            p.apply(programmer)
-        else:
-            print(f"color preset {preset_id} not found.")
 
-    def delete(self, preset_id):
-        self.presets.pop(int(preset_id), None)
-
-    def print_pool(self):
-        print("\n===== COLOR PRESETS =====")
-        for p in self.presets.values():
-            print(f"  {p}")
-
-
-class DimmerPreset:
-    """
-    Selective dimmer preset — stores a single level (0.0–1.0).
-    apply() pushes it to every master fixture in the current programmer selection.
-    record() samples from the first selected master that carries dim data.
-
-    # Future: add a `scope` field ("selective" | "universe" | "global") to expand
-    # targeting without changing the stored level format.
-    """
-    name = LowercaseName()
+class DimmerPreset(ValuePreset):
+    """Selective dimmer preset — stores a single level (0.0-1.0) as
+    channels={'dim': level}. apply() pushes it to every master fixture
+    in the current programmer selection; record() samples from the
+    first selected master that carries dim data."""
+    RELEVANT_CHANNELS = ('dim',)
+    SCOPE = 'master'
 
     def __init__(self, preset_id, name=""):
-        self.preset_id = preset_id
-        self.name      = name if name else f"Dimmer {preset_id}"
-        self.level     = 0.0   # 0.0 – 1.0
+        super().__init__(preset_id, name, attribute="dim")
+
+    @property
+    def level(self):
+        return self.channels.get('dim', 0.0)
+
+    @level.setter
+    def level(self, value):
+        self.channels['dim'] = value
 
     def record(self, programmer):
-        for f in programmer.selection:
-            if isinstance(f, MasterFixture):
-                vals = programmer.data.get(str(f.fixture_id), {})
-                if 'dim' in vals:
-                    self.level = vals['dim']
-                    break
-        print(f"recorded: {self}")
+        super().record(programmer, self.RELEVANT_CHANNELS, self.SCOPE)
 
     def apply(self, programmer):
-        applied = 0
-        for f in programmer.selection:
-            if isinstance(f, MasterFixture):
-                programmer._ensure_data(f)
-                fid = str(f.fixture_id)
-                programmer.data[fid]['dim']     = self.level
-                programmer.data[fid]['dim_ref'] = self.preset_id
-                f.set_dimmer(self.level)
-                applied += 1
-        print(f"Applied {self} to {applied} fixture(s).")
+        return super().apply(programmer, self.SCOPE)
 
     def __repr__(self):
         return f"[Dimmer preset {self.preset_id}] \"{self.name}\" ({self.level:.0%})"
 
 
-class DimmerPool:
+class DimmerPool(ValuePool):
     def __init__(self):
-        self.presets = {}   # { preset_id (int): Dimmerpreset }
-
-    def get(self, pid):
-        return self.presets.get(int(pid))
+        super().__init__("dim", DimmerPreset.RELEVANT_CHANNELS, DimmerPreset.SCOPE)
 
     def record(self, preset_id, programmer, name=""):
         preset = DimmerPreset(preset_id, name or f"Dimmer {preset_id}")
         preset.record(programmer)
         self.presets[preset.preset_id] = preset
         return preset
-
-    def apply(self, preset_id, programmer):
-        p = self.get(preset_id)
-        if p:
-            p.apply(programmer)
-        else:
-            print(f"Dimmer preset {preset_id} not found.")
-
-    def delete(self, preset_id):
-        self.presets.pop(int(preset_id), None)
-
-    def print_pool(self):
-        print("\n===== DIM PRESETS =====")
-        for p in self.presets.values():
-            print(f"  {p}")
 
 
 # ── Generic attribute pools (position, gobo, zoom, focus, beam, control) ──

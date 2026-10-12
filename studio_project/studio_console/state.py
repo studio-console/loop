@@ -40,7 +40,7 @@ from studio_console.paths import DATA_DIR, SAVES_DIR
 from studio_console.show import ShowFile, _write_file, _read_file
 from studio_console.models.fixtures import FixtureLibrary, Patch, programmer
 from studio_console.models.presets import (
-    GroupPool, ColorPool, DimmerPool, FaderPool, CuePool, StackPool,
+    GroupPool, ColorPool, ColorPreset, DimmerPool, DimmerPreset, FaderPool, CuePool, StackPool,
     FXPool, AttributePool, Stack, FXPreset,
 )
 from studio_console.engine.playback import OutputState, FadeEngine
@@ -222,9 +222,18 @@ _attr_pools = {
 fader_pool.default_attr_pools = _attr_pools
 fader_pool.default_fx_pool    = fx_pool
 
-macro_pool       = {}    # {slot_int: {"name": str, "commands": [str, ...]}}
-_macro_recording = {"slot": None, "cmds": []}
-_macro_play_stack = []   # slot ints currently mid-playback, innermost last — guards against MACRO N containing MACRO N (direct or indirect cycle)
+code_pool       = {}    # {slot_int: {"name": str, "commands": [str, ...]}}
+_code_recording = {"slot": None, "cmds": []}
+# Slot ints currently "in flight" — executing OR paused mid-playback on a
+# DELAY <ms> step (see commands/code.py's _run_code_from). A set, not a
+# stack: with DELAY support, playback of one code can be suspended
+# (scheduled to resume later via threading.Timer, not blocking the calling
+# thread) while a DIFFERENT invocation runs, so membership (not call
+# order) is what guards against CODE N (directly or indirectly) containing
+# CODE N — a slot stays in this set for its entire lifetime, delays
+# included, so even a delayed self-reference is still blocked, not just
+# an immediate one.
+_code_active = set()
 
 # ── Load all data files (migrate legacy file if present) ──
 ShowFile.load_fx(_fx_params)
@@ -247,7 +256,7 @@ ShowFile.load_control_pool(control_pool)
 ShowFile.load_fader_pages(fader_pool)
 ShowFile.load_faders(fader_pool, stack_pool)
 ShowFile.load_osc_targets(osc)
-ShowFile.load_macros(macro_pool)
+ShowFile.load_codes(code_pool)
 ShowFile.load_state(output_state, fader_pool, stack_pool, active_fader,
                     prog_time=_prog_time, fader_dim=_fader_dim)
 # Restores prog.data/.disabled/.selection (unrecorded programmer edits,
@@ -979,12 +988,11 @@ def export_presets(what='all'):
     if what_l in ('all', 'colors'):
         bundle['colors'] = {}
         for pid, p in color_pool.presets.items():
-            bundle['colors'][str(pid)] = {'name': p.name, 'red': p.red,
-                                           'green': p.green, 'blue': p.blue}
+            bundle['colors'][str(pid)] = {'name': p.name, 'channels': dict(p.channels)}
     if what_l in ('all', 'dims'):
         bundle['dims'] = {}
         for pid, p in dim_pool.presets.items():
-            bundle['dims'][str(pid)] = {'name': p.name, 'level': p.level}
+            bundle['dims'][str(pid)] = {'name': p.name, 'channels': dict(p.channels)}
     if what_l in ('all', 'fx'):
         doc = _read_file(ShowFile.FX_POOL)
         if doc:
@@ -1037,18 +1045,25 @@ def import_presets(path):
     if 'colors' in bundle:
         for pid_s, d in bundle['colors'].items():
             pid = int(pid_s)
-            p = color_pool.presets.setdefault(pid, type('ColorPreset', (), {
-                'preset_id': pid, 'name': '', 'red': 0, 'green': 0, 'blue': 0})())
-            p.name = d.get('name', ''); p.red = d.get('red', 0)
-            p.green = d.get('green', 0); p.blue = d.get('blue', 0)
+            p = color_pool.presets.setdefault(pid, ColorPreset(pid, d.get('name', '')))
+            p.name = d.get('name', '')
+            # "channels" is the current export shape; fall back to the
+            # legacy flat red/green/blue keys for an older exported bundle.
+            if 'channels' in d:
+                p.channels = dict(d['channels'])
+            else:
+                p.channels = {k: d[k] for k in ('red', 'green', 'blue') if k in d}
         ShowFile.save_colors(color_pool)
         imported.append(f"{len(bundle['colors'])} colors")
     if 'dims' in bundle:
         for pid_s, d in bundle['dims'].items():
             pid = int(pid_s)
-            p = dim_pool.presets.setdefault(pid, type('DimPreset', (), {
-                'preset_id': pid, 'name': '', 'level': 1.0})())
-            p.name = d.get('name', ''); p.level = d.get('level', 1.0)
+            p = dim_pool.presets.setdefault(pid, DimmerPreset(pid, d.get('name', '')))
+            p.name = d.get('name', '')
+            if 'channels' in d:
+                p.channels = dict(d['channels'])
+            elif 'level' in d:
+                p.channels = {'dim': d['level']}
         ShowFile.save_dims(dim_pool)
         imported.append(f"{len(bundle['dims'])} dims")
     if 'fx_pool' in bundle:
@@ -1159,6 +1174,16 @@ if _midi_doc:
                     return _on, _off
                 _on_cb, _off_cb = _make_flash()
                 GUIEngine.target_registry[_name] = (_on_cb, False, True, _off_cb)
+                continue
+            _mm = _re_midi.match(r'^CODE (\d+)$', _name)
+            if _mm:
+                _code_n = int(_mm.group(1))
+                def _make_code(c=f"CODE {_code_n}"):
+                    def _play():
+                        from __main__ import run_command
+                        return run_command(c)
+                    return _play
+                GUIEngine.target_registry[_name] = (_make_code(), False, True)
     ShowFile.load_midi(_midi_doc, midi, GUIEngine.target_registry)
 else:
     save_show()   # first run — write all files now
@@ -1274,9 +1299,7 @@ def _preset_live_push(preset_type, preset_id):
                     continue
                 for sub in master.all_subs():
                     sfid = str(sub.fixture_id)
-                    ex.layer.setdefault(sfid, {}).update(
-                        {'red': p.red, 'green': p.green, 'blue': p.blue}
-                    )
+                    ex.layer.setdefault(sfid, {}).update(p.channels)
 
         elif preset_type == 'dim':
             p = dim_pool.get(preset_id)
@@ -1474,7 +1497,7 @@ def _group_live_sync(group_id):
 __all__ = [
     "LIGHTFORM_CUE_MAP", "STUDIO_DRY_RUN", "STUDIO_HEADLESS", "_NET_BIND", "_NET_UNIVERSES", "_active_fader",
     "_active_stack", "_apply_fixture_defaults", "_apply_timing_edit", "_attr_pools", "_blackout_saved_level", "_cs_loaded",
-    "_fader_dim", "_fixture_defaults", "_fx_params", "_group_live_sync", "_macro_play_stack", "_macro_recording", "_make_set_speed_master",
+    "_fader_dim", "_fixture_defaults", "_fx_params", "_group_live_sync", "_code_active", "_code_recording", "_make_set_speed_master",
     "_midi_doc", "_name_after", "_on_cue_fire", "_osc_cmd", "_osc_fader", "_osc_key",
     "_preset_live_push", "_prog_fx_ids", "_prog_snapshots", "_prog_time", "_start_magenta_sine", "_stop_fx",
     "_stop_prog_fx_preview", "_tap_times", "active_fader", "active_fx", "ai", "all_subs",
@@ -1483,7 +1506,7 @@ __all__ = [
     "fade_engine", "fader_pool", "flash_off", "flash_on", "focus_pool", "form_pool",
     "fx_engine", "fx_pool", "gobo_pool", "goto_1", "goto_2", "goto_3",
     "goto_4", "goto_cue", "group_pool", "import_presets", "library", "list_shows",
-    "load_show_from", "macro_pool", "midi", "network", "osc", "output_state",
+    "load_show_from", "code_pool", "midi", "network", "osc", "output_state",
     "patch", "position_pool", "prog", "rate_pool", "save_show", "save_show_as",
     "set_all_dim", "set_fx_rate", "set_fx_size", "set_fx_spread", "size_pool", "speed_master_pool",
     "spread_pool", "stack_pool", "tap_tempo", "transport_back", "transport_go", "transport_rewind",

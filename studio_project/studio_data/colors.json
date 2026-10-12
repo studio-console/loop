@@ -3,159 +3,221 @@
   "colors": {
     "1": {
       "name": "red",
-      "red": 255,
-      "green": 0,
-      "blue": 0
+      "channels": {
+        "red": 255,
+        "green": 0,
+        "blue": 0
+      }
     },
     "2": {
       "name": "blue",
-      "red": 0,
-      "green": 0,
-      "blue": 255
+      "channels": {
+        "red": 0,
+        "green": 0,
+        "blue": 255
+      }
     },
     "3": {
       "name": "green",
-      "red": 0,
-      "green": 200,
-      "blue": 0
+      "channels": {
+        "red": 0,
+        "green": 200,
+        "blue": 0
+      }
     },
     "4": {
       "name": "white",
-      "red": 255,
-      "green": 255,
-      "blue": 255
+      "channels": {
+        "red": 255,
+        "green": 255,
+        "blue": 255
+      }
     },
     "5": {
       "name": "amber",
-      "red": 255,
-      "green": 80,
-      "blue": 0
+      "channels": {
+        "red": 255,
+        "green": 80,
+        "blue": 0
+      }
     },
     "6": {
       "name": "magenta",
-      "red": 200,
-      "green": 0,
-      "blue": 200
+      "channels": {
+        "red": 200,
+        "green": 0,
+        "blue": 200
+      }
     },
     "7": {
       "name": "cyan",
-      "red": 0,
-      "green": 200,
-      "blue": 200
+      "channels": {
+        "red": 0,
+        "green": 200,
+        "blue": 200
+      }
     },
     "8": {
       "name": "orange",
-      "red": 255,
-      "green": 120,
-      "blue": 0
+      "channels": {
+        "red": 255,
+        "green": 120,
+        "blue": 0
+      }
     },
     "9": {
       "name": "deep blue",
-      "red": 0,
-      "green": 0,
-      "blue": 180
+      "channels": {
+        "red": 0,
+        "green": 0,
+        "blue": 180
+      }
     },
     "10": {
       "name": "warm white",
-      "red": 255,
-      "green": 180,
-      "blue": 80
+      "channels": {
+        "red": 255,
+        "green": 180,
+        "blue": 80
+      }
     },
     "11": {
       "name": "pink",
-      "red": 255,
-      "green": 60,
-      "blue": 120
+      "channels": {
+        "red": 255,
+        "green": 60,
+        "blue": 120
+      }
     },
     "12": {
       "name": "uv",
-      "red": 60,
-      "green": 0,
-      "blue": 255
+      "channels": {
+        "red": 60,
+        "green": 0,
+        "blue": 255
+      }
     },
     "13": {
       "name": "lime",
-      "red": 80,
-      "green": 255,
-      "blue": 0
+      "channels": {
+        "red": 80,
+        "green": 255,
+        "blue": 0
+      }
     },
     "14": {
       "name": "hot red",
-      "red": 255,
-      "green": 20,
-      "blue": 0
+      "channels": {
+        "red": 255,
+        "green": 20,
+        "blue": 0
+      }
     },
     "15": {
       "name": "ice blue",
-      "red": 80,
-      "green": 140,
-      "blue": 255
+      "channels": {
+        "red": 80,
+        "green": 140,
+        "blue": 255
+      }
     },
     "16": {
       "name": "off",
-      "red": 0,
-      "green": 0,
-      "blue": 0
+      "channels": {
+        "red": 0,
+        "green": 0,
+        "blue": 0
+      }
     },
     "19": {
       "name": "2500",
-      "red": 255,
-      "green": 122,
-      "blue": 4
+      "channels": {
+        "red": 255,
+        "green": 122,
+        "blue": 4
+      }
     },
     "20": {
       "name": "3200",
-      "red": 255,
-      "green": 130,
-      "blue": 10
+      "channels": {
+        "red": 255,
+        "green": 130,
+        "blue": 10
+      }
     },
     "21": {
       "name": "3800",
-      "red": 255,
-      "green": 211,
-      "blue": 33
+      "channels": {
+        "red": 255,
+        "green": 211,
+        "blue": 33
+      }
     },
     "22": {
       "name": "5000",
-      "red": 255,
-      "green": 220,
-      "blue": 49
+      "channels": {
+        "red": 255,
+        "green": 220,
+        "blue": 49
+      }
     },
     "23": {
       "name": "7200",
-      "red": 217,
-      "green": 255,
-      "blue": 76
+      "channels": {
+        "red": 217,
+        "green": 255,
+        "blue": 76
+      }
     },
     "24": {
       "name": "12000",
-      "red": 176,
-      "green": 255,
-      "blue": 80
+      "channels": {
+        "red": 176,
+        "green": 255,
+        "blue": 80
+      }
     },
     "25": {
       "name": "8200",
-      "red": 204,
-      "green": 255,
-      "blue": 81
+      "channels": {
+        "red": 204,
+        "green": 255,
+        "blue": 81
+      }
     },
     "18": {
       "name": "lamp",
-      "red": 255,
-      "green": 123,
-      "blue": 10
+      "channels": {
+        "red": 255,
+        "green": 123,
+        "blue": 10
+      }
     },
     "90": {
       "name": "advtest violet",
-      "red": 200.0,
-      "green": 40.0,
-      "blue": 220.0
+      "channels": {
+        "red": 200.0,
+        "green": 40.0,
+        "blue": 220.0
+      }
     },
     "91": {
       "name": "advtest teal",
-      "red": 30.0,
-      "green": 220.0,
-      "blue": 180.0
+      "channels": {
+        "red": 30.0,
+        "green": 220.0,
+        "blue": 180.0
+      }
+    },
+    "92": {
+      "name": "rgbaw warm test",
+      "channels": {
+        "red": 255,
+        "green": 60,
+        "blue": 0,
+        "white": 120,
+        "amber": 200
+      }
     }
   }
 }

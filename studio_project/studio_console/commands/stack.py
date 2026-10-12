@@ -25,7 +25,7 @@ import re as _re
 from studio_console.state import (
     LIGHTFORM_CUE_MAP, STUDIO_DRY_RUN, STUDIO_HEADLESS, _NET_BIND, _NET_UNIVERSES, _active_fader,
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
-    _fader_dim, _fixture_defaults, _fx_params, _group_live_sync, _macro_play_stack, _macro_recording, _make_set_speed_master,
+    _fader_dim, _fixture_defaults, _fx_params, _group_live_sync, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
@@ -34,7 +34,7 @@ from studio_console.state import (
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
     goto_4, goto_cue, group_pool, import_presets, library, list_shows,
-    load_show_from, macro_pool, midi, network, osc, output_state,
+    load_show_from, code_pool, midi, network, osc, output_state,
     patch, position_pool, prog, rate_pool, save_show, save_show_as,
     set_all_dim, set_fx_rate, set_fx_size, set_fx_spread, size_pool, speed_master_pool,
     spread_pool, stack_pool, tap_tempo, transport_back, transport_go, transport_rewind,
@@ -602,16 +602,6 @@ def cmd_023_delete_other(t0, tokens, raw):
                 return f"group {n} is empty"
             _delete_with_undo(group_pool.groups, n, f"group {n}")
             return f"deleted group {n}"
-        if sub in ('COLOR', 'COLOUR'):
-            if not color_pool.get(n):
-                return f"color {n} is empty"
-            _delete_with_undo(color_pool.presets, n, f"color {n}")
-            return f"deleted color {n}"
-        if sub == 'DIM':
-            if not dim_pool.get(n):
-                return f"dim {n} is empty"
-            _delete_with_undo(dim_pool.presets, n, f"dim {n}")
-            return f"deleted dim {n}"
         if sub == 'FX':
             if not fx_pool.get(n):
                 return f"FX {n} is empty"
@@ -649,6 +639,7 @@ def cmd_023_delete_other(t0, tokens, raw):
         _del_attr_map = {
             'POSITION': position_pool, 'GOBO': gobo_pool, 'ZOOM': zoom_pool,
             'FOCUS': focus_pool, 'BEAM': beam_pool, 'CONTROL': control_pool,
+            'COLOR': color_pool, 'COLOUR': color_pool, 'DIM': dim_pool,
         }
         if sub in _del_attr_map:
             pool = _del_attr_map[sub]
@@ -1225,10 +1216,10 @@ def cmd_125_update_main(t0, tokens, raw):
             return f"UPDATE: bad slot number '{tokens[2]}'"
 
         if upd_type in ('color', 'colour'):
-            _has_rgb = any(any(ch in vals for ch in ('red', 'green', 'blue'))
+            _has_rgb = any(any(ch in vals for ch in color_pool.relevant_channels)
                            for fid, vals in prog.data.items() if '.' in fid)
             if not _has_rgb:
-                return "UPDATE COLOR: no RGB in programmer"
+                return "UPDATE COLOR: no colour data in programmer"
             name = _name_after(raw, 3) or ""
             _snapshot_undo(color_pool.presets, upd_id, f"update color {upd_id}")
             p = color_pool.record(upd_id, prog, name=name or (color_pool.get(upd_id).name if color_pool.get(upd_id) else f"color {upd_id}"))

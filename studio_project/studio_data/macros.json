@@ -1,0 +1,19 @@
+{
+  "version": "3.0",
+  "macros": {
+    "1": {
+      "name": "all red full",
+      "commands": [
+        "GROUP 1",
+        "COLOR 1",
+        "AT FULL"
+      ]
+    },
+    "2": {
+      "name": "blackout toggle",
+      "commands": [
+        "BLACKOUT"
+      ]
+    }
+  }
+}

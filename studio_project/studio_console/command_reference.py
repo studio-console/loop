@@ -48,9 +48,10 @@ COMMAND_REFERENCE = [
         ("1 AT CT 5600",          "daylight-balanced white (5600K)"),
         ("1 AT FLIP PAN",         "invert pan: new = 255 − current (mirror for symmetric rigs)"),
         ("1 AT FLIP R",           "invert red channel value"),
-        ("1 AT WHITE",            "named colour shorthand — sets R/G/B directly"),
-        ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "other named colours"),
+        ("1 AT WHITE",            "named colour shorthand (bare, no value) — sets R/G/B directly to an approximation"),
+        ("1 AT AMBER / CYAN / MAGENTA / WARM / UV", "other named colours (bare — same RGB-approximation behavior)"),
         ("1 AT YELLOW / ORANGE / PINK / PURPLE / LIME / TEAL", "more named colours"),
+        ("1 AT AMBER 200",        "with a value, AMBER/WHITE/LIME/UV are REAL channels instead of the named-colour shortcut — sets the fixture's actual amber channel to 200 (only meaningful on a fixture whose profile has that channel, e.g. Generic_RGBAW)"),
         ("COL 3  /  COLOR 3",     "apply colour preset to selection — must be its own command, sent AFTER a selection command (e.g. '1.1' then 'COLOR 3'); 'COLOR' combined with a selection in the same line (e.g. '1.1 COLOR 3') is parsed as setting a moving-light COLOR-wheel channel instead, not a preset recall"),
         ("DIM PRESET 2",          "apply dim preset to selection — same rule as COLOR above: send the selection first, then 'DIM PRESET 2' as its own command"),
         ("DIM 80",                "NOT a preset recall — sets raw dimmer to 80% directly (shorthand for AT DIM 80)"),
@@ -154,7 +155,7 @@ COMMAND_REFERENCE = [
         ("LIST NOTES",            "list all cuelist and cue notes set in the show — quick production overview"),
         ("LIST CUES",             "list all cues in the active stack with fade times"),
         ("LIST CUES stk 2",        "list cues in stack 2 specifically"),
-        ("LIST COLOR",            "list all color presets with RGB sample"),
+        ("LIST COLOR",            "list all color presets with a channel-value sample (whichever of red/green/blue/white/amber/lime/uv the preset actually carries)"),
         ("LIST DIM",             "list all dim presets with level"),
         ("LIST GROUP",            "list all groups and member counts"),
         ("GROUP 2 INFO",          "show group 2's name and all member fixture IDs and names"),
@@ -181,8 +182,9 @@ COMMAND_REFERENCE = [
         ("REC CUE 5 FADE 2 FXOUTFADE 1.5", "record with timing — fxout overrides how long old fx fades out"),
         ("RECORD FX 2 My FX",     "record programmer FX to FX pool slot 2 (REC also works, same as REC CUE)"),
         ("RECORD GROUP 3 Name",   "record current selection as group 3 (REC also works, same as REC CUE)"),
-        ("RECORD COLOR 4 Red",    "record programmer colour as preset 4"),
+        ("RECORD COLOR 4 Red",    "record programmer colour as preset 4 — captures whatever colour-mix channels (red/green/blue/white/amber/lime/uv) are actually set, not just RGB"),
         ("RECORD COLOR 5 Amber 255 140 0", "record explicit RGB (no programmer needed)"),
+        ("RECORD COLOR 6 WarmAmber 255 140 0 AMBER 200", "explicit RGB plus an extra channel — AMBER/WHITE/LIME/UV value pairs after the mandatory R G B triple"),
         ("RECORD DIM 2 Half",     "record programmer dim as preset 2"),
         ("RECORD DIM 3 75%",      "record explicit level (no programmer needed)"),
         ("record form 6 Wave 0,0 0.5,1 1,0",  "record custom waveform"),
@@ -423,15 +425,56 @@ COMMAND_REFERENCE = [
         ("VIZ POSITION 1 THRU 4 CLEAR", "remove fixtures 1-4's custom placement, back to auto-arrange (a line/grid ordered by patch id)"),
         ("3D viz coordinate system", "units are FEET — one ground-grid square is 1x1ft, and each fixture's marker cube is exactly 1x1x1ft, so distances read directly off the grid. y is up — y=0 is the ground plane the grid is drawn on, a fixture sitting ON the floor has y=0.5 (its cube resting on the floor, not its center in the floor) — a truss-mounted fixture would use a larger y. x is left/right, z is depth (toward/away from the camera). yaw is degrees, 0 = facing +z, spinning left/right around the vertical (y) axis. pitch is degrees, 0 = level, tilting the fixture's own nose up/down (positive = down) around its own local axis — a placement property (how it's mounted), separate from a mover's live pan/tilt DMX output, which composes with it rather than replacing it. Leaving yaw or pitch off a VIZ POSITION AT resets yaw to 0 but leaves pitch as whatever it already was, so re-aiming a fixture's yaw doesn't undo its mount angle. Auto-arrange (no VIZ POSITION set) lines fixtures up along x at y=0.5 (resting on the floor), 2.5ft apart centre-to-centre, centered on x=0, ordered by fixture id, yaw=0, pitch=0 — a reasonable starting layout to build a request like 'arrange in a circle' or 'put the movers upstage, 6ft back' from, since fixtures.viz_position in the console state shows what's currently set (None = still auto-arranged) rather than requiring a guess."),
     ]),
-    ("macros", [
-        ("MACRO RECORD 1 LookA",  "start recording commands to slot 1 (name is optional)"),
-        ("MACRO RENAME 1 PreShow", "rename macro slot 1 without re-recording it"),
-        ("MACRO STOP",            "stop recording and save the macro"),
-        ("MACRO ABORT",           "discard recording without saving"),
-        ("MACRO 1",               "play back macro slot 1"),
-        ("MACRO LIST",            "list all recorded macros with command counts"),
-        ("MACRO DELETE 1",        "delete macro slot 1"),
-        ("RENAME MACRO 1 NewName","rename macro slot 1"),
+    ("pool paging", [
+        ("‹ 1-24 › control", "every pool panel (groups, colors, dims, stacks, cues, fx pool, forms, codes, "
+         "and the 6 attribute pools) has a small ‹ range › control beside its title — click ‹/› to page "
+         "through slots beyond the panel's fixed visible grid (e.g. group 50 exists but the panel only "
+         "shows 24 at a time). The label always shows the real slot range currently on screen, e.g. '25-48'."),
+        ("linked vs. unlinked", "a 'pool pages: linked' checkbox lives next to the groups panel's title "
+         "(main window) and next to the attribute pools popup's title — one shared toggle, shown in both "
+         "places since attribute pools live in a separate window. Linked (default): every panel shows the "
+         "SAME absolute slot range, so paging any one of them moves all the others too — a 12-slot "
+         "attribute pool then shows fewer slots past that shared start than a 24-slot pool does, since each "
+         "panel's own visible width doesn't change, only where it starts. Unlinked: each panel pages "
+         "independently. Re-linking adopts whichever panel had paged furthest as the new shared position, "
+         "rather than snapping everything back to slot 1."),
+    ]),
+    ("codes", [
+        ("note", "called 'codes', not the more common 'macros' — that word was already taken by a real DMX "
+         "channel some moving-light profiles carry (AT MACRO n sets it directly; see 'moving lights / "
+         "attributes'), and having both mean completely different things was confusing."),
+        ("CODE RECORD 1 LookA",  "start recording commands to slot 1 (name is optional)"),
+        ("CODE RENAME 1 PreShow", "rename code slot 1 without re-recording it"),
+        ("CODE STOP",            "stop recording and save the code"),
+        ("CODE ABORT",           "discard recording without saving"),
+        ("CODE 1",               "play back code slot 1"),
+        ("CODE LIST",            "list all recorded codes with command counts"),
+        ("CODE DELETE 1",        "delete code slot 1"),
+        ("RENAME CODE 1 NewName","rename code slot 1"),
+        ("code pool panel", "the ? window's attribute pools popup (header ATTR button) has a 24-slot code "
+         "panel below position/gobo/zoom/focus/beam/control — click a slot to play that code, or click an "
+         "empty one to prefill 'CODE RECORD n ' on the command line; right-click any slot for play/record "
+         "here/rename/edit/delete. The panel header shows live recording status (slot + command count so far) "
+         "with STOP/ABORT buttons next to it."),
+        ("code editor", "right-click any code slot -> 'edit code...' opens a direct multi-line editor over "
+         "that slot's command list instead of live-recording it — one command per line, in play order, blank "
+         "lines ignored. Fix a typo, reorder steps, or add/remove lines without re-recording the whole thing. "
+         "Save writes it to the pool immediately (persists to disk); Save + Play does that and fires it right "
+         "away so you can check the result."),
+        ("DELAY <ms>", "a line inside a code's command list (typed in the editor, or literally saved into a "
+         "recording) that pauses THAT CODE for <ms> milliseconds before its next line runs — e.g. \"DELAY 250\" "
+         "waits a quarter second. Doesn't block the console: everything else (faders, other cues, the GUI) "
+         "keeps running normally while a code is mid-delay, even for a code fired from CODE RECORD's own live "
+         "capture. A bare DELAY typed directly at the command line (not as a code step) just explains this "
+         "instead of doing anything, since there's nothing to delay outside a code's own playback. A code "
+         "already mid-playback (including paused on a DELAY) blocks itself from being fired again, directly "
+         "or through another code that calls back into it — prevents a runaway loop, so a self-referencing "
+         "\"chase\" pattern isn't a supported use of DELAY."),
+        ("code MIDI/OSC firing", "MIDI: hardware popup's MIDI tab has a 'play a code via note' row — enter "
+         "the code slot number and click 'learn note', then hit the pad/key to map it (same dynamic-target "
+         "pattern used for 'go directly to a cue' and fader flash/go/back, since code slot numbers aren't "
+         "known ahead of time). OSC: already works with no extra mapping — send /gma3/cmd \"CODE n\" the same "
+         "way you'd send \"Go+ cue 1\", since that route already runs any command string through the console."),
     ]),
     ("network / sacn", [
         ("NETWORK STATUS",         "show current sACN bind address and universe list"),

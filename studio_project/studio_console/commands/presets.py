@@ -25,7 +25,7 @@ import re as _re
 from studio_console.state import (
     LIGHTFORM_CUE_MAP, STUDIO_DRY_RUN, STUDIO_HEADLESS, _NET_BIND, _NET_UNIVERSES, _active_fader,
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
-    _fader_dim, _fixture_defaults, _fx_params, _macro_play_stack, _macro_recording, _make_set_speed_master,
+    _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
     _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
@@ -34,7 +34,7 @@ from studio_console.state import (
     fade_engine, fader_pool, flash_off, flash_on, focus_pool, form_pool,
     fx_engine, fx_pool, gobo_pool, goto_1, goto_2, goto_3,
     goto_4, goto_cue, group_pool, import_presets, library, list_shows,
-    load_show_from, macro_pool, midi, network, osc, output_state,
+    load_show_from, code_pool, midi, network, osc, output_state,
     patch, position_pool, prog, rate_pool, save_show, save_show_as,
     set_all_dim, set_fx_rate, set_fx_size, set_fx_spread, size_pool, speed_master_pool,
     spread_pool, stack_pool, tap_tempo, transport_back, transport_go, transport_rewind,
@@ -220,34 +220,64 @@ def cmd_076_color(t0, tokens, raw):
         return f"applied: {p}"
 
 
+_EXTRA_COLOR_KEYWORDS = {'AMBER': 'amber', 'WHITE': 'white', 'LIME': 'lime', 'UV': 'uv'}
+
+
 def cmd_077_record_color(t0, tokens, raw):
     if t0 == 'RECORD' and len(tokens) > 2 and tokens[1] in ('COLOR', 'COLOUR'):
         try:
             pid = int(tokens[2])
         except ValueError:
             return f"RECORD COLOR: bad slot number '{tokens[2]}'"
-        # RECORD COLOR <n> <R> <G> <B> [name]  — explicit RGB values
-        _raw_num = [t for t in tokens[3:] if t.lstrip('-').replace('.','',1).isdigit()]
+        # RECORD COLOR <n> <R> <G> <B> [name] [AMBER v] [WHITE v] [LIME v] [UV v]
+        # explicit RGB values, plus optional extra colour-mix channels —
+        # pulled out first so they don't get swept into the mandatory
+        # R/G/B scan or the name text below.
+        rest = tokens[3:]
+        extras = {}
+        remaining = []
+        i = 0
+        while i < len(rest):
+            tok = rest[i]
+            if (tok in _EXTRA_COLOR_KEYWORDS and i + 1 < len(rest)
+                    and rest[i + 1].lstrip('-').replace('.', '', 1).isdigit()):
+                extras[_EXTRA_COLOR_KEYWORDS[tok]] = float(rest[i + 1])
+                i += 2
+                continue
+            remaining.append(tok)
+            i += 1
+        _raw_num = [t for t in remaining if t.lstrip('-').replace('.','',1).isdigit()]
         if len(_raw_num) >= 3:
             try:
                 er, eg, eb = int(_raw_num[0]), int(_raw_num[1]), int(_raw_num[2])
             except ValueError:
                 return "RECORD COLOR: bad R/G/B values"
-            _non_num = [t for t in tokens[3:] if not t.lstrip('-').replace('.','',1).isdigit()]
+            _non_num = [t for t in remaining if not t.lstrip('-').replace('.','',1).isdigit()]
             name = " ".join(_non_num).lower() or f"color {pid}"
             p = ColorPreset(pid, name)
-            p.red, p.green, p.blue = float(er), float(eg), float(eb)
+            p.channels = {'red': float(er), 'green': float(eg), 'blue': float(eb), **extras}
+            _snapshot_undo(color_pool.presets, pid, f"record color {pid}")
+            color_pool.presets[pid] = p
+            save_show()
+            _preset_live_push('color', pid)
+            return f"recorded: {p}  (show saved)"
+        if extras:
+            # Extra channels given with no RGB triple, e.g.
+            # "RECORD COLOR 5 AmberOnly AMBER 200".
+            name = " ".join(remaining).lower() or f"color {pid}"
+            p = ColorPreset(pid, name)
+            p.channels = dict(extras)
             _snapshot_undo(color_pool.presets, pid, f"record color {pid}")
             color_pool.presets[pid] = p
             save_show()
             _preset_live_push('color', pid)
             return f"recorded: {p}  (show saved)"
         name = _name_after(raw, 3) or f"color {pid}"
-        _has_rgb = any(any(ch in vals for ch in ('red', 'green', 'blue'))
+        _has_rgb = any(any(ch in vals for ch in color_pool.relevant_channels)
                        for fid, vals in prog.data.items()
                        if '.' in fid)
         if not _has_rgb:
-            return "RECORD COLOR: no RGB data in programmer  (set a colour first)"
+            return "RECORD COLOR: no colour data in programmer  (set a colour first)"
         _snapshot_undo(color_pool.presets, pid, f"record color {pid}")
         p = color_pool.record(pid, prog, name=name)
         save_show()

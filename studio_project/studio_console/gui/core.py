@@ -35,7 +35,7 @@ class GUIEngineCore:
         "keys_window", "changelog_window", "pages_window", "monitors_window",
         "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
         "color_picker_window", "speed_master_window", "fader_page_window",
-        "audio_window", "fx_params_window", "viz3d_window",
+        "audio_window", "fx_params_window", "viz3d_window", "code_editor_window",
     ]
     # Was os.path.dirname(os.path.abspath(__file__)) — that resolved
     # relative to studio_project.py itself when this class lived there
@@ -168,7 +168,7 @@ class GUIEngineCore:
                  cue_pool=None, stack_pool=None, active_fader=None,
                  fader_pool=None, fx_pool=None, form_pool=None,
                  rate_pool=None, size_pool=None, spread_pool=None,
-                 speed_master_pool=None,
+                 speed_master_pool=None, code_pool=None, code_recording=None,
                  attr_pools=None, osc=None,
                  library=None, save_patch_fn=None, fx_params=None,
                  audio_engine=None, audio_mapper=None, prog_fx_ids=None):
@@ -198,6 +198,8 @@ class GUIEngineCore:
         self._size_pool   = size_pool
         self._spread_pool = spread_pool
         self._speed_pool  = speed_master_pool
+        self._codes      = code_pool if code_pool is not None else {}   # {slot: {"name","commands"}}
+        self._code_rec   = code_recording if code_recording is not None else {}  # shared-by-reference {"slot","cmds","name"}
         self._attr_pools  = attr_pools or {}   # {name: AttributePool}
         self._library     = library
         self._fx_params   = fx_params
@@ -236,6 +238,41 @@ class GUIEngineCore:
         self._fpg_page          = 1    # current fader-page bank (1-based); slot N shows fdr (page-1)*15+N
         self._fpg_last_win_size = (0, 0)
         self._fpg_cuelist_sig   = {}   # slot n -> (stack_id, cue numbers) last built, to skip needless rebuilds
+        self._gui_built         = False  # set True at the end of build() — see its own comment
+        # Pool pagination (groups/colors/dims/stacks/cues/fx pool/forms/
+        # codes/6 attribute pools) — each panel shows a fixed-size grid
+        # (its own "page size", e.g. 24 for groups, 12 for an attribute
+        # pool) starting at some absolute slot number. Linked (default):
+        # every panel shares the SAME absolute start, so paging any one of
+        # them moves the visible window on all the others too, even though
+        # a smaller panel (12 slots) then shows fewer slots past that same
+        # start than a bigger one (24) does. Unlinked: each panel's start
+        # is independent, tracked per pool key in _pool_page_starts.
+        #
+        # Whether they're linked lives ONLY in the "pool_pages_link_main"
+        # checkbox's dpg value (read via _pool_pages_linked()), the same
+        # pattern cpick_live already uses — no separate Python bool to let
+        # drift out of sync with what _PERSISTED_CHECKBOXES restores on
+        # load, which only ever sets the widget value, not a mirroring
+        # variable.
+        self._linked_page_start = 1
+        self._pool_page_starts  = {}   # {pool_key: start_int}, unlinked mode only
+        # (pool_key, page_size) for every paginated panel — single source
+        # of truth for _tick_pool_page_labels and anything else that needs
+        # to walk every paged pool generically. Built here (an instance
+        # attribute), not as a class constant on GUIEnginePoolsPanel,
+        # since it needs self._POOL_SLOTS/self._FORMS_SLOTS — real
+        # attributes of the final composed GUIEngine class, not something
+        # a sibling mixin's class body can see at class-definition time.
+        self._PAGED_POOLS = [
+            ("groups", self._POOL_SLOTS), ("colors", self._POOL_SLOTS),
+            ("dims", self._POOL_SLOTS), ("stacks", self._POOL_SLOTS),
+            ("cues", self._POOL_SLOTS), ("fx", self._POOL_SLOTS),
+            ("forms", self._FORMS_SLOTS), ("codes", self._POOL_SLOTS),
+            ("position", 12), ("gobo", 12), ("zoom", 12),
+            ("focus", 12), ("beam", 12), ("control", 12),
+        ]
+        self._code_editor_slot = None   # which real code slot the editor popup is currently open on
     # Widget values (not window pos/size) that need to survive a restart —
     # currently just the color picker's "live" checkbox, which was
     # silently resetting to its default_value=True on every launch with
@@ -244,7 +281,8 @@ class GUIEngineCore:
     # that was observed — it had reset back to checked since the last
     # restart). Add more (tag, "value_key") pairs here if another toggle
     # needs the same treatment.
-    _PERSISTED_CHECKBOXES = [("cpick_live", "cpick_live")]
+    _PERSISTED_CHECKBOXES = [("cpick_live", "cpick_live"),
+                              ("pool_pages_link_main", "pool_pages_linked")]
     def _save_popup_layout(self):
         layout = {}
         for tag in self._POPUP_TAGS:
@@ -374,6 +412,7 @@ class GUIEngineCore:
         self._build_changelog_popup()
         self._build_pages_popup()
         self._build_attr_popup()
+        self._build_code_editor_popup()
         self._build_fx_params_popup()
         self._build_monitors_popup()
         self._build_undo_history_popup()
@@ -514,6 +553,17 @@ class GUIEngineCore:
         # not assumed) — whatever was passed at dpg.window(...) creation time
         # above doesn't survive it. Re-apply after, which does stick.
         dpg.configure_item("main", no_scrollbar=True, no_scroll_with_mouse=True)
+        # Plain Python flag, not a dpg.does_item_exist() probe — checked from
+        # commands/patch.py (_refresh_monitor_rows) before touching dpg at
+        # all. In STUDIO_HEADLESS/smoke-test mode this build() method never
+        # runs (or runs only once, very late, inside tests_smoke.py's own
+        # dedicated check) — dpg.create_context() is never called before
+        # that point, and calling ANY dpg.* function with no context yet
+        # doesn't raise a catchable Python exception, it segfaults the
+        # whole process. A try/except around the call site is useless
+        # against that; this flag is checked first instead, with no dpg
+        # call involved.
+        self._gui_built = True
     def _on_cmd_execute(self):
         raw = dpg.get_value("cmd_input").strip()
         if not raw:
@@ -1350,6 +1400,65 @@ class GUIEngineCore:
         except Exception:
             pass
 
+    _MON_REF_COL_PX  = 680   # last-resort fallback if the live measurement
+                              # below fails for any reason
+
+    def _mon_ref_col_width(self, ref_tag, bar_tag):
+        """Actual current pixel width available to a refs/attrs cell,
+        measured directly from live widget positions — the bar cell's left
+        edge minus the ref cell's left edge — rather than inferred by
+        summing hardcoded column-width constants and subtracting from the
+        table's overall rect_size. That summed-constants approach came out
+        roughly 2x too narrow in practice (reported: still truncating at
+        "way shorter than needed... twice as long" of visible room) — most
+        likely the init_width_or_weight values passed at column-creation
+        time and whatever unit dpg.get_item_rect_size reports back aren't
+        the same scale (e.g. a HiDPI/retina backing-scale factor applied
+        to one but not the other). Measuring the real on-screen gap
+        between two sibling cells sidesteps needing to know why: whatever
+        scale either number is in, both edges are measured the same way,
+        so their difference is the true column width regardless."""
+        try:
+            ref_x0 = dpg.get_item_rect_min(ref_tag)[0]
+            bar_x0 = dpg.get_item_rect_min(bar_tag)[0]
+        except Exception:
+            return self._MON_REF_COL_PX
+        width = bar_x0 - ref_x0
+        if width <= 0:
+            return self._MON_REF_COL_PX
+        return max(width - 16, 80)   # small margin so text never touches the bar column
+
+    def _fit_mon_text(self, s, max_px=None):
+        """Truncate s with an ellipsis so it renders on one line within
+        max_px, measured with the actual live font via dpg.get_text_size()
+        rather than a guessed character count (proportional font, so ref
+        names vary a lot in width). Returns s unchanged if it already fits.
+
+        max_px should come from _mon_ref_col_width() (the real measured gap
+        between this cell and the next one) — callers that can't measure it
+        fall back to the fixed _MON_REF_COL_PX estimate. Never a
+        correctness issue either way: the untruncated string is always
+        still shown in full in the cell's tooltip.
+        """
+        if max_px is None:
+            max_px = self._MON_REF_COL_PX
+        if not s:
+            return s
+        try:
+            if dpg.get_text_size(s)[0] <= max_px:
+                return s
+            lo, hi = 0, len(s)
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                cand = s[:mid].rstrip() + "…"
+                if dpg.get_text_size(cand)[0] <= max_px:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            return (s[:lo].rstrip() + "…") if lo > 0 else "…"
+        except Exception:
+            return s
+
     def _tick_programmer_monitor(self):
         prog_data = self._prog.data if self._prog else {}
         prog_active = any(v for v in prog_data.values() if v)
@@ -1473,16 +1582,24 @@ class GUIEngineCore:
                 # at all, before the raw values that came from it.
                 if has_refs:
                     fx_display = f"{ref_str}  {fx_display}" if fx_display != "—" else ref_str
-                dpg.set_value(f"prog_fx_{fid}",  fx_display)
+                dpg.set_value(f"prog_fx_{fid}",
+                              self._fit_mon_text(fx_display,
+                                  self._mon_ref_col_width(f"prog_fx_{fid}", f"prog_bar_{fid}")))
+                dpg.set_value(f"prog_fx_tip_{fid}", fx_display)
                 dpg.configure_item(f"prog_fx_{fid}",
                                    color=_C_ACCENT if (has_fx or has_attr or has_refs) else _C_DIM)
                 brightness = (r + g + b) / (3 * 255) * float(dim if dim is not None else 1.0)
                 # When only FX or attr channels in programmer, show partial bar
                 bar_val = max(brightness, 0.25) if ((has_fx or has_attr) and not (r or g or b)) else brightness
                 dpg.set_value(f"prog_bar_{fid}", min(1.0, bar_val) if has_data else 0.0)
+                # attr_str already went into fx_display above (the wide,
+                # wrapping text column) — the bar's overlay is a single
+                # non-wrapping line, so it only ever holds a short dim% or
+                # RGB triplet, never the full attribute value list (that's
+                # what used to overflow past the bar and clip mid-word).
                 fx_tag = "  ~FX" if has_fx else ""
                 if has_attr and not (r or g or b):
-                    bar_overlay = f"{attr_str}{fx_tag}" if has_data else ""
+                    bar_overlay = (f"{dim:.0%}{fx_tag}" if dim is not None else fx_tag.strip()) if has_data else ""
                 else:
                     bar_overlay = f"R{r} G{g} B{b}{fx_tag}" if has_data else ""
                 dpg.configure_item(f"prog_bar_{fid}", overlay=bar_overlay)
@@ -1512,122 +1629,153 @@ class GUIEngineCore:
                 pass
 
     def _tick_output_monitor(self):
+        # One try/except per fixture — a fixture patched live (PATCH ADD)
+        # after the monitors popup was already built has no row/tags yet
+        # (_rebuild_monitor_rows() fixes that going forward, called from
+        # PATCH ADD/REMOVE), but a stale tag lookup for any OTHER reason
+        # must not take the rest of the table down with it: this loop used
+        # to have no per-fixture guard at all, so one missing tag threw,
+        # _update_loop's outer try/except swallowed it, and the ENTIRE
+        # output monitor silently froze at its last good state forever —
+        # every fixture after the failing one in iteration order, every
+        # tick, until the app was restarted (reported as "nothing coming
+        # up... no refs"). _tick_programmer_monitor already had this
+        # per-row guard; this one didn't, which is why only the output
+        # monitor went stale.
+        for master in self._patch.all_fixtures():
+            try:
+                self._tick_output_monitor_row(master)
+            except Exception:
+                pass
+
+    def _tick_output_monitor_row(self, master):
         # Output monitor — sample first sub-fixture for RGB (pixel 1 of each tube),
         # master entry for dim. Keys are 'red'/'green'/'blue' throughout.
-        for master in self._patch.all_fixtures():
-            fid     = str(master.fixture_id)          # e.g. "1"
-            sub_fid = f"{master.fixture_id}.1"        # e.g. "1.1" — first pixel
+        fid     = str(master.fixture_id)          # e.g. "1"
+        sub_fid = f"{master.fixture_id}.1"        # e.g. "1.1" — first pixel
 
-            # dim lives on the master entry
-            pl_master  = self._out.programmer_layer.get(fid, {})
-            cue_merged = self._out._merged_cue_layer()
-            cue_master = cue_merged.get(fid, {})
-            dim = pl_master.get('dim', cue_master.get('dim', 1.0))
+        # dim lives on the master entry
+        pl_master  = self._out.programmer_layer.get(fid, {})
+        cue_merged = self._out._merged_cue_layer()
+        cue_master = cue_merged.get(fid, {})
+        dim = pl_master.get('dim', cue_master.get('dim', 1.0))
 
-            # RGB lives on sub-fixture entries; use pixel 1 as representative
-            pl_sub  = self._out.programmer_layer.get(sub_fid, {})
-            cue_sub = cue_merged.get(sub_fid, {})
-            fx_sub  = self._out.fx_layer.get(sub_fid, {})
+        # RGB lives on sub-fixture entries; use pixel 1 as representative
+        pl_sub  = self._out.programmer_layer.get(sub_fid, {})
+        cue_sub = cue_merged.get(sub_fid, {})
+        fx_sub  = self._out.fx_layer.get(sub_fid, {})
 
-            # Mirror the actual merger: programmer wins; otherwise cue+FX additive
-            if 'red' in pl_sub:
-                r = int(pl_sub['red'])
-                g = int(pl_sub.get('green', 0))
-                b = int(pl_sub.get('blue',  0))
-            else:
-                r = min(255, int(cue_sub.get('red',   0)) + int(fx_sub.get('red',   0)))
-                g = min(255, int(cue_sub.get('green', 0)) + int(fx_sub.get('green', 0)))
-                b = min(255, int(cue_sub.get('blue',  0)) + int(fx_sub.get('blue',  0)))
+        # Mirror the actual merger: programmer wins; otherwise cue+FX additive
+        if 'red' in pl_sub:
+            r = int(pl_sub['red'])
+            g = int(pl_sub.get('green', 0))
+            b = int(pl_sub.get('blue',  0))
+        else:
+            r = min(255, int(cue_sub.get('red',   0)) + int(fx_sub.get('red',   0)))
+            g = min(255, int(cue_sub.get('green', 0)) + int(fx_sub.get('green', 0)))
+            b = min(255, int(cue_sub.get('blue',  0)) + int(fx_sub.get('blue',  0)))
 
-            # Attribute channels (for movers with no RGB)
-            _OUT_ATTR = [('pan','P'), ('tilt','T'), ('gobo','G'), ('zoom','Z'), ('focus','Fc')]
-            _merged_sub = {**cue_sub, **pl_sub}
-            out_attr_parts = [f"{abbr}:{_merged_sub[ch]}" for ch, abbr in _OUT_ATTR
-                              if ch in _merged_sub]
-            has_out_attr = bool(out_attr_parts) and not (r or g or b)
+        # Attribute channels (for movers with no RGB)
+        _OUT_ATTR = [('pan','P'), ('tilt','T'), ('gobo','G'), ('zoom','Z'), ('focus','Fc')]
+        _merged_sub = {**cue_sub, **pl_sub}
+        out_attr_parts = [f"{abbr}:{_merged_sub[ch]}" for ch, abbr in _OUT_ATTR
+                          if ch in _merged_sub]
+        has_out_attr = bool(out_attr_parts) and not (r or g or b)
 
-            # Pool references — is this fixture's CURRENT output tracking a
-            # saved preset (color/dim/attribute/FX) or just a raw recorded/
-            # typed value? Mirrors _tick_programmer_monitor's ref display,
-            # but for whatever is actually driving live output right now,
-            # not just the uncommitted programmer. cue_merged
-            # (_merged_cue_layer) only carries resolved numeric values —
-            # Fade.tick() deliberately strips non-numeric keys like *_ref —
-            # so a cue-sourced ref has to be read off the raw Cue object on
-            # whichever active fader is actually driving this fixture, not
-            # off cue_merged. Programmer wins here the same way it wins for
-            # the RGB values above.
-            if pl_master or pl_sub:
-                _ref_src = pl_master
-            else:
-                _ref_src = {}
-                if self._fader_pool:
-                    for _ex in sorted(self._fader_pool.faders.values(),
-                                      key=lambda e: getattr(e, 'priority', 0)):
-                        if not (_ex.is_active and _ex.stack and _ex.stack.current is not None):
-                            continue
-                        _cue = _ex.stack.cues.get(_ex.stack.current)
-                        if _cue and fid in _cue.data:
-                            _ref_src = _cue.data[fid]   # last (highest-priority) wins
-            ref_parts = []
-            _gref = _ref_src.get('group_ref')
-            if _gref is not None:
-                _p = self._groups.get(_gref) if self._groups else None
-                ref_parts.append(f"[group:{_p.name if _p else _gref}]")
-            _cref = _ref_src.get('color_ref')
-            if _cref is not None:
-                _p = self._colors.get(_cref) if self._colors else None
-                ref_parts.append(f"[color:{_p.name if _p else _cref}]")
-            _dref = _ref_src.get('dim_ref')
-            if _dref is not None:
-                _p = self._dims.get(_dref) if self._dims else None
-                ref_parts.append(f"[dim:{_p.name if _p else _dref}]")
-            for _attr_name, _attr_pool in (self._attr_pools or {}).items():
-                _rk = _ref_src.get(f"{_attr_name}_ref")
-                if _rk is not None:
-                    _p = _attr_pool.get(_rk) if _attr_pool else None
-                    ref_parts.append(f"[{_attr_name}:{_p.name if _p else _rk}]")
-            _out_fx_defs = _ref_src.get('fx', [])
-            _fx_ref = next((ld.get('fx_preset_ref') for ld in _out_fx_defs
-                            if ld.get('fx_preset_ref') is not None), None)
-            if _fx_ref is not None:
-                _p = self._fx_pool.get(_fx_ref) if self._fx_pool else None
-                ref_parts.append(f"[fx:{_p.name if _p else _fx_ref}]")
-            has_out_refs = bool(ref_parts)
-            dpg.set_value(f"out_ref_{fid}", ' '.join(ref_parts) if has_out_refs else "—")
-            dpg.configure_item(f"out_ref_{fid}", color=_C_ACCENT if has_out_refs else _C_DIM)
+        # Pool references — is this fixture's CURRENT output tracking a
+        # saved preset (color/dim/attribute/FX) or just a raw recorded/
+        # typed value? Mirrors _tick_programmer_monitor's ref display,
+        # but for whatever is actually driving live output right now,
+        # not just the uncommitted programmer. cue_merged
+        # (_merged_cue_layer) only carries resolved numeric values —
+        # Fade.tick() deliberately strips non-numeric keys like *_ref —
+        # so a cue-sourced ref has to be read off the raw Cue object on
+        # whichever active fader is actually driving this fixture, not
+        # off cue_merged. Programmer wins here the same way it wins for
+        # the RGB values above.
+        if pl_master or pl_sub:
+            _ref_src = pl_master
+        else:
+            _ref_src = {}
+            if self._fader_pool:
+                for _ex in sorted(self._fader_pool.faders.values(),
+                                  key=lambda e: getattr(e, 'priority', 0)):
+                    if not (_ex.is_active and _ex.stack and _ex.stack.current is not None):
+                        continue
+                    _cue = _ex.stack.cues.get(_ex.stack.current)
+                    if _cue and fid in _cue.data:
+                        _ref_src = _cue.data[fid]   # last (highest-priority) wins
+        ref_parts = []
+        _gref = _ref_src.get('group_ref')
+        if _gref is not None:
+            _p = self._groups.get(_gref) if self._groups else None
+            ref_parts.append(f"[group:{_p.name if _p else _gref}]")
+        _cref = _ref_src.get('color_ref')
+        if _cref is not None:
+            _p = self._colors.get(_cref) if self._colors else None
+            ref_parts.append(f"[color:{_p.name if _p else _cref}]")
+        _dref = _ref_src.get('dim_ref')
+        if _dref is not None:
+            _p = self._dims.get(_dref) if self._dims else None
+            ref_parts.append(f"[dim:{_p.name if _p else _dref}]")
+        for _attr_name, _attr_pool in (self._attr_pools or {}).items():
+            _rk = _ref_src.get(f"{_attr_name}_ref")
+            if _rk is not None:
+                _p = _attr_pool.get(_rk) if _attr_pool else None
+                ref_parts.append(f"[{_attr_name}:{_p.name if _p else _rk}]")
+        _out_fx_defs = _ref_src.get('fx', [])
+        _fx_ref = next((ld.get('fx_preset_ref') for ld in _out_fx_defs
+                        if ld.get('fx_preset_ref') is not None), None)
+        if _fx_ref is not None:
+            _p = self._fx_pool.get(_fx_ref) if self._fx_pool else None
+            ref_parts.append(f"[fx:{_p.name if _p else _fx_ref}]")
+        # Live attribute values join the same wide, wrapping refs column
+        # rather than the level bar's overlay — a progress bar's overlay
+        # is a single non-wrapping line, so a fixture with several
+        # attribute refs AND several live values (a moving light with
+        # position/gobo/zoom/focus/beam/control all set) had nowhere for
+        # that text to go but overflow past the bar and clip mid-word.
+        if has_out_attr:
+            ref_parts.append(' '.join(out_attr_parts))
+        has_out_refs = bool(ref_parts)
+        _out_ref_full = ' '.join(ref_parts) if has_out_refs else "—"
+        dpg.set_value(f"out_ref_{fid}",
+                      self._fit_mon_text(_out_ref_full,
+                          self._mon_ref_col_width(f"out_ref_{fid}", f"out_bar_{fid}")))
+        dpg.set_value(f"out_ref_tip_{fid}", _out_ref_full)
+        dpg.configure_item(f"out_ref_{fid}", color=_C_ACCENT if has_out_refs else _C_DIM)
 
-            dpg.set_value(f"out_r_{fid}",   str(r))
-            dpg.set_value(f"out_g_{fid}",   str(g))
-            dpg.set_value(f"out_b_{fid}",   str(b))
-            dpg.set_value(f"out_dim_{fid}", f"{dim:.0%}")
-            brightness = (r + g + b) / (3 * 255) * float(dim)
-            out_bar_val = max(brightness, 0.3) if has_out_attr else brightness
-            dpg.set_value(f"out_bar_{fid}", min(1.0, out_bar_val))
-            out_overlay = ' '.join(out_attr_parts) if has_out_attr else f"R{r} G{g} B{b}"
-            dpg.configure_item(f"out_bar_{fid}", overlay=out_overlay)
-            # Tint output bar to match actual RGB color
-            _ocached = self._out_bar_themes.get(fid)
-            if r > 0 or g > 0 or b > 0:
-                if _ocached is None or _ocached[0] != (r, g, b):
-                    if _ocached:
-                        try: dpg.delete_item(_ocached[1])
-                        except: pass
-                    try:
-                        with dpg.theme() as _oth:
-                            with dpg.theme_component(dpg.mvProgressBar):
-                                dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram,
-                                                    (r, g, b, 255))
-                        dpg.bind_item_theme(f"out_bar_{fid}", _oth)
-                        self._out_bar_themes[fid] = ((r, g, b), _oth)
-                    except: pass
-            else:
+        dpg.set_value(f"out_r_{fid}",   str(r))
+        dpg.set_value(f"out_g_{fid}",   str(g))
+        dpg.set_value(f"out_b_{fid}",   str(b))
+        dpg.set_value(f"out_dim_{fid}", f"{dim:.0%}")
+        brightness = (r + g + b) / (3 * 255) * float(dim)
+        out_bar_val = max(brightness, 0.3) if has_out_attr else brightness
+        dpg.set_value(f"out_bar_{fid}", min(1.0, out_bar_val))
+        out_overlay = f"{dim:.0%}" if has_out_attr else f"R{r} G{g} B{b}"
+        dpg.configure_item(f"out_bar_{fid}", overlay=out_overlay)
+        # Tint output bar to match actual RGB color
+        _ocached = self._out_bar_themes.get(fid)
+        if r > 0 or g > 0 or b > 0:
+            if _ocached is None or _ocached[0] != (r, g, b):
                 if _ocached:
-                    try:
-                        dpg.bind_item_theme(f"out_bar_{fid}", 0)
-                        dpg.delete_item(_ocached[1])
+                    try: dpg.delete_item(_ocached[1])
                     except: pass
-                    del self._out_bar_themes[fid]
+                try:
+                    with dpg.theme() as _oth:
+                        with dpg.theme_component(dpg.mvProgressBar):
+                            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram,
+                                                (r, g, b, 255))
+                    dpg.bind_item_theme(f"out_bar_{fid}", _oth)
+                    self._out_bar_themes[fid] = ((r, g, b), _oth)
+                except: pass
+        else:
+            if _ocached:
+                try:
+                    dpg.bind_item_theme(f"out_bar_{fid}", 0)
+                    dpg.delete_item(_ocached[1])
+                except: pass
+                del self._out_bar_themes[fid]
 
     def _tick_midi_osc(self):
         # MIDI status column (soft-takeover state)

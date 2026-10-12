@@ -14,9 +14,9 @@
         "order": "colmajor"
       },
       "viz_position": {
-        "x": -2.645,
-        "y": 3.32,
-        "z": 8.191,
+        "x": -2.41,
+        "y": 2.479,
+        "z": -3.248,
         "yaw": 0.0,
         "pitch": 0.0
       }
@@ -34,9 +34,9 @@
         "order": "colmajor"
       },
       "viz_position": {
-        "x": 6.93,
+        "x": 2.014,
         "y": 2.5,
-        "z": 4.0,
+        "z": -3.293,
         "yaw": 0.0,
         "pitch": 0.0
       }
@@ -54,11 +54,11 @@
         "order": "colmajor"
       },
       "viz_position": {
-        "x": 6.93,
-        "y": 2.5,
-        "z": -4.0,
-        "yaw": 0.0,
-        "pitch": -4.5
+        "x": -3.486,
+        "y": 5.207,
+        "z": 2.33,
+        "yaw": 239.0,
+        "pitch": 24.5
       }
     },
     {
@@ -74,10 +74,10 @@
         "order": "colmajor"
       },
       "viz_position": {
-        "x": 0.0,
-        "y": 2.5,
-        "z": -8.0,
-        "yaw": 0.0,
+        "x": 4.487,
+        "y": 2.446,
+        "z": 2.296,
+        "yaw": 97.0,
         "pitch": 0.0
       }
     },
@@ -94,10 +94,10 @@
         "order": "colmajor"
       },
       "viz_position": {
-        "x": -6.93,
+        "x": -6.49,
         "y": 2.5,
-        "z": -4.0,
-        "yaw": 0.0,
+        "z": 4.73,
+        "yaw": 270.5,
         "pitch": 0.0
       }
     },
@@ -114,10 +114,10 @@
         "order": "colmajor"
       },
       "viz_position": {
-        "x": -6.93,
+        "x": 6.412,
         "y": 2.5,
-        "z": 4.0,
-        "yaw": 0.0,
+        "z": 4.8,
+        "yaw": 91.0,
         "pitch": 0.0
       }
     },
@@ -129,12 +129,20 @@
       "start_address": 1,
       "extra_outputs": [],
       "viz_position": {
-        "x": 0.0,
-        "y": 3.18,
-        "z": 8.0,
+        "x": 0.016,
+        "y": 1.758,
+        "z": 0.015,
         "yaw": 0.0,
         "pitch": 0.0
       }
+    },
+    {
+      "fixture_id": 8,
+      "name": "test rgbaw",
+      "profile": "Generic_RGBAW",
+      "universe": 3,
+      "start_address": 13,
+      "extra_outputs": []
     }
   ]
 }
