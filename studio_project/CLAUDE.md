@@ -68,7 +68,8 @@ studio_console/
                                 _vfade_apply, _exec_fader_mode_hook, _stack_go/
                                 back/goto/reload
     fx.py                       Waveform, Form/Rate/Size/Spread/SpeedMaster
-                                 pools, FXLayer, FXEngine
+                                 pools, FXLayer, FXEngine. FXEngine starts no
+                                 thread on its own — see "Single FX driver" below
     key_color.py                KeyColorMapper (audio-reactive framework) —
                                  Krumhansl-Schmuckler key detection over a
                                  pitch-class histogram, minor→cold / major→warm
@@ -83,7 +84,8 @@ studio_console/
                                  directly in headless tests
   drivers/
     network.py, midi.py, osc.py, audio.py, audio_midi.py, ai.py
-                                 NetworkEngine, MIDIEngine, OSCEngine,
+                                 NetworkEngine (SACN_FPS / STAGING_HZ
+                                 constants), MIDIEngine, OSCEngine,
                                  AudioEngine/AudioMapper, AudioMIDIBridge
                                  (audio-reactive framework: pitch → clean MIDI notes
                                  via AudioEngine.on_chunk hook), AIEngine
@@ -133,7 +135,7 @@ Full rationale for this layout: `/Users/c/.claude/plans/glimmering-spinning-moth
 |-----------------|---------|
 | `OutputState` | Merges all layers → DMX. `_merged_cue_layer()` returns `{fid: {ch: val}}` |
 | `FadeEngine` | Ticks active fades; `.start_fade(fader, cue, ...)` |
-| `FXEngine` | Waveform oscillators per fixture per channel |
+| `FXEngine` | Waveform oscillators per fixture per channel. `compute_merged(now)` is driven by exactly one thread — see "Single FX driver" below |
 | `_vfade_apply(fader)` | Lerps `fader.layer` between `vfade_from` and `vfade_to` at `fader.level` |
 | `_exec_fader_mode_hook(fader)` | Called on fader level change; handles moment/vfade logic |
 | `_stack_go/back/goto` | Advance/retreat cue position, trigger fade |
@@ -160,11 +162,63 @@ Data format version: `"3.0"`.
 ### Drivers (`studio_console/drivers/`)
 | Class | File | Purpose |
 |-------|------|---------|
-| `NetworkEngine` | `network.py` | sACN DMX output |
+| `NetworkEngine` | `network.py` | sACN DMX output. Staging loop at `STAGING_HZ` (100) on a dedicated background thread; packets leave the wire at `SACN_FPS` (44), paced by the sacn library's own internal sender thread. Claims the FX driver role on start() |
 | `MIDIEngine` | `midi.py` | MIDI CC/note input; mappable to any command |
 | `OSCEngine` | `osc.py` | OSC input; MA3-compatible `/gma3/fader/...` routes |
 | `AudioEngine` | `audio.py` | Audio-to-FX mapper |
 | `AIEngine` | `ai.py` | AI assistant integration |
+
+### Single FX driver + sACN output pipeline
+
+The sACN path runs on **exactly one explicit driver pattern** — a single
+designated thread calls `FXEngine.compute_merged()`, and no second thread
+ever competes with it.
+
+```
+NetworkEngine._run()   ← staging loop, STAGING_HZ = 100, named "sacn-staging"
+  ├─ fx_engine.compute_merged(now)          ← the ONLY FX driver when running
+  ├─ output_state.get_dmx_for_universe(u)   ← reads merged live state directly
+  └─ self._sender[u].dmx_data = dmx        ← stages into the sender's buffers
+                                                │
+sacn library's own UDP sender thread ───────────┘  transmits at SACN_FPS = 44
+```
+
+**Two distinct rates — don't conflate them.** `STAGING_HZ` (100) is how often
+we *compute and stage*; `SACN_FPS` (44) is how often packets actually leave
+the wire. Transmission is paced by the sacn library's internal sender thread
+(`sacn/sending/sender_socket_udp.py`), **not** by our loop — so `fps=` on
+`sACNsender()` is the only thing that sets the wire rate. Staging faster than
+the wire rate is deliberate and free: a strobe phase boundary is picked up
+within ~10ms instead of waiting up to a full 22ms wire frame.
+
+**FXEngine starts no thread in `__init__`.** It used to start a 44Hz
+`compute_merged()` loop unconditionally, which raced `NetworkEngine._run`'s
+own 100Hz calls for `FXEngine._lock` — a lock the network thread needs on its
+critical path just before each send, so losing that race delayed the send.
+Driver selection is now explicit:
+
+| Method | Role |
+|--------|------|
+| `claim_external_driver()` | Called by `NetworkEngine.start()`. Stops the fallback thread; exactly one driver remains. Idempotent, never joins from the loop's own thread |
+| `start_background_loop()` | The fallback — only when nothing else ticks FX. Idempotent. Without it, envelopes/outfades would never advance |
+| `stop()` | Delegates to `claim_external_driver()`, so either path shuts down cleanly |
+
+If you add another thread that calls `compute_merged()`, it must claim the
+role through this protocol. And note `NetworkEngine.start()`'s "sACN port
+busy" branch returns before starting its staging loop — that path calls
+`start_background_loop()` so FX keeps advancing with no output.
+
+**`NetworkEngine.phase_delay_ms`** is a placeholder (`0.0`) for a future
+per-universe phase-offset UI slider. It is **not applied**. Packet timing
+lives in the sacn library's thread, so honoring a per-universe offset
+requires shifting that library's send scheduling — applying it in the
+staging loop would silently do nothing.
+
+The staging loop reads `OutputState` directly rather than accepting DMX
+frames from the main thread. Handing frames in would push the expensive FX
+re-evaluation onto the GUI thread and add a frame of latency; the staging
+loop is already fully off the main thread, so GUI render lag cannot stall
+output.
 
 ---
 
@@ -230,6 +284,17 @@ All pool files follow the same pattern: `{"version": "3.0", "<pool_key>": {...}}
   forever in `STUDIO_HEADLESS`, where no frame is ever laid out. Any geometry
   math in a tick needs a fallback to the item's configured
   `width`/`height` (`get_item_configuration(tag)`) or it divides by zero.
+- **Never start a second thread that calls `FXEngine.compute_merged()`.** One
+  driver only — a concurrent caller contends on `FXEngine._lock`, which the
+  sACN staging thread needs on its critical path just before each send, so it
+  shows up as send-time jitter rather than as an error. A new caller must go
+  through `claim_external_driver()` / `start_background_loop()` (see "Single FX
+  driver" above).
+- **The sACN wire rate is set by `fps=` on `sACNsender()`, not by our loop.**
+  Transmission is paced by the sacn library's own internal sender thread, and
+  that library defaults `fps` to **30** — omitting it silently runs the rig at
+  30Hz no matter what `NetworkEngine._run` does. `STAGING_HZ` (our loop) and
+  `SACN_FPS` (the wire) are separate knobs for a reason.
 - Fonts must be sized as integers; fallback to DPG built-in if font file not found.
 - `output_mode`: `'normal'` / `'moment'` / `'vfade'`
 - `trigger_mode`: `'toggle'` / `'flash'` / `'moment'`
