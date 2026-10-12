@@ -673,9 +673,22 @@ class FXEngine:
         self.group_pool        = group_pool   # for cluster=True layers
         self._layers      = {}
         self._lock        = threading.Lock()
-        self._running     = True
-        self._thread      = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
+        # The internal 44Hz tick loop is deliberately NOT started here any
+        # more. It used to be, unconditionally — which meant that whenever
+        # the network thread was also driving compute_merged() (it does, at
+        # 100Hz, on purpose: see drivers/network.py) every layer was
+        # evaluated twice per wire frame, by two threads, both fighting for
+        # self._lock. The network thread takes that lock on its critical
+        # path immediately before each sACN send, so losing the race there
+        # delayed the send by however long the redundant evaluation took —
+        # send-time jitter, exactly what a strobe rig feels.
+        #
+        # Exactly one thread may drive compute_merged(). A thread that takes
+        # that role calls claim_external_driver(); the fallback loop is only
+        # started via start_background_loop(), by whoever notices nothing
+        # else is ticking FX (e.g. no network thread at all).
+        self._loop_running = False
+        self._thread       = None
 
     def add(self, fx_id, waveform, channel, rate_bpm, size,
             targets, spread=0.0, form_id=None,
@@ -787,15 +800,53 @@ class FXEngine:
                 print(f"FX {fx_id} outfade complete — removed.")
         self.output_state.fx_layer = merged
 
+    def claim_external_driver(self):
+        """Announce that another thread now drives compute_merged().
+
+        Called by NetworkEngine when it starts its own 100Hz send loop.
+        Stops this engine's fallback thread if it was running, so FX is
+        evaluated on exactly one path. Idempotent.
+        """
+        self._loop_running = False
+        thread = self._thread
+        if thread is not None and thread.is_alive():
+            # Bounded join: the loop checks the flag every iteration and its
+            # only work between checks is one compute_merged() + a 22ms
+            # sleep, so this returns promptly. Never join from the loop's
+            # own thread.
+            if thread is not threading.current_thread():
+                thread.join(timeout=0.5)
+        self._thread = None
+
+    def start_background_loop(self):
+        """Start the internal 44Hz tick loop — the fallback driver.
+
+        Only for when nothing else ticks FX (no network engine, or a
+        network engine that isn't running its send loop). Without this,
+        outfades and envelopes would never advance on their own.
+        Idempotent; does nothing if a thread is already live.
+        """
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._loop_running = True
+        self._thread = threading.Thread(target=self._run, daemon=True,
+                                        name="fx-engine-tick")
+        self._thread.start()
+
     def _run(self):
-        # Background loop for envelope/outfade tracking when the network thread
-        # is not driving compute_merged() (e.g. dry_run with no network engine).
-        while self._running:
+        # Background loop for envelope/outfade tracking when the network
+        # thread is not driving compute_merged() (e.g. no network engine).
+        # Started only via start_background_loop() — see __init__ for why
+        # this must not race the network thread's own compute_merged().
+        while self._loop_running:
             self.compute_merged(time.monotonic())
             time.sleep(1 / 44)
 
     def stop(self):
-        self._running = False
+        """Stop whichever driver is running. The engine stays usable for
+        add/remove/clear and for an external caller driving
+        compute_merged() by hand."""
+        self.claim_external_driver()
 
 
 # ------------------------------------------------------------
