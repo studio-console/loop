@@ -305,6 +305,12 @@ class GUIEngineCore:
                     "width":  int(cfg.get("width",   700)),
                     "height": int(cfg.get("height",  400)),
                     "show":   bool(dpg.is_item_shown(tag)),
+                    # Minimized (title-bar collapse arrow) windows are still
+                    # "shown" — without this, a minimized popup restored
+                    # full-size over the viz area every launch. DPG 2.3.1
+                    # has no is_item_collapsed(); the live collapse state
+                    # rides in the window's own config dict.
+                    "collapsed": bool(cfg.get("collapsed", False)),
                 }
             except Exception:
                 pass
@@ -346,7 +352,8 @@ class GUIEngineCore:
                     pos = [min(max(0, int(cfg["pos"][0])), max_x),
                            min(max(0, int(cfg["pos"][1])), max_y)]
                     dpg.configure_item(tag, pos=pos,
-                                       width=cfg["width"], height=cfg["height"])
+                                       width=cfg["width"], height=cfg["height"],
+                                       collapsed=bool(cfg.get("collapsed", False)))
                     if cfg.get("show"):
                         refresh = self._POPUP_REFRESH.get(tag)
                         if refresh:
@@ -386,7 +393,12 @@ class GUIEngineCore:
         sig = []
         for tag in self._POPUP_TAGS:
             try:
-                sig.append(bool(dpg.is_item_shown(tag)))
+                # (shown, collapsed): a minimized window is still "shown",
+                # so collapse changes must be part of the signature too or
+                # minimizing via the title-bar arrow never triggers a save.
+                sig.append((bool(dpg.is_item_shown(tag)),
+                            bool(dpg.get_item_configuration(tag)
+                                 .get("collapsed"))))
             except Exception:
                 sig.append(None)   # unbuilt/unknown tag — stable placeholder
         sig = tuple(sig)
@@ -1951,13 +1963,40 @@ class GUIEngineCore:
                     except Exception as e:
                         show = "ERR:%s" % e
                     print("[selftest] file show after CLOSE:", show, flush=True)
-                    os._exit(0 if show is False else 1)
-                else:  # verify — did the window stay closed across restart?
-                    time.sleep(4)
-                    shown = dpg.is_item_shown("monitors_window")
-                    print("[selftest] monitors shown after restart:", shown,
+                    # minimize leg: the user's actual workflow — collapse
+                    # the window to its title bar and expect it to come
+                    # back minimized after restart
+                    print("[selftest] re-opening + minimizing monitors_window",
                           flush=True)
-                    os._exit(0 if not shown else 1)
+                    dpg.show_item("monitors_window")
+                    dpg.configure_item("monitors_window", collapsed=True)
+                    time.sleep(1.5)
+                    try:
+                        d = _json.load(open(self._POPUP_LAYOUT_FILE))
+                        col = d.get("monitors_window", {}).get("collapsed")
+                    except Exception as e:
+                        col = "ERR:%s" % e
+                    print("[selftest] file collapsed after MINIMIZE:", col,
+                          flush=True)
+                    os._exit(0 if (show is False and col is True) else 1)
+                else:  # verify — restart must reproduce the saved state
+                    time.sleep(4)
+                    try:
+                        d = _json.load(open(self._POPUP_LAYOUT_FILE))
+                        exp = d.get("monitors_window", {})
+                        live_shown = dpg.is_item_shown("monitors_window")
+                        live_col = bool(dpg.get_item_configuration(
+                            "monitors_window").get("collapsed"))
+                        ok = (live_shown == bool(exp.get("show")) and
+                              live_col == bool(exp.get("collapsed", False)))
+                        print("[selftest] verify: shown", live_shown,
+                              "(expected", exp.get("show"), ") collapsed",
+                              live_col, "(expected",
+                              exp.get("collapsed"), ")", flush=True)
+                    except Exception as e:
+                        ok = False
+                        print("[selftest] verify err:", e, flush=True)
+                    os._exit(0 if ok else 1)
             threading.Thread(target=_popup_selftest, daemon=True).start()
         dpg.focus_item("cmd_input")
         # Ctrl+C (SIGINT) in the terminal used to raise KeyboardInterrupt
