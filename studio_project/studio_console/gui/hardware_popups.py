@@ -360,6 +360,34 @@ class GUIEngineHardwarePopups:
                                callback=self._on_net_save)
             dpg.add_text("saved settings apply on next console restart.",
                          color=_C_DIM)
+
+            # ── rolling-shutter phase offset ────────────────
+            # Live slider wired straight to network.set_shutter_delay_ms().
+            # Range is one wire frame (0 – 1000/44Hz ≈ 22.7ms), matching the
+            # clamp in NetworkEngine.set_shutter_delay_ms: a sub-frame offset
+            # to phase-align daisy-chained fixture groups against a rolling-
+            # shutter camera. Unlike bind/universes above this is applied live
+            # (no restart); it is stored on the engine for the forthcoming
+            # manual-flush wire scheduler to honour — see that method's
+            # docstring + CURRENT.md for why it does not move wire timing yet.
+            with dpg.group(horizontal=True):
+                from studio_console.drivers.network import SACN_FPS
+                dpg.add_text("shutter delay:", color=_C_DIM)
+                dpg.add_slider_float(tag="net_shutter_delay",
+                                     default_value=network.phase_delay_ms,
+                                     min_value=0.0, max_value=round(1000.0 / SACN_FPS, 1),
+                                     width=180, format="%.1f ms",
+                                     callback=self._on_shutter_delay)
+                dpg.add_text("", tag="net_shutter_status", color=_C_DIM)
+    def _on_shutter_delay(self, sender, value):
+        """Rolling-shutter slider → NetworkEngine.set_shutter_delay_ms (live)."""
+        try:
+            from __main__ import network
+            applied = network.set_shutter_delay_ms(value)
+            dpg.set_value("net_shutter_status",
+                          f"= {applied:.1f} ms  (staged for manual-flush)")
+        except Exception as e:
+            self._log(f"  shutter delay: {e}")
     def _on_net_save(self, *_):
         try:
             bind = dpg.get_value("net_bind_input").strip()

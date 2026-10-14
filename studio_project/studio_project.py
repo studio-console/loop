@@ -85,8 +85,8 @@ from studio_console.drivers.ai import AIEngine
 #   - AI prompt: text input → ai.ask()
 # ============================================================
 
-from studio_console.gui.theme import *  # noqa: F401,F403
 
+from studio_console.gui.theme import *  # noqa: F401,F403
 
 from studio_console.gui.core import GUIEngineCore
 from studio_console.gui.header import GUIEngineHeader
@@ -103,6 +103,7 @@ from studio_console.gui.speed_master import GUIEngineSpeedMaster
 from studio_console.gui.fader_page import GUIEngineFaderPage
 from studio_console.gui.audio_monitors import GUIEngineAudioMonitors
 from studio_console.gui.audio_routing import GUIEngineAudioRouting
+from studio_console.gui.audio_levels import GUIEngineAudioLevels
 from studio_console.gui.viz3d import GUIEngineViz3D
 
 
@@ -111,7 +112,7 @@ class GUIEngine(GUIEngineCore, GUIEngineHeader, GUIEngineLeftColumn,
                  GUIEngineHardwarePopups, GUIEngineMiscPopups, GUIEngineFXEditor,
                  GUIEngineAIPopups, GUIEngineColorPicker, GUIEngineSpeedMaster,
                  GUIEngineFaderPage, GUIEngineAudioMonitors, GUIEngineAudioRouting,
-                 GUIEngineViz3D):
+                 GUIEngineAudioLevels, GUIEngineViz3D):
     pass
 
 

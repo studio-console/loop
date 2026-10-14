@@ -24,9 +24,11 @@ import shutil as _shutil
 
 from studio_console.paths import DATA_DIR, SAVES_DIR, _LEGACY_FILE
 from studio_console.engine.fx import _fx_grouping_compat
-from __main__ import (
-    Cue, Stack, Group, ColorPreset, DimmerPreset, FXPreset, FormPreset,
-    RatePreset, SizePreset, SpreadPreset, SpeedMaster, AttributePreset,
+from studio_console.models.presets import (
+    Cue, Stack, Group, ColorPreset, DimmerPreset, FXPreset, AttributePreset,
+)
+from studio_console.engine.fx import (
+    FormPreset, RatePreset, SizePreset, SpreadPreset, SpeedMaster,
 )
 
 def _write_file(path, doc):

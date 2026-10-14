@@ -742,6 +742,7 @@ class GUIEngineCore:
         self._tick_fader_page()
         self._tick_audio()
         self._tick_audio_routing()
+        self._tick_audio_levels()
 
         self._tick_status_bar()
         self._tick_playbacks_and_faders()

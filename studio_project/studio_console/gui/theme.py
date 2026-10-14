@@ -13,6 +13,7 @@ try:
     import dearpygui.dearpygui as dpg
     _DPG_OK = True
 except ImportError:
+    dpg = None
     _DPG_OK = False
 
 # Colour palette — near-black / violet accent

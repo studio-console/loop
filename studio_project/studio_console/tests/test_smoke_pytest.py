@@ -111,7 +111,7 @@ from studio_console.engine.fx import (
     FXEngine, _bucket_fx_defs, _expand_color_fx, _expand_group_fx,
 )
 
-from studio_console.drivers.network import NetworkEngine
+from studio_console.drivers.network import NetworkEngine, SACN_FPS
 from studio_console.drivers.midi import CCMapping, NoteMapping, MIDIEngine
 from studio_console.drivers.osc import OSCEngine
 from studio_console.drivers.audio import AudioEngine, AudioMapper, sd
@@ -2802,6 +2802,46 @@ def test_smoke_full_pipeline(subtests):
                 # built with — i.e. the tick really draws bars
                 assert (dpg.get_item_configuration("ar_meter_trough_0").get("pmax")
                         not in (None, [0.0, 0.0], (0.0, 0.0)))
+            # ── Nestable audio device + raw-peak panel (gui/audio_levels.py) ──
+            # Built into the "audio reactive" window as a re-usable body, so
+            # these check both that it constructs and that it stays nestable
+            # (a plain group with a stable tag, re-parentable via move_item).
+            with subtests.test(msg="audio levels panel builds inside audio window"):
+                assert (dpg.does_item_exist("al_panel")
+                        and dpg.get_item_parent("al_panel") is not None)
+            with subtests.test(msg="audio levels panel controls build"):
+                assert (all(dpg.does_item_exist(t) for t in
+                            ("al_device_combo", "al_device_refresh", "al_start",
+                             "al_stop", "al_gain", "al_status", "al_peak_value")))
+            # Draw items live in slot 2 of a drawlist, not slot 0 — slot 0 is
+            # always empty, so asserting it can never pass (same trap the
+            # routing meter check above was fixed for).
+            with subtests.test(msg="audio levels meter holds its 3 fixed primitives"):
+                assert (len(dpg.get_item_children("al_meter_layer", 2) or []) == 3)
+            # Device query must be safe with no backend / no hardware: the
+            # combo is populated at build time from a guarded query, so it
+            # always exists and always holds a list (empty when unavailable).
+            with subtests.test(msg="audio levels device combo lists inputs safely"):
+                assert (isinstance(dpg.get_item_configuration("al_device_combo")
+                                   .get("items", None), (list, tuple)))
+            # Drive the tick directly: _tick_audio_levels() gates on
+            # is_item_shown("audio_window") and the popup is built show=False,
+            # so only calling the meter half exercises it.
+            audio_engine.raw_peak = 0.75
+            gui._tick_audio_levels_meter()
+            with subtests.test(msg="raw peak meter reconfigures from AudioEngine.raw_peak"):
+                assert (dpg.get_item_configuration("al_meter_fill").get("pmax")[0]
+                        > dpg.get_item_configuration("al_meter_trough").get("pmin")[0])
+            with subtests.test(msg="raw peak meter reports its value"):
+                assert (dpg.get_value("al_peak_value") == "0.75")
+            audio_engine.raw_peak = 1.0
+            gui._tick_audio_levels_meter()
+            with subtests.test(msg="raw peak meter flags clipping at full scale"):
+                assert (dpg.get_value("al_peak_clip") == "CLIP")
+            audio_engine.raw_peak = 0.0
+            gui._tick_audio_levels_meter()
+            with subtests.test(msg="raw peak meter clears clipping below full scale"):
+                assert (dpg.get_value("al_peak_clip") == "")
             # ── fixture-dim-slider unit fix ──────────────────────────────
             # _on_fixture_dim_slider passed dim*100 into MasterFixture.
             # set_dimmer(), which expects a 0.0-1.0 fraction (per its own
@@ -2830,5 +2870,30 @@ def test_smoke_full_pipeline(subtests):
     else:
         with subtests.test(msg="gui.build() constructs all windows/widgets without error (skipped: dearpygui not installed)"):
             assert (True)
+
+    # ── rolling-shutter phase-offset setter (drivers/network.py) ──
+    # set_shutter_delay_ms clamps to one wire frame ([0, 1000/SACN_FPS]) and
+    # rejects garbage. Not yet applied to wire timing (the sacn sender still
+    # auto-flushes; the manual-flush scheduler that honours it is deferred),
+    # but the setter must still store a sane, clamped value for the UI slider
+    # to read back and for that scheduler to consume later.
+    try:
+        _frame_ms = 1000.0 / SACN_FPS
+        network.set_shutter_delay_ms(_frame_ms / 2.0)
+        with subtests.test(msg="set_shutter_delay_ms stores a mid-frame offset"):
+            assert (abs(network.phase_delay_ms - _frame_ms / 2.0) < 1e-6)
+        network.set_shutter_delay_ms(99999.0)
+        with subtests.test(msg="set_shutter_delay_ms clamps a huge value to one wire frame"):
+            assert (abs(network.phase_delay_ms - _frame_ms) < 1e-6)
+        network.set_shutter_delay_ms(-5.0)
+        with subtests.test(msg="set_shutter_delay_ms clamps negative to zero"):
+            assert (network.phase_delay_ms == 0.0)
+        network.set_shutter_delay_ms("not a number")
+        with subtests.test(msg="set_shutter_delay_ms rejects non-numeric input as zero"):
+            assert (network.phase_delay_ms == 0.0)
+        network.set_shutter_delay_ms(0.0)   # restore default
+    except Exception as e:
+        with subtests.test(msg=f"set_shutter_delay_ms raised {type(e).__name__}: {e}"):
+            assert (False)
 
 

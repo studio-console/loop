@@ -68,6 +68,20 @@ class AudioEngine:
 
         self._stream  = None
         self._running = False
+        # Raw peak amplitude of the incoming buffer (0.0-1.0), with a slow
+        # decay so the meter falls off instead of snapping to zero between
+        # chunks. Deliberately NOT enveloped and NOT band-split like
+        # level/low/mid/high above -- those are processed for driving
+        # lights, this is the unprocessed signal, which is what you want
+        # when setting an interface's input gain (attack/release
+        # smoothing hides real clipping headroom).
+        #
+        # Written by the PortAudio callback thread, read by the GUI tick
+        # thread. A single float attribute read/write is atomic under the
+        # GIL, so no lock is needed -- the same contract level/low/mid/high
+        # already relies on.
+        self.raw_peak = 0.0
+        self._peak_decay = 0.02   # per-callback falloff; ~1.3s to zero from 1.0
         # Optional chunk hook (audio-reactive framework): set to a
         # callable(samples) to receive every captured chunk raw, e.g.
         # AudioMIDIBridge.feed_chunk for pitch tracking. Read/cleared
@@ -127,6 +141,17 @@ class AudioEngine:
 
         # Overall RMS level
         rms = min(1.0, float(np.sqrt(np.mean(samples ** 2))) * self.gain)
+
+        # Raw peak (pre-gain, pre-envelope) — the actual signal amplitude.
+        # Guards against an empty chunk or a NaN/inf sample from a
+        # disconnected device, either of which would otherwise poison the
+        # meter permanently (np.max of an all-NaN slice is NaN, and
+        # `max(nan, x)` returns nan).
+        peak = float(np.max(np.abs(samples))) if samples.size else 0.0
+        if not np.isfinite(peak):
+            peak = 0.0
+        # Peak-hold with decay: rise instantly, fall slowly.
+        self.raw_peak = max(peak, self.raw_peak - self._peak_decay)
 
         # FFT frequency analysis
         window = np.hanning(len(samples))

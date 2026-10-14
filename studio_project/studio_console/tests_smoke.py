@@ -60,7 +60,7 @@ from studio_console.engine.fx import (
 )
 from studio_console.engine.audio_router import AudioRouter
 
-from studio_console.drivers.network import NetworkEngine
+from studio_console.drivers.network import NetworkEngine, SACN_FPS
 from studio_console.drivers.midi import CCMapping, NoteMapping, MIDIEngine
 from studio_console.drivers.osc import OSCEngine
 from studio_console.drivers.audio import AudioEngine, AudioMapper, sd
@@ -693,6 +693,49 @@ def run_smoke_test(gui):
             r_start = run_command("AUDIO START")
             _check("AUDIO START reports failure cleanly (no crash)",
                    "failed" in r_start.lower())
+
+            # ── Raw peak capture math (drivers/audio.py, AudioEngine.raw_peak) ──
+            # Feed synthetic buffers straight into the PortAudio callback so the
+            # peak tracking itself is covered. Setting raw_peak by hand (as the
+            # GUI-panel checks do) only exercises the meter, not this math — a
+            # callback that never updated raw_peak would pass those checks.
+            #
+            # The callback is pure numpy math, so this block only runs when the
+            # audio stack's numpy actually imported (drivers/audio.py sets
+            # _audio_driver.np = None when it didn't). Referenced through the
+            # qualified module namespace, not a bare `np` — same reasoning as
+            # the _AUDIO_AVAILABLE write above: a bare import-less name here
+            # would just NameError on every box without numpy.
+            if _audio_driver.np is not None:
+                _np = _audio_driver.np
+                _peak_probe = AudioEngine()
+                _peak_probe._callback(_np.zeros((1024, 1), dtype='float32'),
+                                      1024, None, None)
+                _check("raw_peak stays 0 on a silent buffer", _peak_probe.raw_peak == 0.0)
+                _peak_probe._callback(_np.full((1024, 1), 0.5, dtype='float32'),
+                                      1024, None, None)
+                _check("raw_peak tracks buffer peak amplitude",
+                       abs(_peak_probe.raw_peak - 0.5) < 1e-6)
+                _peak_probe.raw_peak = 0.0
+                _peak_probe._callback(_np.full((1024, 1), 1.0, dtype='float32'),
+                                      1024, None, None)
+                _check("raw_peak reaches full scale on a clipped buffer",
+                       _peak_probe.raw_peak == 1.0)
+                # NaN from a disconnected device must not poison the meter
+                # permanently — np.max of an all-NaN slice is NaN, and
+                # max(nan, x) returns nan, which would freeze it forever.
+                _peak_probe.raw_peak = 0.4
+                _peak_probe._callback(_np.full((1024, 1), _np.nan, dtype='float32'),
+                                      1024, None, None)
+                _check("raw_peak ignores a NaN buffer instead of latching",
+                       _peak_probe.raw_peak == 0.4)
+                # peak-hold decays toward zero across silent chunks
+                _before = _peak_probe.raw_peak
+                for _ in range(5):
+                    _peak_probe._callback(_np.zeros((1024, 1), dtype='float32'),
+                                          1024, None, None)
+                _check("raw_peak decays on silence after a NaN buffer",
+                       _peak_probe.raw_peak < _before)
         finally:
             _audio_driver._AUDIO_AVAILABLE = _prev_audio_avail
 
@@ -2471,6 +2514,46 @@ def run_smoke_test(gui):
             _check("meter layer actually draws bars",
                    dpg.get_item_configuration("ar_meter_trough_0").get("pmax")
                    not in (None, [0.0, 0.0], (0.0, 0.0)))
+            # ── Nestable audio device + raw-peak panel (gui/audio_levels.py) ──
+            # Built into the "audio reactive" window as a re-usable body, so
+            # these check both that it constructs and that it stays nestable
+            # (a plain group with a stable tag, re-parentable via move_item).
+            _check("audio levels panel builds inside audio window",
+                   dpg.does_item_exist("al_panel")
+                   and dpg.get_item_parent("al_panel") is not None)
+            _check("audio levels panel controls build",
+                   all(dpg.does_item_exist(t) for t in
+                       ("al_device_combo", "al_device_refresh", "al_start",
+                        "al_stop", "al_gain", "al_status", "al_peak_value")))
+            # Draw items live in slot 2 of a drawlist, not slot 0 — slot 0 is
+            # always empty, so asserting it can never pass (same trap the
+            # routing meter check above was fixed for).
+            _check("audio levels meter holds its 3 fixed primitives",
+                   len(dpg.get_item_children("al_meter_layer", 2) or []) == 3)
+            # Device query must be safe with no backend / no hardware: the
+            # combo is populated at build time from a guarded query, so it
+            # always exists and always holds a list (empty when unavailable).
+            _check("audio levels device combo lists inputs safely",
+                   isinstance(dpg.get_item_configuration("al_device_combo")
+                              .get("items", None), (list, tuple)))
+            # Drive the tick directly: _tick_audio_levels() gates on
+            # is_item_shown("audio_window") and the popup is built show=False,
+            # so only calling the meter half exercises it.
+            audio_engine.raw_peak = 0.75
+            gui._tick_audio_levels_meter()
+            _check("raw peak meter reconfigures from AudioEngine.raw_peak",
+                   dpg.get_item_configuration("al_meter_fill").get("pmax")[0]
+                   > dpg.get_item_configuration("al_meter_trough").get("pmin")[0])
+            _check("raw peak meter reports its value",
+                   dpg.get_value("al_peak_value") == "0.75")
+            audio_engine.raw_peak = 1.0
+            gui._tick_audio_levels_meter()
+            _check("raw peak meter flags clipping at full scale",
+                   dpg.get_value("al_peak_clip") == "CLIP")
+            audio_engine.raw_peak = 0.0
+            gui._tick_audio_levels_meter()
+            _check("raw peak meter clears clipping below full scale",
+                   dpg.get_value("al_peak_clip") == "")
             # ── fixture-dim-slider unit fix ──────────────────────────────
             # _on_fixture_dim_slider passed dim*100 into MasterFixture.
             # set_dimmer(), which expects a 0.0-1.0 fraction (per its own
@@ -2497,6 +2580,30 @@ def run_smoke_test(gui):
                 pass
     else:
         _check("gui.build() constructs all windows/widgets without error (skipped: dearpygui not installed)", True)
+
+    # ── rolling-shutter phase-offset setter (drivers/network.py) ──
+    # set_shutter_delay_ms clamps to one wire frame ([0, 1000/SACN_FPS]) and
+    # rejects garbage. Not yet applied to wire timing (the sacn sender still
+    # auto-flushes; the manual-flush scheduler that honours it is deferred),
+    # but the setter must still store a sane, clamped value for the UI slider
+    # to read back and for that scheduler to consume later.
+    try:
+        _frame_ms = 1000.0 / SACN_FPS
+        network.set_shutter_delay_ms(_frame_ms / 2.0)
+        _check("set_shutter_delay_ms stores a mid-frame offset",
+               abs(network.phase_delay_ms - _frame_ms / 2.0) < 1e-6)
+        network.set_shutter_delay_ms(99999.0)
+        _check("set_shutter_delay_ms clamps a huge value to one wire frame",
+               abs(network.phase_delay_ms - _frame_ms) < 1e-6)
+        network.set_shutter_delay_ms(-5.0)
+        _check("set_shutter_delay_ms clamps negative to zero",
+               network.phase_delay_ms == 0.0)
+        network.set_shutter_delay_ms("not a number")
+        _check("set_shutter_delay_ms rejects non-numeric input as zero",
+               network.phase_delay_ms == 0.0)
+        network.set_shutter_delay_ms(0.0)   # restore default
+    except Exception as e:
+        _check(f"set_shutter_delay_ms raised {type(e).__name__}: {e}", False)
 
     ok = all(passed for _, passed in _results)
     print(f"\n*** SMOKE TEST {'PASSED' if ok else 'FAILED'} "

@@ -4,6 +4,7 @@ zero behavior change.
 """
 
 import sacn
+import socket
 import threading
 import time
 
@@ -56,11 +57,38 @@ class NetworkEngine:
         # against another fixture type on the same line) where one group
         # reads slightly ahead of or behind the others.
         #
-        # Deliberately not applied yet: the sender's packet timing lives in
-        # the sacn library's own thread, so honouring a per-universe offset
-        # properly needs that send scheduling changed too, not just our
-        # staging loop. Wiring it in as-is would silently do nothing.
+        # Deliberately not applied to the wire yet: the sender's packet
+        # timing lives in the sacn library's own thread, so honouring a
+        # per-universe offset properly needs that send scheduling changed
+        # too (sacn's manual_flush + per-universe send_out), not just our
+        # staging loop. Wiring it in as-is would silently do nothing — so the
+        # UI slider sets this value and it is persisted/reported, but the deep
+        # manual-flush refactor that actually shifts wire timing is deferred
+        # until it is validated against a live camera test (see CURRENT.md).
         self.phase_delay_ms = 0.0
+
+    def set_shutter_delay_ms(self, ms):
+        """Set the rolling-shutter phase offset (ms), clamped to one wire frame.
+
+        A rolling-shutter sensor reads line-by-line, so fixtures whose
+        exposure straddles a frame boundary can catch a moving subject at two
+        different phase points. Delaying one daisy-chained fixture group's
+        sACN stream by a fraction of a frame is the standard way to align them.
+
+        Clamped to [0, 1000/SACN_FPS] — at most one wire frame (~22.7ms at
+        44Hz), since a larger offset just delays every packet uniformly (a
+        constant latency, not a phase shift) and is better expressed as a
+        transport/GO offset. The sacn sender still auto-flushes on its own
+        thread, so this value is stored for the forthcoming manual-flush
+        scheduler to honour; it does not yet move wire timing on its own.
+        """
+        try:
+            ms = float(ms)
+        except (TypeError, ValueError):
+            ms = 0.0
+        max_ms = 1000.0 / SACN_FPS
+        self.phase_delay_ms = max(0.0, min(max_ms, ms))
+        return self.phase_delay_ms
 
     def start(self):
         if self.dry_run:
@@ -103,6 +131,35 @@ class NetworkEngine:
                   f" at {SACN_FPS}Hz")
         else:
             print(f"sACN live — multicast on universes {self.universes} at {SACN_FPS}Hz")
+        self._pin_multicast_egress()
+
+    def _pin_multicast_egress(self):
+        """Force sACN multicast out the bound interface, not the kernel's default route.
+
+        Binding the socket to the physical-ether IP (192.168.1.161) sets the SOURCE
+        address but leaves IP_MULTICAST_IF = 0.0.0.0, so the kernel chooses the
+        multicast egress from the routing table — which on this Mac Mini is the
+        WiFi interface (en1, default route 10.0.0.140), NOT the lighting LAN (en0).
+        That silently sends sACN out the wrong NIC. Setting IP_MULTICAST_IF to the
+        bound IP pins egress to en0. No-op when there is no bind_address (loopback).
+        """
+        if not self.bind_address:
+            return
+        # Walk sacn's object graph to the raw OS socket. Attribute names vary
+        # across library versions, so probe for the first object with getsockopt.
+        raw = getattr(getattr(self._sender, "_sender_handler", None), "socket", None)
+        sock = getattr(raw, "_socket", raw)          # unwrap SenderSocketUDP -> socket
+        if not hasattr(sock, "setsockopt"):
+            print("[sacn] multicast egress not pinned (socket not found); "
+                  "may route via default interface")
+            return
+        try:
+            IP_MULTICAST_IF = getattr(socket, "IP_MULTICAST_IF", 32)  # 32 on macOS
+            sock.setsockopt(socket.IPPROTO_IP, IP_MULTICAST_IF,
+                            socket.inet_aton(self.bind_address))
+        except (OSError, AttributeError) as exc:
+            print(f"[sacn] multicast egress pin failed ({exc}); "
+                  "using kernel default route")
 
     def _claim_fx_driver(self):
         """Take over FX evaluation from the FX engine's fallback thread.
@@ -135,6 +192,12 @@ class NetworkEngine:
         # sacn library's internal thread at SACN_FPS — this loop only stages
         # dmx_data into its buffers.
         interval = 1.0 / STAGING_HZ
+        # Absolute-deadline pacing (perf_counter, monotonic) instead of a flat
+        # sleep(interval): a flat sleep adds the tick's own work time on top of
+        # the interval, so the loop drifts below 100Hz whenever a tick runs long
+        # (e.g. FX re-eval spikes). Advancing a fixed deadline keeps the average
+        # rate pinned to STAGING_HZ; we never sleep negative after an overrun.
+        next_tick = time.perf_counter()
         while self._running:
             now = time.monotonic()
             if self.fx_engine is not None:
@@ -155,7 +218,13 @@ class NetworkEngine:
             else:
                 for u in self.universes:
                     self._sender[u].dmx_data = self.output_state.get_dmx_for_universe(u)
-            time.sleep(interval)
+            next_tick += interval
+            now_pc = time.perf_counter()
+            if next_tick < now_pc:
+                # Overran the deadline: resync to now (drop the backlog) so a
+                # long tick doesn't trigger a burst of catch-up iterations.
+                next_tick = now_pc + interval
+            time.sleep(next_tick - now_pc)
 
 
 __all__ = ["NetworkEngine", "SACN_FPS", "STAGING_HZ"]

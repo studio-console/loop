@@ -356,3 +356,13 @@ class GUIEngineAudioMonitors:
                 with dpg.group(horizontal=True):
                     dpg.add_text(f"{_lbl:5s}", color=_C_DIM)
                     dpg.add_progress_bar(tag=_tag, default_value=0.0, width=280)
+
+            # ── nestable device + raw-peak component (gui/audio_levels.py) ──
+            # Built inside this window rather than as its own, so the panel
+            # stays a re-usable body: to move it into a master settings
+            # window later, call _build_audio_levels_panel(parent=...) there
+            # instead, or dpg.move_item("al_panel", parent=...). It reads the
+            # same AudioEngine the bars above use — no second capture stream.
+            dpg.add_separator()
+            self._build_audio_levels_panel()
+
