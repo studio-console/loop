@@ -307,52 +307,63 @@ class GUIEngineCore:
         except Exception:
             return False
 
-    def _install_popup_collapse_tracker(self):
-        """Own the title-bar collapse arrow across all popups.
+    def _on_popup_arrow_click(self, sender, app_data, user_data):
+        """Collapse-arrow click interceptor (global left-click handler).
 
-        See _popup_is_collapsed: DPG can't report a live minimize, so the
-        arrow click is intercepted geometrically — ImGui draws the collapse
-        triangle in the window's top-left ~32px square, and window pos IS
-        live via get_item_pos(). On a hit, the intended state (mirror value
-        toggled — ImGui will have flipped its internal state the same way
-        on this click) is re-applied through configure_item a beat later
-        via dpg.after(), AFTER ImGui's own toggle has landed, so both
-        agree and the config mirror syncs. The poll then sees the change
-        and persists it like any other state transition.
+        DPG 2.3.1 exposes NO live read for popup minimize state (see
+        _popup_is_collapsed), so the title-bar arrow click is caught
+        geometrically: ImGui draws the triangle in the window's top-left
+        ~32px square, and get_mouse_pos(local=False) shares the
+        coordinate space with get_item_rect_min() — the exact pairing
+        this codebase already uses in left_column/viz3d. (local defaults
+        to True, a DIFFERENT space — using the default makes every
+        geometry check miss silently.)
+
+        The handler only RECORDS the intended state in
+        _popup_collapse_pending; ImGui performs the visual toggle itself
+        in the click's own frame, and the next tick applies the pending
+        value through configure_item() — which syncs the config mirror,
+        the one source _popup_is_collapsed can actually read — then forces
+        a save. Deferring (rather than configuring inside the callback)
+        avoids fighting ImGui's own toggle ordering within the frame.
+
+        DPG invokes callbacks as (sender, app_data, user_data) — the
+        signature must accept all three.
+        """
+        try:
+            mx, my = dpg.get_mouse_pos(local=False)
+        except Exception:
+            return
+        pending = getattr(self, "_popup_collapse_pending", None)
+        if pending is None:
+            pending = self._popup_collapse_pending = {}
+        for tag in self._POPUP_TAGS:
+            try:
+                if not dpg.is_item_shown(tag):
+                    continue
+                x, y = dpg.get_item_rect_min(tag)
+                if x - 2 <= mx <= x + 32 and y - 2 <= my <= y + 32:
+                    # pending first so rapid double-clicks toggle correctly
+                    cur = pending[tag] if tag in pending \
+                        else self._popup_is_collapsed(tag)
+                    pending[tag] = not cur
+                    break
+            except Exception:
+                continue
+
+    def _install_popup_collapse_tracker(self):
+        """Register the global collapse-arrow click interceptor.
 
         Known gap: collapsing by double-clicking the window LABEL (an
         ImGui feature) isn't intercepted and won't persist — the arrow
-        path is the supported one.
+        path is the supported one. Registration is best-effort: the
+        headless fake dpg in the smoke test has no handler API and the
+        try/except simply leaves the tracker uninstalled there.
         """
-        def _on_left_click(sender, app_data):
-            try:
-                mx, my = dpg.get_mouse_pos()
-            except Exception:
-                return
-            for tag in self._POPUP_TAGS:
-                try:
-                    if not dpg.is_item_shown(tag):
-                        continue
-                    x, y = dpg.get_item_pos(tag)
-                    if x - 2 <= mx <= x + 32 and y - 2 <= my <= y + 32:
-                        want = not self._popup_is_collapsed(tag)
-
-                        def _apply(tag=tag, want=want):
-                            try:
-                                dpg.configure_item(tag, collapsed=want)
-                            except Exception:
-                                pass
-                            # force the next poll tick to persist
-                            self._popup_show_sig = None
-                        # after ImGui's own arrow toggle in this/next
-                        # frame — same value, so no visual double-flip
-                        dpg.after(60, _apply)
-                        break
-                except Exception:
-                    continue
+        self._popup_collapse_pending = {}
         try:
             dpg.add_mouse_click_handler(dpg.mvMouseButton_Left,
-                                        callback=_on_left_click)
+                                        callback=self._on_popup_arrow_click)
         except Exception:
             pass   # headless fake dpg — tracker simply absent
 
@@ -461,6 +472,19 @@ class GUIEngineCore:
         """
         if not getattr(self, "_popup_poll_armed", False):
             return
+        # Apply pending collapse-arrow decisions first (recorded by
+        # _on_popup_arrow_click): configure_item syncs the config mirror
+        # — the only readable minimize state — then invalidate the
+        # signature so this same tick persists the transition.
+        pending = getattr(self, "_popup_collapse_pending", None)
+        if pending:
+            for _tag, _want in list(pending.items()):
+                try:
+                    dpg.configure_item(_tag, collapsed=_want)
+                except Exception:
+                    pass
+            pending.clear()
+            self._popup_show_sig = None
         sig = []
         for tag in self._POPUP_TAGS:
             try:
@@ -2058,7 +2082,40 @@ class GUIEngineCore:
                         col = "ERR:%s" % e
                     print("[selftest] file collapsed after MINIMIZE:", col,
                           flush=True)
-                    os._exit(0 if (show is False and col is True) else 1)
+                    # arrow-leg: exercise the REAL interceptor chain
+                    # (click handler -> pending queue -> tick apply ->
+                    # configure -> save) with get_mouse_pos patched to
+                    # the collapse-arrow box, invoking the handler with
+                    # the same 3 args DPG delivers.
+                    _orig_gmp = dpg.get_mouse_pos
+                    _rx, _ry = dpg.get_item_rect_min("monitors_window")
+
+                    def _arrow_click():
+                        dpg.get_mouse_pos = lambda **_k: (_rx + 10, _ry + 10)
+                        try:
+                            self._on_popup_arrow_click(None, 0, None)
+                        finally:
+                            dpg.get_mouse_pos = _orig_gmp
+                    _arrow_click()   # currently collapsed -> expand
+                    time.sleep(0.4)
+                    try:
+                        c1 = _json.load(open(self._POPUP_LAYOUT_FILE)).get(
+                            "monitors_window", {}).get("collapsed")
+                    except Exception as e:
+                        c1 = "ERR:%s" % e
+                    print("[selftest] arrow-expand -> file collapsed:", c1,
+                          flush=True)
+                    _arrow_click()   # back to minimized
+                    time.sleep(0.4)
+                    try:
+                        c2 = _json.load(open(self._POPUP_LAYOUT_FILE)).get(
+                            "monitors_window", {}).get("collapsed")
+                    except Exception as e:
+                        c2 = "ERR:%s" % e
+                    print("[selftest] arrow-minimize -> file collapsed:", c2,
+                          flush=True)
+                    os._exit(0 if (show is False and col is True
+                                   and c1 is False and c2 is True) else 1)
                 else:  # verify — restart must reproduce the saved state
                     time.sleep(4)
                     try:
