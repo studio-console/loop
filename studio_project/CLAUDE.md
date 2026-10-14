@@ -3,7 +3,7 @@
 Python lighting console. `studio_project.py` is a thin entry point (~180
 lines); almost everything lives in the `studio_console/` package (see
 Package layout below). GUI: DearPyGui 2.3.1. All show data lives in
-`studio_data/`. Version: v0.21.
+`studio_data/`. Version: v0.22.
 
 ---
 
@@ -13,10 +13,10 @@ Package layout below). GUI: DearPyGui 2.3.1. All show data lives in
 python3 studio_project.py                                      # normal launch
 STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 python3 studio_project.py  # headless smoke test
 python3 -m py_compile studio_project.py                        # compile check only
-pytest                                                          # same 484 checks, pytest-native reporting
+pytest                                                          # same 496 checks, pytest-native reporting
 ```
 
-Smoke test must stay at **484/484 PASS**. Run it after every change (either form — see below).  
+Smoke test must stay at **496/496 PASS**. Run it after every change (either form — see below).  
 `STUDIO_DRY_RUN=1` disables sACN output. `STUDIO_HEADLESS=1` skips the GUI and runs tests.
 
 Always run `studio_project.py` directly as the entry point — most of
@@ -25,7 +25,7 @@ Always run `studio_project.py` directly as the entry point — most of
 `studio_console/` standalone (e.g. `python3 -c "import studio_console.state"`)
 does not work and isn't meant to.
 
-**Two ways to run the same 484 checks:**
+**Two ways to run the same 496 checks:**
 - `STUDIO_DRY_RUN=1 STUDIO_HEADLESS=1 python3 studio_project.py` — the
   original oracle (`studio_console/tests_smoke.py`, `run_smoke_test(gui)`).
   Every phase of the package split was verified against this; it's the
@@ -35,7 +35,7 @@ does not work and isn't meant to.
   pytest port of the exact same check sequence (`pytest.ini` points
   `testpaths` at it). Per-check pass/fail via `-v`, `-k` filtering,
   JUnit XML for CI. It's one long `test_smoke_full_pipeline` function,
-  not ~484 independent tests — the checks are genuinely sequential
+  not ~496 independent tests — the checks are genuinely sequential
   (each depends on state the earlier ones left in `fader_pool`/`patch`/
   `stack_pool`), so `pytest-subtests` reports each one individually
   without pretending they're isolated. It builds `gui` and every engine
@@ -56,7 +56,7 @@ studio_console/
                               show-file loading, MIDI/OSC setup, save_show/cue_go/
                               goto_cue and other closely-coupled helpers
   show.py                    ShowFile — save/load all studio_data/*.json
-  tests_smoke.py             the 484-case headless smoke test (run_smoke_test(gui))
+  tests_smoke.py             the 496-case headless smoke test (run_smoke_test(gui))
   models/
     fixtures.py               FixtureProfile, FixtureLibrary, GDTFLoader,
                                SubFixture, MasterFixture, Patch, programmer

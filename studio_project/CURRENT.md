@@ -1,8 +1,8 @@
 # Studio Console — Current State
 
-**Date:** 2026-10-12
-**Version:** v0.21
-**Smoke test:** 484/484 PASS
+**Date:** 2026-10-14
+**Version:** v0.22
+**Smoke test:** 496/496 PASS
 **Branch:** main, up to date with origin/main
 
 ---
@@ -27,16 +27,16 @@
 - Save/load show, backup, named saves in `studio_saves/`
 - Commands are case-insensitive (`stk`, `STK`, `fdr`, `FDR` all work)
 - Codebase is now a package (`studio_console/`) instead of one 21k-line file — same behavior, verified against the smoke test at every step (see below)
-- The same smoke test also runs under pytest (`pytest` from the project root) with per-check pass/fail, `-k` filtering, JUnit XML — alongside, not instead of, the original `STUDIO_HEADLESS` oracle. Both report 481 checks
+- The same smoke test also runs under pytest (`pytest` from the project root) with per-check pass/fail, `-k` filtering, JUnit XML — alongside, not instead of, the original `STUDIO_HEADLESS` oracle. Both report 496 checks
 
 ## Recent changes
 
 1. **sACN: pin multicast egress to the lighting NIC, perf_counter-paced staging loop, rolling-shutter delay slider** (2026-10-14):
-   - **App would not start (fixed):** `studio_project.py` had lost its `class GUIEngine(...)` mixin definition, the `from studio_console.gui.theme import *` import, and `from studio_console.commands import run_command` — an incomplete prior-session refactor. Also imported `studio_console.gui.audio_levels` (module + `GUIEngineAudioLevels` mixin) that was never created, though it was already referenced by `audio_monitors.py` (`_build_audio_levels_panel()`, the nestable device + raw-peak panel), `core.py` (`_tick_audio_levels`), and full smoke/pytest coverage. Recreated `gui/audio_levels.py` to that spec and restored the class/imports, so the console builds and the whole suite runs again (481/481 via both `STUDIO_HEADLESS` and pytest).
+   - **App would not start (fixed):** `studio_project.py` had lost its `class GUIEngine(...)` mixin definition, the `from studio_console.gui.theme import *` import, and `from studio_console.commands import run_command` — an incomplete prior-session refactor. Also imported `studio_console.gui.audio_levels` (module + `GUIEngineAudioLevels` mixin) that was never created, though it was already referenced by `audio_monitors.py` (`_build_audio_levels_panel()`, the nestable device + raw-peak panel), `core.py` (`_tick_audio_levels`), and full smoke/pytest coverage. Recreated `gui/audio_levels.py` to that spec and restored the class/imports, so the console builds and the whole suite runs again (496/496 via both `STUDIO_HEADLESS` and pytest).
    - **Multicast egress was leaving the wrong interface.** `bind_address` threaded into `sACNsender` binds the UDP *source* IP, but that does **not** control multicast egress: the sacn library leaves `IP_MULTICAST_IF = 0.0.0.0`, so the kernel picks the egress NIC from the routing table. On this Mac Mini the default route is `en1` (WiFi) while the lighting LAN is `en0` (Ethernet 192.168.1.161), and `224.0.0/4` exists on both — so sACN multicast could leave over WiFi even with the socket bound to the wired IP. `NetworkEngine._pin_multicast_egress()` now sets `IP_MULTICAST_IF` to the bind address (verified against a live bound socket: `0.0.0.0` → `192.168.1.161`).
    - **Staging loop now deadline-paced by `time.perf_counter()`** (was `time.monotonic()` + a flat `sleep(interval)`, which drifted well under 100Hz when a tick overran). `_run()` targets `next_tick` and sleeps only the remainder, re-arming from `perf_counter()` each tick and catching up after an overrun. Pure timing refinement — a long tick still skips ahead instead of compounding drift.
    - **Rolling-shutter phase-offset slider** added to the patch window's sACN network section, wired live to the new `NetworkEngine.set_shutter_delay_ms()`, which clamps to `[0, 1000/SACN_FPS]` (one wire frame ≈ 22.7ms) and rejects non-numeric input. Deliberately **not** applied to wire timing yet: the sacn sender still auto-flushes on its own thread, so honoring the offset requires the deferred manual-flush scheduler (`manual_flush=True` + per-universe `send_out(out, t)`, proven callable against the installed library) — left for a live camera test per user direction.
-   - 481/481 via both oracles (4 new `set_shutter_delay_ms` clamp/reject checks added to both), plus `py_compile` and a real non-headless boot (launches the GUI and blocks with no errors).
+   - 496/496 via both oracles (4 new `set_shutter_delay_ms` clamp/reject checks added to both), plus `py_compile` and a real non-headless boot (launches the GUI and blocks with no errors).
 
 2. **sACN output pipeline: single explicit FX driver + true 44Hz wire cadence** (2026-10-12, commit f3dc09c):
    - Two independent defects were costing send-time precision on the DMX line. Neither was visible in the smoke test — both are timing/concurrency properties of live output, and the headless suite exercises the compute path without ever opening a socket.
@@ -116,7 +116,7 @@
 
 - **File split is done** (see Recent changes #6) and pushed to origin
 - **`GUIEngine._tick()` decomposed** (see Recent changes #5) — pushed to origin
-- **`tests_smoke.py` ported to pytest** (see Recent changes #4) — the previously-deferred item; `tests_smoke.py` itself stays the untouched oracle, `pytest` is now an additional, equally-verified way to run the same 481 checks
+- **`tests_smoke.py` ported to pytest** (see Recent changes #4) — the previously-deferred item; `tests_smoke.py` itself stays the untouched oracle, `pytest` is now an additional, equally-verified way to run the same 496 checks
 - **Real-hardware strobe-timing verification outstanding** (see Recent changes #1) — the f3dc09c sACN fixes (single FX driver, true 44Hz wire rate) are concurrency/timing properties of live output that the headless suite cannot exercise, since it runs the compute path with no socket. Needs a physical run on the rig to confirm the improvement. Same applies to the multicast-egress pin: verified at the socket level (`IP_MULTICAST_IF` moves off `0.0.0.0` onto the wired IP) but not yet confirmed arriving at fixtures.
 - **Rolling-shutter `set_shutter_delay_ms()` is wired to its slider but not yet applied to wire timing** (see Recent changes #1) — the setter clamps/stores the value live and the slider reports it, but honoring a per-universe offset requires switching the sacn sender to `manual_flush=True` and driving per-universe `send_out(out, t)` scheduling (proven callable against the installed library). That refactor is deferred until a live camera test shows it is actually needed.
 - No other known outstanding scope items from the split

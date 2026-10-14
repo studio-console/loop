@@ -13,7 +13,7 @@ class GUIEngineHeader:
         # ── Top row: info + 4 grouped button clusters ──────────
         with dpg.group(horizontal=True):
             dpg.add_text("STUDIO", color=_C_ACCENT)
-            dpg.add_text("v0.21", color=_C_DIM)
+            dpg.add_text("v0.22", color=_C_DIM)
             dpg.add_spacer(width=8)
 
             # cluster: window — min / close. The app starts fullscreen (no
