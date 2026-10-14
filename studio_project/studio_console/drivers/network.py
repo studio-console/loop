@@ -50,6 +50,49 @@ if hasattr(sacn, "sACNsender"):
     sacn.sACNsender.__del__ = _quiet_sacn_del
 
 
+# ── macOS thread QoS boost ─────────────────────────────────────────
+# Symptom this fixes: DMX jitter/stutter spikes the instant focus moves to a
+# browser (or any foreground window). macOS WindowServer + the browser's
+# renderer run at the highest QoS tier; when they take foreground focus the
+# scheduler deprioritises background threads, and our staging thread gets
+# descheduled for long enough that the sender's buffers go stale between its
+# own 44Hz sends — visible as jitter.
+#
+# os.nice() cannot fix this: lowering the nice value (raising priority) needs
+# root, and PRIO_PROCESS is process-wide, not per-thread. The correct non-root
+# macOS mechanism is pthread_set_qos_class_self_np() — an advisory GCD QoS tier
+# available to any process, applied to the *calling* thread only, so it MUST be
+# invoked from inside the thread it targets (i.e. at the top of _run, not at
+# construction).
+#
+# QOS_CLASS_USER_INTERACTIVE = 0x21: the same tier WindowServer/UI uses. It asks
+# the scheduler to keep this thread responsive when foreground work appears.
+# Best-effort: the symbol and the call are wrapped so this silently no-ops on
+# non-macOS, or if libpthread ever changes ABI. Verified the symbol name is
+# pthread_set_qos_class_self_np (the bare pthread_set_qos_class_self, which the
+# common ctypes snippet uses, does not exist and would raise AttributeError —
+# caught, but silently doing nothing).
+_QOS_USER_INTERACTIVE = 0x21
+
+
+def _raise_thread_qos():
+    """Elevate the *calling* thread to QOS_CLASS_USER_INTERACTIVE (macOS only).
+
+    Call from inside the staging thread. No-op elsewhere. See the module-level
+    comment above for why this is the right (and only non-root) lever.
+    """
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None)
+        setter = getattr(libc, "pthread_set_qos_class_self_np", None)
+        if setter is not None:
+            setter(ctypes.c_int(_QOS_USER_INTERACTIVE), ctypes.c_int(0))
+    except Exception:
+        # Non-macOS, or libpthread API drift — QoS is a best-effort hint, so a
+        # failure to apply it is not worth surfacing or failing the loop over.
+        pass
+
+
 class NetworkEngine:
     """
     sACN multicast broadcast. Staging loop runs at 100Hz on a dedicated
@@ -220,6 +263,11 @@ class NetworkEngine:
         print("Network engine stopped.")
 
     def _run(self):
+        # Elevate this thread's macOS scheduling priority BEFORE anything
+        # else. Must be called from inside the thread it targets (pthread QoS
+        # applies to the calling thread only) — see _raise_thread_qos and the
+        # module-level comment for the browser-focus jitter rationale.
+        _raise_thread_qos()
         # Staging loop at STAGING_HZ. FX is re-evaluated at each tick (not
         # from a cached snapshot) so strobe ON/OFF transitions land within
         # ~10ms of the true phase boundary rather than up to 22ms late (one
