@@ -852,9 +852,8 @@ class GUIEngineFXEditor:
             self._log(f"  {result}")
     def _on_fx_editor_toggle(self, *_):
         vis = dpg.get_item_configuration("fx_editor_window").get("show", False)
-        if vis:
-            self._save_popup_layout()
         dpg.configure_item("fx_editor_window", show=not vis)
         if not vis:
             self._fxed_refresh_target()
             self._fxed_refresh_slot_labels()
+        self._save_popup_layout()

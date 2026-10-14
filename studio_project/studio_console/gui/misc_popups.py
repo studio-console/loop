@@ -14,20 +14,20 @@ class GUIEngineMiscPopups:
     def _on_keys_toggle(self):
         try:
             if dpg.is_item_shown("keys_window"):
-                self._save_popup_layout()
                 dpg.hide_item("keys_window")
             else:
                 dpg.show_item("keys_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_changelog_toggle(self):
         try:
             if dpg.is_item_shown("changelog_window"):
-                self._save_popup_layout()
                 dpg.hide_item("changelog_window")
             else:
                 self._refresh_changelog_popup()
                 dpg.show_item("changelog_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_cue_timing_toggle(self):
@@ -36,16 +36,17 @@ class GUIEngineMiscPopups:
                 dpg.hide_item("cue_timing_window")
             else:
                 dpg.show_item("cue_timing_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_pages_toggle(self):
         try:
             if dpg.is_item_shown("pages_window"):
-                self._save_popup_layout()
                 dpg.hide_item("pages_window")
             else:
                 self._refresh_pages_table()
                 dpg.show_item("pages_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _build_keys_popup(self):

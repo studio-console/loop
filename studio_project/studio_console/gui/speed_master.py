@@ -48,6 +48,12 @@ class GUIEngineSpeedMaster:
             self._speed_pool.set_bpm(sid, value)
     def _on_speed_master_close(self, *_):
         """Persist BPM values when the panel is dismissed via X."""
+        # Hide BEFORE saving so _save_popup_layout records show:false —
+        # see the same note in ai_popups._on_ai_bar_close.
+        try:
+            dpg.hide_item("speed_master_window")
+        except Exception:
+            pass
         self._save_popup_layout()
         if self._speed_pool:
             try:

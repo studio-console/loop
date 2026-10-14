@@ -36,6 +36,7 @@ class GUIEngineCore:
         "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
         "color_picker_window", "speed_master_window", "fader_page_window",
         "audio_window", "fx_params_window", "viz3d_window", "code_editor_window",
+        "audio_routing_window", "cue_timing_window",
     ]
     # Was os.path.dirname(os.path.abspath(__file__)) — that resolved
     # relative to studio_project.py itself when this class lived there
@@ -355,6 +356,45 @@ class GUIEngineCore:
                     pass
         except Exception:
             pass
+        # Arm tick-driven show-state persistence only AFTER the restore has
+        # run: run() starts the update thread (start_update_loop) one line
+        # before calling this method, so polling from the tick any earlier
+        # would read default-closed windows and overwrite popup_layout.json
+        # with "everything closed" before _load_popup_layout could read it.
+        self._popup_show_sig = None
+        self._popup_poll_armed = True
+
+    def _tick_popup_persistence(self):
+        """Persist popup open/closed state from the tick loop, on change only.
+
+        Closing a window with its X button never fires _save_popup_layout()
+        (several popups have no on_close handler), and a force-quit/watchdog
+        exit skips the clean-exit save — so the last write on disk was a
+        stale "show": true from whenever the window was last toggled open,
+        and the window reopened on the next launch. Polling show-state here
+        makes popup_layout.json track reality regardless of which close-path
+        fired or how the app exited.
+
+        Runs on the 20Hz update thread; is_item_shown() is a read-only
+        query, safe from any thread (the tick already writes widgets via
+        dpg.set_value everywhere). The file is only rewritten when some
+        window's state actually changed, so steady-state cost is one tuple
+        compare per tick.
+        """
+        if not getattr(self, "_popup_poll_armed", False):
+            return
+        sig = []
+        for tag in self._POPUP_TAGS:
+            try:
+                sig.append(bool(dpg.is_item_shown(tag)))
+            except Exception:
+                sig.append(None)   # unbuilt/unknown tag — stable placeholder
+        sig = tuple(sig)
+        if sig == getattr(self, "_popup_show_sig", None):
+            return
+        self._popup_show_sig = sig
+        self._save_popup_layout()
+
     def build(self):
         if not _DPG_OK:
             print("  GUI: dearpygui not installed — pip install dearpygui")
@@ -728,7 +768,14 @@ class GUIEngineCore:
             try:
                 self._tick()
             except Exception:
-                pass
+                # This whole-tick except silently starves every sub-tick
+                # AFTER the raising one — invisible by design, and exactly
+                # how a real-launch-only DPG error can kill a late sub-tick
+                # (e.g. _tick_popup_persistence) while the smoke test stays
+                # green. Set STUDIO_DEBUG_TICK=1 to see the traceback.
+                if os.environ.get("STUDIO_DEBUG_TICK"):
+                    import traceback
+                    traceback.print_exc()
             time.sleep(0.05)
         self._running = False
     def _tick(self):
@@ -752,6 +799,7 @@ class GUIEngineCore:
         self._tick_output_monitor()
         self._tick_midi_osc()
         self._tick_autosave()
+        self._tick_popup_persistence()
 
     def _tick_first_sync(self):
         # Deferred import — see _on_save above for rationale.
@@ -1871,6 +1919,46 @@ class GUIEngineCore:
             return
         self.start_update_loop()
         self._load_popup_layout()   # restore saved popup positions/sizes
+        # Live regression harness for popup persistence (inert unless the
+        # env var is set): STUDIO_POPUP_SELFTEST=close opens monitors_window,
+        # closes it again, and hard-exits 0 only if popup_layout.json tracked
+        # both transitions mid-session; =verify relaunches and exits 0 only
+        # if monitors stayed closed across the restart. Run the pair to
+        # re-verify end-to-end:  ...=close python studio_project.py  then
+        # ...=verify python studio_project.py
+        if os.environ.get("STUDIO_POPUP_SELFTEST"):
+            def _popup_selftest():
+                import json as _json
+                phase = os.environ["STUDIO_POPUP_SELFTEST"]
+                if phase == "close":
+                    time.sleep(6)
+                    print("[selftest] opening monitors_window", flush=True)
+                    dpg.show_item("monitors_window")
+                    time.sleep(2)
+                    try:
+                        d = _json.load(open(self._POPUP_LAYOUT_FILE))
+                        print("[selftest] file show after OPEN:",
+                              d.get("monitors_window", {}).get("show"), flush=True)
+                    except Exception as e:
+                        print("[selftest] file read err after open:", e, flush=True)
+                    print("[selftest] closing monitors_window (simulated X)",
+                          flush=True)
+                    dpg.hide_item("monitors_window")
+                    time.sleep(1.5)
+                    try:
+                        d = _json.load(open(self._POPUP_LAYOUT_FILE))
+                        show = d.get("monitors_window", {}).get("show")
+                    except Exception as e:
+                        show = "ERR:%s" % e
+                    print("[selftest] file show after CLOSE:", show, flush=True)
+                    os._exit(0 if show is False else 1)
+                else:  # verify — did the window stay closed across restart?
+                    time.sleep(4)
+                    shown = dpg.is_item_shown("monitors_window")
+                    print("[selftest] monitors shown after restart:", shown,
+                          flush=True)
+                    os._exit(0 if not shown else 1)
+            threading.Thread(target=_popup_selftest, daemon=True).start()
         dpg.focus_item("cmd_input")
         # Ctrl+C (SIGINT) in the terminal used to raise KeyboardInterrupt
         # straight out of the blocking dpg.start_dearpygui() call below,

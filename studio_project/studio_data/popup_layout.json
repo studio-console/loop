@@ -69,7 +69,7 @@
     ],
     "width": 773,
     "height": 726,
-    "show": true
+    "show": false
   },
   "ai_history_window": {
     "pos": [
@@ -105,7 +105,7 @@
     ],
     "width": 773,
     "height": 230,
-    "show": true
+    "show": false
   },
   "color_picker_window": {
     "pos": [
@@ -114,7 +114,7 @@
     ],
     "width": 772,
     "height": 485,
-    "show": true
+    "show": false
   },
   "speed_master_window": {
     "pos": [
@@ -123,7 +123,7 @@
     ],
     "width": 775,
     "height": 388,
-    "show": true
+    "show": false
   },
   "fader_page_window": {
     "pos": [
@@ -168,6 +168,24 @@
     ],
     "width": 640,
     "height": 520,
+    "show": false
+  },
+  "audio_routing_window": {
+    "pos": [
+      300,
+      150
+    ],
+    "width": 560,
+    "height": 520,
+    "show": false
+  },
+  "cue_timing_window": {
+    "pos": [
+      10,
+      140
+    ],
+    "width": 320,
+    "height": 190,
     "show": false
   },
   "__values__": {

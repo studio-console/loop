@@ -16,6 +16,7 @@ class GUIEngineColorPicker:
             else:
                 self._cpick_sync_from_programmer()
                 dpg.show_item("color_picker_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _build_color_picker_popup(self):

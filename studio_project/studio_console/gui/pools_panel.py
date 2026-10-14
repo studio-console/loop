@@ -15,10 +15,10 @@ class GUIEnginePoolsPanel:
     def _on_attr_popup_toggle(self):
         try:
             if dpg.is_item_shown("attr_window"):
-                self._save_popup_layout()
                 dpg.hide_item("attr_window")
             else:
                 dpg.show_item("attr_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _build_pools_row(self):
@@ -850,10 +850,10 @@ class GUIEnginePoolsPanel:
     def _on_fx_params_toggle(self, *_):
         try:
             if dpg.is_item_shown("fx_params_window"):
-                self._save_popup_layout()
                 dpg.hide_item("fx_params_window")
             else:
                 dpg.show_item("fx_params_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _build_forms_panel(self):

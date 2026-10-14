@@ -13,30 +13,30 @@ class GUIEngineHardwarePopups:
     def _on_patch_toggle(self):
         try:
             if dpg.is_item_shown("patch_window"):
-                self._save_popup_layout()
                 dpg.hide_item("patch_window")
             else:
                 self._refresh_patch_table()
                 dpg.show_item("patch_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_osc_toggle(self):
         try:
             if dpg.is_item_shown("osc_window"):
-                self._save_popup_layout()
                 dpg.hide_item("osc_window")
             else:
                 self._refresh_osc_table()
                 dpg.show_item("osc_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_midi_toggle(self):
         try:
             if dpg.is_item_shown("midi_window"):
-                self._save_popup_layout()
                 dpg.hide_item("midi_window")
             else:
                 dpg.show_item("midi_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _build_osc_popup(self):

@@ -22,11 +22,11 @@ class GUIEngineAudioRouting:
     def _on_audio_routing_toggle(self):
         try:
             if dpg.is_item_shown("audio_routing_window"):
-                self._save_popup_layout()
                 dpg.hide_item("audio_routing_window")
             else:
                 dpg.show_item("audio_routing_window")
                 self._on_ar_routing_window_show()
+            self._save_popup_layout()
         except Exception:
             pass
 

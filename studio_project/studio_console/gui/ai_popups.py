@@ -118,23 +118,33 @@ class GUIEngineAIPopups:
                 dpg.hide_item("ai_prompts_window")
             else:
                 dpg.show_item("ai_prompts_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_ai_bar_toggle(self):
         try:
             if dpg.is_item_shown("ai_bar_window"):
-                self._save_popup_layout()
                 dpg.hide_item("ai_bar_window")
                 dpg.focus_item("cmd_input")
                 self._ai_end_conversation()
             else:
                 dpg.show_item("ai_bar_window")
                 dpg.focus_item("ai_input")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_ai_bar_close(self, *_):
         """Native window-X close — same cleanup as the header toggle button,
         plus handing focus back to cmd_input (see _on_ai_send)."""
+        # Hide BEFORE saving: _save_popup_layout() persists the live
+        # is_item_shown() state, so if DPG hasn't already hidden the window
+        # by the time on_close fires we'd otherwise record a stale show:true
+        # and the panel would reopen on next launch. hide_item is idempotent,
+        # so this is correct whether or not DPG hid it first.
+        try:
+            dpg.hide_item("ai_bar_window")
+        except Exception:
+            pass
         self._save_popup_layout()
         try:
             dpg.focus_item("cmd_input")

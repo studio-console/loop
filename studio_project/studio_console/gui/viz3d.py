@@ -128,10 +128,10 @@ class GUIEngineViz3D:
     def _on_viz3d_toggle(self):
         try:
             if dpg.is_item_shown("viz3d_window"):
-                self._save_popup_layout()
                 dpg.hide_item("viz3d_window")
             else:
                 dpg.show_item("viz3d_window")
+            self._save_popup_layout()
         except Exception:
             pass
 

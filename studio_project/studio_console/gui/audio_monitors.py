@@ -13,19 +13,19 @@ class GUIEngineAudioMonitors:
     def _on_monitors_toggle(self):
         try:
             if dpg.is_item_shown("monitors_window"):
-                self._save_popup_layout()
                 dpg.hide_item("monitors_window")
             else:
                 dpg.show_item("monitors_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_audio_toggle(self):
         try:
             if dpg.is_item_shown("audio_window"):
-                self._save_popup_layout()
                 dpg.hide_item("audio_window")
             else:
                 dpg.show_item("audio_window")
+            self._save_popup_layout()
         except Exception:
             pass
     def _on_audio_start(self):
