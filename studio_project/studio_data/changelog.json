@@ -2,6 +2,11 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-10-14",
+      "summary": "sACN: pin multicast egress to lighting NIC, add rolling-shutter delay slider; restore broken app",
+      "details": []
+    },
+    {
       "date": "2026-10-12",
       "summary": "Audio routing matrix + AUDIO ROUTE commands; fix meter tick (484/484)",
       "details": [
