@@ -286,6 +286,76 @@ class GUIEngineCore:
     # needs the same treatment.
     _PERSISTED_CHECKBOXES = [("cpick_live", "cpick_live"),
                               ("pool_pages_link_main", "pool_pages_linked")]
+    def _popup_is_collapsed(self, tag):
+        """Read a popup's minimized state from the config mirror.
+
+        DPG 2.3.1 has NO live getter for collapse state:
+        - is_item_collapsed() doesn't exist;
+        - get_item_rect_size() stays at the expanded size while collapsed
+          (measured: 773x726 on a collapsed window);
+        - the config dict's 'collapsed' only reflects configure_item()
+          writes — ImGui's title-bar arrow toggles nothing back into
+          Python, so a raw arrow-minimized window reads as expanded.
+
+        The mirror IS reliable for configure_item writes, and
+        _install_popup_collapse_tracker() funnels every arrow click
+        through configure_item — which makes this config read correct for
+        the user-driven minimize path too.
+        """
+        try:
+            return bool(dpg.get_item_configuration(tag).get("collapsed"))
+        except Exception:
+            return False
+
+    def _install_popup_collapse_tracker(self):
+        """Own the title-bar collapse arrow across all popups.
+
+        See _popup_is_collapsed: DPG can't report a live minimize, so the
+        arrow click is intercepted geometrically — ImGui draws the collapse
+        triangle in the window's top-left ~32px square, and window pos IS
+        live via get_item_pos(). On a hit, the intended state (mirror value
+        toggled — ImGui will have flipped its internal state the same way
+        on this click) is re-applied through configure_item a beat later
+        via dpg.after(), AFTER ImGui's own toggle has landed, so both
+        agree and the config mirror syncs. The poll then sees the change
+        and persists it like any other state transition.
+
+        Known gap: collapsing by double-clicking the window LABEL (an
+        ImGui feature) isn't intercepted and won't persist — the arrow
+        path is the supported one.
+        """
+        def _on_left_click(sender, app_data):
+            try:
+                mx, my = dpg.get_mouse_pos()
+            except Exception:
+                return
+            for tag in self._POPUP_TAGS:
+                try:
+                    if not dpg.is_item_shown(tag):
+                        continue
+                    x, y = dpg.get_item_pos(tag)
+                    if x - 2 <= mx <= x + 32 and y - 2 <= my <= y + 32:
+                        want = not self._popup_is_collapsed(tag)
+
+                        def _apply(tag=tag, want=want):
+                            try:
+                                dpg.configure_item(tag, collapsed=want)
+                            except Exception:
+                                pass
+                            # force the next poll tick to persist
+                            self._popup_show_sig = None
+                        # after ImGui's own arrow toggle in this/next
+                        # frame — same value, so no visual double-flip
+                        dpg.after(60, _apply)
+                        break
+                except Exception:
+                    continue
+        try:
+            dpg.add_mouse_click_handler(dpg.mvMouseButton_Left,
+                                        callback=_on_left_click)
+        except Exception:
+            pass   # headless fake dpg — tracker simply absent
+
     def _save_popup_layout(self):
         layout = {}
         for tag in self._POPUP_TAGS:
@@ -307,10 +377,11 @@ class GUIEngineCore:
                     "show":   bool(dpg.is_item_shown(tag)),
                     # Minimized (title-bar collapse arrow) windows are still
                     # "shown" — without this, a minimized popup restored
-                    # full-size over the viz area every launch. DPG 2.3.1
-                    # has no is_item_collapsed(); the live collapse state
-                    # rides in the window's own config dict.
-                    "collapsed": bool(cfg.get("collapsed", False)),
+                    # full-size over the viz area every launch. Live read:
+                    # the config dict's 'collapsed' only tracks
+                    # configure_item() writes, not the arrow (see
+                    # _popup_is_collapsed).
+                    "collapsed": self._popup_is_collapsed(tag),
                 }
             except Exception:
                 pass
@@ -396,9 +467,11 @@ class GUIEngineCore:
                 # (shown, collapsed): a minimized window is still "shown",
                 # so collapse changes must be part of the signature too or
                 # minimizing via the title-bar arrow never triggers a save.
+                # Collapsed is read live off the rendered rect — the config
+                # dict mirror doesn't see arrow clicks (see
+                # _popup_is_collapsed).
                 sig.append((bool(dpg.is_item_shown(tag)),
-                            bool(dpg.get_item_configuration(tag)
-                                 .get("collapsed"))))
+                            self._popup_is_collapsed(tag)))
             except Exception:
                 sig.append(None)   # unbuilt/unknown tag — stable placeholder
         sig = tuple(sig)
@@ -414,6 +487,7 @@ class GUIEngineCore:
 
         dpg.create_context()
         _apply_theme()
+        self._install_popup_collapse_tracker()
         self._surface_font, self._mono_font = _setup_fonts()
         self._go_theme       = _make_go_theme()
         self._back_theme     = _make_back_theme()
@@ -1971,6 +2045,12 @@ class GUIEngineCore:
                     dpg.show_item("monitors_window")
                     dpg.configure_item("monitors_window", collapsed=True)
                     time.sleep(1.5)
+                    print("[selftest] DIAG shown:",
+                          dpg.is_item_shown("monitors_window"),
+                          "rect:", dpg.get_item_rect_size("monitors_window"),
+                          "config collapsed:",
+                          dpg.get_item_configuration("monitors_window").get(
+                              "collapsed"), flush=True)
                     try:
                         d = _json.load(open(self._POPUP_LAYOUT_FILE))
                         col = d.get("monitors_window", {}).get("collapsed")
@@ -1985,8 +2065,7 @@ class GUIEngineCore:
                         d = _json.load(open(self._POPUP_LAYOUT_FILE))
                         exp = d.get("monitors_window", {})
                         live_shown = dpg.is_item_shown("monitors_window")
-                        live_col = bool(dpg.get_item_configuration(
-                            "monitors_window").get("collapsed"))
+                        live_col = self._popup_is_collapsed("monitors_window")
                         ok = (live_shown == bool(exp.get("show")) and
                               live_col == bool(exp.get("collapsed", False)))
                         print("[selftest] verify: shown", live_shown,
