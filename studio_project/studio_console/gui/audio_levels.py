@@ -44,7 +44,17 @@ class GUIEngineAudioLevels:
         Everything lives under a single stable-tagged group so the whole
         panel can be moved later without a rebuild.
         """
-        with dpg.group(tag="al_panel", parent=parent):
+        # Only pass `parent` when one is given: real DearPyGui requires
+        # parent to be an int (internal item UUID) if supplied at all, and
+        # explicitly passing parent=None raises "[1008] Must be int" —
+        # which then cascades into "[1009] No container to pop" in the
+        # enclosing dpg.window. Omitting the kwarg lets DPG drop the group
+        # into whatever container is active. (The headless smoke test's fake
+        # dpg tolerates parent=None, so this only bites a real launch.)
+        _panel_kwargs = {"tag": "al_panel"}
+        if parent is not None:
+            _panel_kwargs["parent"] = parent
+        with dpg.group(**_panel_kwargs):
             dpg.add_text("input device + raw peak", color=_C_ACCENT)
 
             # ── device pick ────────────────────────────────
@@ -67,7 +77,12 @@ class GUIEngineAudioLevels:
                 dpg.add_button(label="stop", tag="al_stop", width=70,
                                callback=self._on_al_stop)
                 dpg.add_text("", tag="al_status", color=_C_DIM)
-            dpg.add_slider_float(
+            # add_drag_float, not add_slider_float: `speed` is a drag-float
+            # keyword (add_slider_float has no speed= and raises "[1000]
+            # speed keyword does not exist"). Matches the gain control in
+            # audio_monitors.py's audio popup. (The headless fake dpg ignores
+            # unknown kwargs, so only a real launch hits this.)
+            dpg.add_drag_float(
                 tag="al_gain", label="gain",
                 default_value=(self._audio_engine.gain
                                if self._audio_engine else 3.0),

@@ -26,6 +26,30 @@ SACN_FPS = 44
 STAGING_HZ = 100
 
 
+# ── Silence sacn's noisy teardown ─────────────────────────────────────
+# sACNsender.__del__ unconditionally calls self.stop() -> self._sender_handler
+# .stop(). If the sender's UDP bind fails during construction (port busy, or
+# the bind address isn't on any local interface), __init__ raises *before*
+# self._sender_handler is ever assigned. The half-built object is then GC'd
+# (it has no surviving reference — the failed constructor call never assigns
+# self._sender), and __del__ -> stop() -> self._sender_handler raises
+# AttributeError, which CPython reports as "Exception ignored in __del__" at
+# interpreter shutdown. No socket was opened, so there is nothing to leak —
+# it is pure shutdown noise. We replace __del__ with a guarded version that
+# only stops a fully-constructed handler, so a clean run stays quiet.
+def _quiet_sacn_del(self):
+    try:
+        handler = self.__dict__.get("_sender_handler")
+        if handler is not None:
+            handler.stop()
+    except Exception:
+        pass
+
+
+if hasattr(sacn, "sACNsender"):
+    sacn.sACNsender.__del__ = _quiet_sacn_del
+
+
 class NetworkEngine:
     """
     sACN multicast broadcast. Staging loop runs at 100Hz on a dedicated
@@ -112,6 +136,17 @@ class NetworkEngine:
         except OSError as e:
             print(f"WARNING: sACN port busy ({e}) — running without DMX output.")
             print("  Close any other instance of this console and restart to enable output.")
+            # If the constructor raised, it did so *after* assigning
+            # self._outputs but *before* self._sender_handler (the UDP bind
+            # in SenderSocketUDP.__init__ is what fails), so the failed object
+            # is unreachable from here — assigning self._sender never happens.
+            # Python GCs that half-built object later, and sacn's __del__ then
+            # calls stop() -> self._sender_handler.stop() -> AttributeError,
+            # which CPython prints as "Exception ignored in __del__" at
+            # shutdown. It's harmless noise (no socket was opened to leak), but
+            # we silence it so a clean shutdown stays clean — see the
+            # module-level _SILENCE_SACN_DEL patch applied at import time.
+            self._sender = None
             # No staging loop will run, so FX would never advance on its own
             # — hand the driving role back to the FX engine's fallback thread.
             if self.fx_engine is not None:

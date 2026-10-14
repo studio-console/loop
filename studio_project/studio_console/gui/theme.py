@@ -15,6 +15,17 @@ try:
 except ImportError:
     dpg = None
     _DPG_OK = False
+except Exception as _dpg_import_err:
+    # A non-ImportError failure at import time (e.g. a broken native lib,
+    # an ABI mismatch, or a partially-finished pip install) would otherwise be
+    # silently swallowed here and surface only as the misleading
+    # "GUI: dearpygui not installed" at build() time. Surface the real cause.
+    dpg = None
+    _DPG_OK = False
+    import traceback as _tb
+    print("  GUI: dearpygui failed to import (NOT simply missing) — real error:")
+    _tb.print_exc()
+    print(f"  GUI: {_dpg_import_err}")
 
 # Colour palette — near-black / violet accent
 # ——— modern-pro palette: vibey deep violet, richer depth, luminous states ———
