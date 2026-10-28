@@ -827,7 +827,12 @@ class programmer:
                     fixture.clear_dirty()
                     if hasattr(fixture, 'virtual_dimmer'):
                         fixture.virtual_dimmer = 0.0
-            _cfg = getattr(self, 'fade_cfg', None)
+            _cfg = None
+            try:
+                from __main__ import _prog_fade as _pf_cfg
+                _cfg = _pf_cfg
+            except Exception:
+                _cfg = getattr(self, 'fade_cfg', None)
             _fade_on = bool(_cfg and _cfg.get('on')
                            and (_cfg.get('time') or 0) > 0)
             if _fade_on:
@@ -866,7 +871,10 @@ class programmer:
                             self.data.pop(fid, None)
                 _remove = []
                 for fid in list(self.data.keys()):
-                    for ch, val in list(self.data[fid].items()):
+                    _vals = self.data.get(fid)
+                    if not isinstance(_vals, dict):
+                        continue
+                    for ch, val in list(_vals.items()):
                         if isinstance(val, bool) or not isinstance(val, (int, float)):
                             continue
                         _dst = 0.0 if ch == 'dim' else 0
@@ -884,6 +892,8 @@ class programmer:
                                         'start': _now, 'duration': _dur,
                                         'remove': True})
                 self.live_fades.extend(_remove)
+            # Always clear programmer data/disabled on stage 2
+            self.data.clear()
             self.disabled = {}
             self._clear_stage = 2
             return "programmer cleared  (clear again to clear programmer output)"
