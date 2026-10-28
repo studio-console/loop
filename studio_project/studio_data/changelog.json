@@ -2,6 +2,11 @@
   "version": 1,
   "entries": [
     {
+      "date": "2026-10-27",
+      "summary": "Recover lost work: restore Programmer FADE + encoder bar + popup fixes",
+      "details": []
+    },
+    {
       "date": "2026-10-14",
       "summary": "Popup open/closed persistence ships; minimized-state persistence parked as open bug",
       "details": [

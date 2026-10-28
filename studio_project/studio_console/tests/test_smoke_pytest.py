@@ -77,7 +77,7 @@ from studio_console.state import (
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
     _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
-    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
+    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _prog_fade, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
     audio_engine, audio_mapper, audio_router, beam_pool, color_pool, control_pool, cs1,
     cue_back, cue_go, cue_pool, cue_reload, dim_pool, export_presets,
@@ -2896,4 +2896,59 @@ def test_smoke_full_pipeline(subtests):
         with subtests.test(msg=f"set_shutter_delay_ms raised {type(e).__name__}: {e}"):
             assert (False)
 
+    # ── PROGRAMMER FADE (PROG FADE) ──────────────────────────────────────
+    prog.clear_programmer()
+    _r_pf_on = run_command("PROG FADE 2")
+    with subtests.test(msg="PROG FADE 2 enables programmer fade"):
+        assert ("ON" in _r_pf_on and "2.0s" in _r_pf_on)
+    with subtests.test(msg="PROG FADE sets fade_cfg on"):
+        assert (bool(_prog_fade.get('on')) and _prog_fade.get('time') == 2.0)
+    _r_pf_rep = run_command("PROG FADE")
+    with subtests.test(msg="PROG FADE reports ON state"):
+        assert ("ON" in _r_pf_rep)
+    # plain AT while fade on creates a live fade and reverts programmer data
+    run_command("PROG FADE OFF")
+    prog.clear_programmer()
+    run_command("1")
+    run_command("AT FULL")               # establish src dim=1.0 (snap, fade off)
+    run_command("PROG FADE 2")           # enable global fade
+    run_command("AT 0")                  # plain AT -> fade 1.0->0.0 over 2s
+    with subtests.test(msg="PROG FADE: plain AT creates a live fade"):
+        assert (len(prog.live_fades) >= 1)
+    _fade_entry = next((f for f in prog.live_fades
+                        if f['fid'] == '1' and f['channel'] == 'dim'), None)
+    with subtests.test(msg="PROG FADE: live_fade dst is 0.0"):
+        assert (_fade_entry is not None and abs(_fade_entry['dst'] - 0.0) < 0.01)
+    with subtests.test(msg="PROG FADE: programmer data held at src during ramp"):
+        assert (abs((prog.data.get("1", {}).get("dim") or 0) - 1.0) < 0.01)
+    # outfade test: populate programmer while fade OFF, then fade ON, then CLEAR
+    run_command("PROG FADE OFF")
+    prog.clear_programmer()
+    run_command("1")
+    run_command("AT FULL")
+    run_command("AT R 255")
+    run_command("PROG FADE 2")
+    run_command("CLEAR")          # stage 1: selection cleared
+    run_command("CLEAR")          # stage 2: programmer cleared -> outfade
+    with subtests.test(msg="PROG FADE: CLEAR stage 2 builds out-fades"):
+        assert (any(f.get('remove') for f in prog.live_fades))
+    run_command("CLEAR")          # stage 3: cancel remaining fades
+    with subtests.test(msg="PROG FADE CLEAR: live_fades emptied"):
+        assert (len(prog.live_fades) == 0)
+    _r_pf_off = run_command("PROG FADE OFF")
+    with subtests.test(msg="PROG FADE OFF disables programmer fade"):
+        assert ("OFF" in _r_pf_off and not _prog_fade.get('on'))
+    # with fade off, plain AT snaps (no live fade)
+    prog.clear_programmer()
+    run_command("PROG FADE OFF")
+    _n_before = len(prog.live_fades)
+    run_command("1")
+    run_command("AT FULL")
+    with subtests.test(msg="PROG FADE off: plain AT snaps (no new live fade)"):
+        assert (len(prog.live_fades) == _n_before)
+    with subtests.test(msg="PROG FADE off: programmer data populated"):
+        assert (len(prog.data) > 0)
+    prog.clear_programmer()
+    run_command("PROG FADE OFF")
+    run_command("PROG FADE CLEAR")
 
