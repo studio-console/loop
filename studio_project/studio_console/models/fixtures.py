@@ -926,8 +926,7 @@ class programmer:
         self._push_undo()
         value = max(0.0, min(1.0, level / 100))
         _cfg = getattr(self, 'fade_cfg', None)
-        _fade_on = (not getattr(self, '_fade_learning', False)
-                    and _cfg and _cfg.get('on')
+        _fade_on = (_cfg and _cfg.get('on')
                     and (_cfg.get('time') or 0) > 0)
         _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
                      'prism', 'frost', 'animation', 'control', 'color'}
@@ -997,8 +996,7 @@ class programmer:
     def set_rgb(self, r, g, b):
         self._push_undo()
         _cfg = getattr(self, 'fade_cfg', None)
-        _fade_on = (not getattr(self, '_fade_learning', False)
-                    and _cfg and _cfg.get('on')
+        _fade_on = (_cfg and _cfg.get('on')
                     and (_cfg.get('time') or 0) > 0)
         _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
                      'prism', 'frost', 'animation', 'control', 'color'}
@@ -1074,8 +1072,7 @@ class programmer:
             return
         self._push_undo()
         _cfg = getattr(self, 'fade_cfg', None)
-        _fade_on = (not getattr(self, '_fade_learning', False)
-                    and _cfg and _cfg.get('on')
+        _fade_on = (_cfg and _cfg.get('on')
                     and (_cfg.get('time') or 0) > 0)
         _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
                      'prism', 'frost', 'animation', 'control', 'color'}
@@ -1134,12 +1131,9 @@ class programmer:
                 self.data[fid][channel] = value
             if fid in self.disabled:
                 self.disabled[fid].pop(channel, None)
-            # When programmer fade is active, output is driven by the
-            # live_fades through prog.data — do not snap sub-channels
-            # immediately (that would flash the new value before the fade
-            # starts and create a mismatch between prog.data and output).
-            if not _fade_on:
-                f.set_channel(channel, value)
+            if fid in self.disabled:
+                self.disabled[fid].pop(channel, None)
+            f.set_channel(channel, value)
         self._print_programmer()
 
     # ----------------------------------------------------------

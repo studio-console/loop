@@ -969,16 +969,10 @@ class GUIEngineCore:
                         self._prog.data.setdefault(_fid, {})[_ch] = _dst
                 else:
                     # Interpolate
-                    if _fade.get('remove'):
-                        # Out-fade: do NOT repopulate programmer data during
-                        # the ramp — the caller already cleared prog.data and
-                        # wants it to stay cleared until the fade completes.
-                        _still_active.append(_fade)
-                    else:
-                        _frac = _elapsed / _dur
-                        _val  = _src + (_dst - _src) * _frac
-                        self._prog.data.setdefault(_fid, {})[_ch] = _val
-                        _still_active.append(_fade)
+                    _frac = _elapsed / _dur
+                    _val  = _src + (_dst - _src) * _frac
+                    self._prog.data.setdefault(_fid, {})[_ch] = _val
+                    _still_active.append(_fade)
             self._prog.live_fades = _still_active
 
     def _tick_status_bar(self):
