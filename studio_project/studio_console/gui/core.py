@@ -307,6 +307,11 @@ class GUIEngineCore:
             if not dpg.does_item_exist(tag):
                 return False
             try:
+                if not dpg.is_item_shown(tag):
+                    return False
+            except Exception:
+                pass
+            try:
                 dpg.get_item_rect_min(tag)
             except KeyError:
                 return True
@@ -382,7 +387,7 @@ class GUIEngineCore:
                            min(max(0, int(cfg["pos"][1])), max_y)]
                     dpg.configure_item(tag, pos=pos,
                                        width=cfg["width"], height=cfg["height"],
-                                       collapsed=bool(cfg.get("collapsed", False)))
+                                       collapsed=bool(cfg.get("collapsed", False)) and bool(cfg.get("show", False)))
                     if cfg.get("show"):
                         refresh = self._POPUP_REFRESH.get(tag)
                         if refresh:

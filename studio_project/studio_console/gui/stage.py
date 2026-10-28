@@ -58,7 +58,7 @@ class GUIEngineStage:
                               border=True, no_scrollbar=True,
                               no_scroll_with_mouse=True):
             with dpg.group(horizontal=True):
-                dpg.add_text("master", color=_C_ACCENT)
+                dpg.add_text("master", color=_C_DIM)
                 dpg.add_slider_int(
                     tag="stage_master_fader",
                     default_value=100, min_value=0, max_value=100,

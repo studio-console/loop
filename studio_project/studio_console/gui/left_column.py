@@ -20,7 +20,7 @@ class GUIEngineLeftColumn:
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── cue list ─────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("› stack", color=_C_ACCENT)
+                dpg.add_text("› stack", color=_C_TEXT)
                 dpg.add_combo(tag="left_cs_combo", items=["—"], default_value="—",
                               width=-120, height_mode=dpg.mvComboHeight_Small,
                               callback=self._on_cs_combo_select)
@@ -44,7 +44,7 @@ class GUIEngineLeftColumn:
 
             # ── Active playbacks ─────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("› running stacks", color=_C_ACCENT)
+                dpg.add_text("› running stacks", color=_C_TEXT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="stop all", width=78, height=24,
                                callback=self._on_stop_all_faders)

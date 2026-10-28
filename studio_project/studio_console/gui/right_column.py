@@ -22,7 +22,7 @@ class GUIEngineRightColumn:
                               border=True, no_scrollbar=True, no_scroll_with_mouse=True):
             # ── Header ─────────────────────────────────────────
             with dpg.group(horizontal=True):
-                dpg.add_text("› command line", color=_C_ACCENT)
+                dpg.add_text("› command line", color=_C_TEXT)
                 dpg.add_spacer(width=10)
                 dpg.add_text("sel: —", tag="cmd_sel_count", color=_C_DIM)
                 with dpg.tooltip("cmd_sel_count"):
@@ -121,7 +121,7 @@ class GUIEngineRightColumn:
 
             dpg.add_separator()
             with dpg.group(horizontal=True):
-                dpg.add_text("› numpad", color=_C_ACCENT)
+                dpg.add_text("› numpad", color=_C_TEXT)
                 dpg.add_spacer(width=8)
                 dpg.add_text("digit", color=_C_DIM)
                 dpg.add_spacer(width=80)

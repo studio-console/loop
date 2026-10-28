@@ -29,17 +29,17 @@ except Exception as _dpg_import_err:
 
 # Colour palette — near-black / violet accent
 # ——— modern-pro palette: vibey deep violet, richer depth, luminous states ———
-_C_BG        = (5,   4,  12, 255)  # deepest background — where cards float
-_C_PANEL     = (22,  17,  48, 255) # card surface — clearly lifted off the bg (3D step 1)
-_C_BORDER    = (70,  52, 144, 255) # violet card edge — clean definition
-_C_TEXT      = (240, 236, 255, 255)# crisp white with a violet cast
-_C_DIM       = (110, 92, 172, 255) # dimmed — readable but recessed
-_C_ACCENT    = (176, 128, 255, 255)# electric violet #b080ff — primary accent
-_C_HOT       = (230, 168, 255, 255)# bright violet-pink for live status
-_C_BTN       = (44,  34,  98, 255) # raised button (elevated above fields)
-_C_BTN_H     = (98,  72, 190, 255) # hover — luminous lift
-_C_BTN_A     = (146, 102, 248, 255)# active — bright violet
-_C_CUE_ACT   = (88,  64, 172, 255) # selected cue row — brighter violet
+_C_BG        = (0,   0,   0, 255)  # deepest background — pure black
+_C_PANEL     = (18,  18,  28, 255) # card surface — subtle lift off black
+_C_BORDER    = (40,  40,  60, 255) # neutral card edge
+_C_TEXT      = (236, 236, 244, 255)# crisp neutral white
+_C_DIM       = (128, 128, 150, 255) # dimmed — readable but recessed
+_C_ACCENT    = (138,  92, 246, 255)# violet accent, softened
+_C_HOT       = (196, 140, 255, 255)# bright accent for live status
+_C_BTN       = (36,  36,  52, 255) # raised button
+_C_BTN_H     = (58,  58,  84, 255) # hover
+_C_BTN_A     = (96,  72, 180, 255) # active
+_C_CUE_ACT   = (60,  50, 110, 255) # selected cue row
 _C_CUE_WRAP  = (140, 30,  30, 255) # wrap-to-cue-1 warning row — deliberately red, distinct from the violet active-row family
 # Fader-page cue list's "this cue is actually running" row highlight —
 # deliberately a distinct blue (not the violet family used everywhere
@@ -89,9 +89,9 @@ def _apply_theme():
             dpg.add_theme_color(dpg.mvThemeCol_Button,         _C_BTN)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered,  _C_BTN_H)
             dpg.add_theme_color(dpg.mvThemeCol_ButtonActive,   _C_BTN_A)
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (14, 11,  32, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (24, 18,  50, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (34, 26,  68, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg,        (20, 20,  30, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (30, 30,  44, 255))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive,  (40, 40,  58, 255))
             dpg.add_theme_color(dpg.mvThemeCol_TableRowBg,     ( 0,  0,   0,   0))
             dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt,  (30, 22,  70,  90))
             dpg.add_theme_color(dpg.mvThemeCol_SliderGrab,     _C_SLIDER_G)
@@ -112,15 +112,15 @@ def _apply_theme():
             # Input cursor and selection highlight
             dpg.add_theme_color(dpg.mvThemeCol_TextSelectedBg, (80, 50, 160, 140))
             dpg.add_theme_color(dpg.mvThemeCol_NavHighlight,   _C_ACCENT)
-            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  12)
-            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   12)
-            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   10)
-            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    9)
-            dpg.add_theme_style(dpg.mvStyleVar_ScrollbarRounding, 10)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowRounding,  10)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding,   10)
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding,   8)
+            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding,    6)
+            dpg.add_theme_style(dpg.mvStyleVar_ScrollbarRounding, 8)
             dpg.add_theme_style(dpg.mvStyleVar_WindowBorderSize, 1)
-            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,     6, 5)
-            dpg.add_theme_style(dpg.mvStyleVar_FramePadding,    8, 4)
-            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding,   8, 6)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing,     8, 6)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding,    10, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding,   10, 8)
             dpg.add_theme_style(dpg.mvStyleVar_CellPadding,     4, 3)
     dpg.bind_theme(t)
 
@@ -389,12 +389,17 @@ def _make_selected_slot_theme():
 # are substituted for glyphs Menlo does have (↻, ◐) at their call sites
 # rather than needing a font workaround for just two characters.
 _CONSOLE_FONT_CANDIDATES = [
-    "/System/Library/Fonts/Menlo.ttc",                                      # macOS
+    "/System/Library/Fonts/SFNS.ttf",                                       # macOS (San Francisco — modern UI sans)
+    "/System/Library/Fonts/Menlo.ttc",                                      # macOS (fallback, full symbol coverage)
     "/System/Library/Fonts/SFNSMono.ttf",                                   # macOS (Alt)
-    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",                  # Debian/Ubuntu
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",                     # Debian/Ubuntu
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",                  # Debian/Ubuntu (fallback)
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",      # Debian/Ubuntu (RPM-derived)
     "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",      # Debian/Ubuntu (RPM-derived)
+    "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",               # Fedora/RHEL
     "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",               # Fedora/RHEL
-    "C:/Windows/Fonts/consola.ttf",                                        # Windows
+    "C:/Windows/Fonts/segoeui.ttf",                                        # Windows
+    "C:/Windows/Fonts/consola.ttf",                                        # Windows (fallback)
 ]
 _SURFACE_FONT_CANDIDATES = _CONSOLE_FONT_CANDIDATES
 
@@ -413,7 +418,7 @@ def _setup_fonts():
         return None, None
     try:
         with dpg.font_registry():
-            with dpg.font(font_path, 17) as fid:
+            with dpg.font(font_path, 16) as fid:
                 font_id = fid
         dpg.bind_font(font_id)
         return font_id, font_id

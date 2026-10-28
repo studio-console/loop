@@ -89,7 +89,7 @@ class GUIEngineFXEditor:
             # setting, so they live in their own row rather than inside
             # the add-layer form.
             with dpg.group(horizontal=True):
-                dpg.add_text("› live", color=_C_ACCENT)
+                dpg.add_text("› live", color=_C_TEXT)
                 dpg.add_spacer(width=4)
                 dpg.add_button(label="tap", tag="fx_tap_btn", width=42, height=24,
                                callback=self._on_tap_tempo)

@@ -7,7 +7,7 @@
     "width": 734,
     "height": 548,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "osc_window": {
     "pos": [
@@ -17,7 +17,7 @@
     "width": 620,
     "height": 360,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "midi_window": {
     "pos": [
@@ -27,7 +27,7 @@
     "width": 863,
     "height": 801,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "fx_editor_window": {
     "pos": [
@@ -37,7 +37,7 @@
     "width": 1901,
     "height": 795,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "keys_window": {
     "pos": [
@@ -47,7 +47,7 @@
     "width": 705,
     "height": 1082,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "changelog_window": {
     "pos": [
@@ -57,7 +57,7 @@
     "width": 746,
     "height": 1041,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "pages_window": {
     "pos": [
@@ -67,7 +67,7 @@
     "width": 860,
     "height": 488,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "monitors_window": {
     "pos": [
@@ -77,7 +77,7 @@
     "width": 773,
     "height": 726,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "ai_history_window": {
     "pos": [
@@ -87,7 +87,7 @@
     "width": 700,
     "height": 460,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "attr_window": {
     "pos": [
@@ -97,7 +97,7 @@
     "width": 1918,
     "height": 545,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "ai_prompts_window": {
     "pos": [
@@ -107,7 +107,7 @@
     "width": 640,
     "height": 480,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "ai_bar_window": {
     "pos": [
@@ -117,7 +117,7 @@
     "width": 773,
     "height": 230,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "color_picker_window": {
     "pos": [
@@ -127,7 +127,7 @@
     "width": 772,
     "height": 485,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "speed_master_window": {
     "pos": [
@@ -137,17 +137,17 @@
     "width": 775,
     "height": 388,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "fader_page_window": {
     "pos": [
-      2,
-      309
+      0,
+      256
     ],
     "width": 1910,
     "height": 761,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "audio_window": {
     "pos": [
@@ -157,7 +157,7 @@
     "width": 420,
     "height": 300,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "fx_params_window": {
     "pos": [
@@ -167,7 +167,7 @@
     "width": 434,
     "height": 221,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "viz3d_window": {
     "pos": [
@@ -177,7 +177,7 @@
     "width": 1429,
     "height": 971,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "code_editor_window": {
     "pos": [
@@ -187,7 +187,7 @@
     "width": 640,
     "height": 520,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "audio_routing_window": {
     "pos": [
@@ -197,7 +197,7 @@
     "width": 560,
     "height": 520,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "cue_timing_window": {
     "pos": [
@@ -207,7 +207,7 @@
     "width": 320,
     "height": 190,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "encoder_bar_window": {
     "pos": [
@@ -217,7 +217,7 @@
     "width": 1920,
     "height": 520,
     "show": false,
-    "collapsed": true
+    "collapsed": false
   },
   "__values__": {
     "cpick_live": true,

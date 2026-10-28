@@ -926,7 +926,8 @@ class programmer:
         self._push_undo()
         value = max(0.0, min(1.0, level / 100))
         _cfg = getattr(self, 'fade_cfg', None)
-        _fade_on = (_cfg and _cfg.get('on')
+        _fade_on = (not getattr(self, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
                     and (_cfg.get('time') or 0) > 0)
         _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
                      'prism', 'frost', 'animation', 'control', 'color'}
@@ -996,7 +997,8 @@ class programmer:
     def set_rgb(self, r, g, b):
         self._push_undo()
         _cfg = getattr(self, 'fade_cfg', None)
-        _fade_on = (_cfg and _cfg.get('on')
+        _fade_on = (not getattr(self, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
                     and (_cfg.get('time') or 0) > 0)
         _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
                      'prism', 'frost', 'animation', 'control', 'color'}
@@ -1072,7 +1074,8 @@ class programmer:
             return
         self._push_undo()
         _cfg = getattr(self, 'fade_cfg', None)
-        _fade_on = (_cfg and _cfg.get('on')
+        _fade_on = (not getattr(self, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
                     and (_cfg.get('time') or 0) > 0)
         _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
                      'prism', 'frost', 'animation', 'control', 'color'}
