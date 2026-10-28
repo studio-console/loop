@@ -987,7 +987,11 @@ class programmer:
                     self.data[fid]['dim'] = value
                 if fid in self.disabled:
                     self.disabled[fid].pop('dim', None)
-                f.set_dimmer(value)
+                # When programmer fade is active, output is driven by the
+                # live_fades through prog.data — do not snap virtual_dimmer
+                # immediately.
+                if not _fade_on:
+                    f.set_dimmer(value)
         self._print_programmer()
 
     def set_rgb(self, r, g, b):
@@ -1057,7 +1061,11 @@ class programmer:
             if fid in self.disabled:
                 for ch in _channels:
                     self.disabled[fid].pop(ch, None)
-            f.set_rgb(r, g, b)
+            # When programmer fade is active, output is driven by the
+            # live_fades through prog.data — do not snap sub-channels
+            # immediately.
+            if not _fade_on:
+                f.set_rgb(r, g, b)
         self._print_programmer()
 
     def set_channel(self, channel, value):
@@ -1126,7 +1134,12 @@ class programmer:
                 self.data[fid][channel] = value
             if fid in self.disabled:
                 self.disabled[fid].pop(channel, None)
-            f.set_channel(channel, value)
+            # When programmer fade is active, output is driven by the
+            # live_fades through prog.data — do not snap sub-channels
+            # immediately (that would flash the new value before the fade
+            # starts and create a mismatch between prog.data and output).
+            if not _fade_on:
+                f.set_channel(channel, value)
         self._print_programmer()
 
     # ----------------------------------------------------------

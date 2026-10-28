@@ -956,7 +956,9 @@ class GUIEngineCore:
                 _src     = _fade['src']
                 _dst     = _fade['dst']
                 if _elapsed >= _dur:
+                    # Fade complete
                     if _fade.get('remove'):
+                        # Out-fade: drop the channel from programmer data
                         _d = self._prog.data.get(_fid)
                         if _d is not None:
                             _d.pop(_ch, None)
@@ -967,10 +969,16 @@ class GUIEngineCore:
                         self._prog.data.setdefault(_fid, {})[_ch] = _dst
                 else:
                     # Interpolate
-                    _frac = _elapsed / _dur
-                    _val  = _src + (_dst - _src) * _frac
-                    self._prog.data.setdefault(_fid, {})[_ch] = _val
-                    _still_active.append(_fade)
+                    if _fade.get('remove'):
+                        # Out-fade: do NOT repopulate programmer data during
+                        # the ramp — the caller already cleared prog.data and
+                        # wants it to stay cleared until the fade completes.
+                        _still_active.append(_fade)
+                    else:
+                        _frac = _elapsed / _dur
+                        _val  = _src + (_dst - _src) * _frac
+                        self._prog.data.setdefault(_fid, {})[_ch] = _val
+                        _still_active.append(_fade)
             self._prog.live_fades = _still_active
 
     def _tick_status_bar(self):
