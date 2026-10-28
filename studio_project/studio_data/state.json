@@ -243,5 +243,9 @@
     "fade": 2.0,
     "delay": 0.0
   },
-  "fader_dim": 0.33070866141732286
+  "fader_dim": 0.33070866141732286,
+  "prog_fade": {
+    "on": false,
+    "time": 2.0
+  }
 }

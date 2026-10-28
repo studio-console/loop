@@ -79,6 +79,7 @@ _C_P_CODES  = (255, 185, 110, 255)  # warm amber — deliberately off-family fro
 def _apply_theme():
     with dpg.theme() as t:
         with dpg.theme_component(dpg.mvAll):
+            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg,      _C_BG)
             dpg.add_theme_color(dpg.mvThemeCol_WindowBg,       _C_BG)
             dpg.add_theme_color(dpg.mvThemeCol_ChildBg,        _C_PANEL)
             dpg.add_theme_color(dpg.mvThemeCol_Border,         _C_BORDER)

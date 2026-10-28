@@ -27,7 +27,7 @@ from studio_console.state import (
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
     _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
-    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
+    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _prog_fade, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
     audio_engine, audio_mapper, beam_pool, color_pool, control_pool, cs1,
     cue_back, cue_go, cue_pool, cue_reload, dim_pool, export_presets,
@@ -178,7 +178,11 @@ def cmd_074_group(t0, tokens, raw):
         # recall(), since a not-found group below shouldn't waste a slot.
         if group_pool.get(gid):
             prog._push_undo()
-        group_pool.recall(gid, prog)
+            _dur = float(_prog_fade.get('time', 0)) if _prog_fade.get('on') else 0.0
+            if _dur > 0:
+                prog.apply_faded(_dur, lambda: group_pool.recall(gid, prog))
+            else:
+                group_pool.recall(gid, prog)
         g = group_pool.get(gid)
         return f"group {gid} recalled" if g else f"group {gid} not found"
 
@@ -216,7 +220,11 @@ def cmd_076_color(t0, tokens, raw):
         # programmer's own self-undoing set_rgb — so nothing was ever
         # pushed to the undo stack for a color preset recall.
         prog._push_undo()
-        p.apply(prog)
+        _dur = float(_prog_fade.get('time', 0)) if _prog_fade.get('on') else 0.0
+        if _dur > 0:
+            prog.apply_faded(_dur, lambda: p.apply(prog))
+        else:
+            p.apply(prog)
         return f"applied: {p}"
 
 
@@ -299,7 +307,11 @@ def cmd_078_dim(t0, tokens, raw):
             # directly + the fixture's own set_dimmer, bypassing
             # programmer's self-undoing set_dimmer entirely.
             prog._push_undo()
-            p.apply(prog)
+            _dur = float(_prog_fade.get('time', 0)) if _prog_fade.get('on') else 0.0
+            if _dur > 0:
+                prog.apply_faded(_dur, lambda: p.apply(prog))
+            else:
+                p.apply(prog)
             return f"applied: {p}"
         # bare DIM <val> → raw dimmer value (AT DIM <val>)
         try:
@@ -381,7 +393,11 @@ def cmd_082_attr_bare(t0, tokens, raw):
         # AttributePreset.apply() does programmer.data[fid].update(...)
         # directly, same self-undoing-setter bypass as color/dim presets.
         prog._push_undo()
-        p.apply(prog)
+        _dur = float(_prog_fade.get('time', 0)) if _prog_fade.get('on') else 0.0
+        if _dur > 0:
+            prog.apply_faded(_dur, lambda: p.apply(prog))
+        else:
+            p.apply(prog)
         return f"applied: {p}"
 
 

@@ -10,23 +10,12 @@ from studio_console.gui.theme import *  # noqa: F401,F403
 
 class GUIEngineHeader:
     def _build_header(self):
-        # ── Top row: info + 4 grouped button clusters ──────────
-        with dpg.group(horizontal=True):
+        # ── Top bar: compact menu bar — clusters become click-to-open menus ──
+        with dpg.menu_bar():
             dpg.add_text("STUDIO", color=_C_ACCENT)
             dpg.add_text("v0.22", color=_C_DIM)
             dpg.add_spacer(width=8)
 
-            # cluster: window — min / close. The app starts fullscreen (no
-            # OS title bar), so these are the only way to minimize or quit
-            # without a keyboard shortcut. Deliberately placed first, right
-            # after the title — not at the far end of the row — so nothing
-            # that grows later in this row (a long cue name, an FX status
-            # string, ...) can ever push it out past the edge of the
-            # viewport; everything downstream of it is free to overflow or
-            # get clipped instead, which is the much lower-stakes failure.
-            # "close" runs the same dpg.stop_dearpygui() the OS window-close
-            # button would have triggered, flowing into run()'s normal
-            # shutdown path (popup layout + show autosave), not a hard kill.
             dpg.add_button(label="min", tag="hdr_minimize_btn", width=46, height=24,
                            callback=lambda: dpg.minimize_viewport())
             dpg.add_spacer(width=2)
@@ -36,13 +25,6 @@ class GUIEngineHeader:
             dpg.add_text("│", color=_C_BORDER)
             dpg.add_spacer(width=6)
 
-            # Fixed-width, clipping containers around every status text whose
-            # content length varies at runtime (cue name, fx waveform/bpm,
-            # clock, dim%) — a long value clips instead of resizing, so
-            # nothing to the right of this block ever shifts because of it.
-            # Sized to the actual expected content, not padded — the min/close
-            # buttons above no longer depend on this budget being exact (see
-            # comment above), so this just keeps the rest of the row tidy.
             with dpg.child_window(width=210, height=24, border=False,
                                   no_scrollbar=True, no_scroll_with_mouse=True):
                 dpg.add_text("▶", tag="hdr_cue", color=_C_TEXT)
@@ -61,77 +43,32 @@ class GUIEngineHeader:
             dpg.add_text("│", color=_C_BORDER)
             dpg.add_spacer(width=6)
 
-            # cluster: hardware — patch / osc / midi
-            dpg.add_text("hw", color=_C_DIM)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="patch", width=60, height=24,
-                           callback=self._on_patch_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="osc", width=50, height=24,
-                           callback=self._on_osc_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="midi", width=60, height=24,
-                           callback=self._on_midi_toggle)
-            dpg.add_spacer(width=8)
-            dpg.add_text("│", color=_C_BORDER)
-            dpg.add_spacer(width=6)
+            with dpg.menu(label="hw"):
+                dpg.add_menu_item(label="patch", callback=self._on_patch_toggle)
+                dpg.add_menu_item(label="osc", callback=self._on_osc_toggle)
+                dpg.add_menu_item(label="midi", callback=self._on_midi_toggle)
 
-            # cluster: views — pages / attr / fdrs / mon
-            dpg.add_text("view", color=_C_DIM)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="pages", width=55, height=24,
-                           callback=self._on_pages_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="attr", width=50, height=24,
-                           callback=self._on_attr_popup_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="fdrs", width=50, height=24,
-                           callback=self._on_fader_page_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="mon", width=50, height=24,
-                           callback=self._on_monitors_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="3d viz", width=55, height=24,
-                           callback=self._on_viz3d_toggle)
-            dpg.add_spacer(width=8)
-            dpg.add_text("│", color=_C_BORDER)
-            dpg.add_spacer(width=6)
+            with dpg.menu(label="view"):
+                dpg.add_menu_item(label="pages", callback=self._on_pages_toggle)
+                dpg.add_menu_item(label="attr", callback=self._on_attr_popup_toggle)
+                dpg.add_menu_item(label="enc bar", callback=self._on_encoder_bar_toggle)
+                dpg.add_menu_item(label="fdrs", callback=self._on_fader_page_toggle)
+                dpg.add_menu_item(label="mon", callback=self._on_monitors_toggle)
+                dpg.add_menu_item(label="3d viz", callback=self._on_viz3d_toggle)
 
-            # cluster: tools — fx ed / color / spd / ai
-            dpg.add_text("tools", color=_C_DIM)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="fx ed", width=60, height=24,
-                           callback=self._on_fx_editor_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="color", width=52, height=24,
-                           callback=self._on_color_picker_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="spd", width=46, height=24,
-                           callback=self._on_speed_master_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="ai", width=36, height=24,
-                           callback=self._on_ai_bar_toggle)
-            dpg.add_spacer(width=8)
-            dpg.add_text("│", color=_C_BORDER)
-            dpg.add_spacer(width=6)
+            with dpg.menu(label="tools"):
+                dpg.add_menu_item(label="fx ed", callback=self._on_fx_editor_toggle)
+                dpg.add_menu_item(label="color", callback=self._on_color_picker_toggle)
+                dpg.add_menu_item(label="spd", callback=self._on_speed_master_toggle)
+                dpg.add_menu_item(label="ai", callback=self._on_ai_bar_toggle)
 
-            # cluster: system — log / ? / audio / save show
-            dpg.add_text("sys", color=_C_DIM)
-            dpg.add_spacer(width=4)
-            dpg.add_button(label="log", width=50, height=24,
-                           callback=self._on_changelog_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="?", width=30, height=24,
-                           callback=self._on_keys_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="audio", width=50, height=24,
-                           callback=self._on_audio_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="route", width=52, height=24,
-                           callback=self._on_audio_routing_toggle)
-            dpg.add_spacer(width=2)
-            dpg.add_button(label="save show", width=90, height=24,
-                           callback=self._on_save)
+            with dpg.menu(label="sys"):
+                dpg.add_menu_item(label="log", callback=self._on_changelog_toggle)
+                dpg.add_menu_item(label="?", callback=self._on_keys_toggle)
+                dpg.add_menu_item(label="audio", callback=self._on_audio_toggle)
+                dpg.add_menu_item(label="route", callback=self._on_audio_routing_toggle)
+                dpg.add_menu_item(label="save show", callback=self._on_save)
+
             dpg.add_spacer(width=6)
             dpg.add_text("", tag="hdr_save_status", color=_C_DIM)
 
@@ -156,10 +93,13 @@ class GUIEngineHeader:
             dpg.add_button(label="○ pan·tilt", tag="sb_pt_lbl",
                            width=84, height=24,
                            callback=self._on_pt_toggle)
+            dpg.add_spacer(width=6)
+            dpg.add_button(label="○ fade", tag="sb_pf_lbl",
+                           width=74, height=24,
+                           callback=self._on_pf_toggle)
             dpg.add_spacer(width=16)
             dpg.add_text("sel", color=_C_DIM)
             dpg.add_spacer(width=4)
-            # one clickable chip per patched fixture
             if self._patch:
                 for master in self._patch.all_fixtures():
                     fid = master.fixture_id

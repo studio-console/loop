@@ -241,17 +241,18 @@ class GUIEnginePoolsPanel:
             # independently from here on.
             for _key, _ in self._PAGED_POOLS:
                 self._pool_page_starts[_key] = self._linked_page_start
-    def _build_page_ctrl(self, key, page_size, color):
+    def _build_page_ctrl(self, key, page_size, color, tag_key=None):
         """Small ◀ range ▶ control — placed beside a pool panel's title.
         Shows the real slot range currently visible (e.g. "25-48"), not a
         page number: once panels page independently (unlinked) or by
         different step sizes while linked, "page 3" stops meaning the same
         thing across every pool, but the actual slot range is always
         unambiguous."""
+        _tk = tag_key if tag_key is not None else key
         with dpg.group(horizontal=True):
             dpg.add_button(label="<", width=18, height=18,
                 callback=self._on_pool_page_prev, user_data=(key, page_size))
-            dpg.add_text(f"1-{page_size}", tag=f"pg_{key}_lbl", color=color)
+            dpg.add_text(f"1-{page_size}", tag=f"pg_{_tk}_lbl", color=color)
             dpg.add_button(label=">", width=18, height=18,
                 callback=self._on_pool_page_next, user_data=(key, page_size))
     def _build_pages_link_ctrl(self, tag):
@@ -492,7 +493,7 @@ class GUIEnginePoolsPanel:
                             dpg.add_menu_item(label="clear fx preset",
                                 callback=self._ctx_exec_paged,
                                 user_data=("fx", self._POOL_SLOTS, n, "CLEAR FX {n}"))
-    def _build_attr_pool_panel(self, attr_name, color, tag_prefix, slot_count=12):
+    def _build_attr_pool_panel(self, attr_name, color, tag_prefix, slot_count=12, page_tag_key=None):
         """Compact 2-row attribute pool panel (12 slots = 2 rows × 6 cols)."""
         _COLS = self._POOL_COLS
         _ROWS = slot_count // _COLS
@@ -511,7 +512,7 @@ class GUIEnginePoolsPanel:
             with dpg.group(horizontal=True):
                 dpg.add_text(attr_name, color=color)
                 dpg.add_spacer(width=10)
-                self._build_page_ctrl(attr_name, slot_count, color)
+                self._build_page_ctrl(attr_name, slot_count, color, tag_key=page_tag_key)
             dpg.add_separator()
             for row in range(_ROWS):
                 with dpg.group(horizontal=True):

@@ -343,6 +343,7 @@ def cmd_039_fx_main(t0, tokens, raw):
             _sel_fids = ({str(fid) for fid in _resolve_fx_selection_targets()[0]}
                         if prog.selection else None)
 
+            prog._push_undo()
             if len(tokens) >= 3 and tokens[2].upper() in _CHANNELS:
                 ch = tokens[2].upper().lower()
                 _targets = _sel_fids or set(prog.data.keys())

@@ -220,6 +220,22 @@ _prog_time = {
     'delay': 0.0,
 }
 
+# global programmer fade — when on, plain AT edits (no explicit IN <sec>)
+# fade programmer values over _prog_fade['time'] instead of snapping.
+# One time for both directions; cue timing is untouched.
+_prog_fade = {
+    'on':   False,
+    'time': 2.0,
+}
+
+# Wire the shared dict into the programmer so plain AT edits can fade.
+if 'prog' in dir() and prog is not None:
+    try:
+        prog.fade_cfg = _prog_fade
+    except Exception as e:
+        # fade_cfg setup failure is non-critical; fall back to defaults
+        pass
+
 # Attribute preset pools — extend this list as new fixture types are added
 position_pool = AttributePool("position", ["pan", "tilt", "pan_fine", "tilt_fine"])
 gobo_pool     = AttributePool("gobo",     ["gobo", "gobo_rot", "gobo2", "gobo2_rot"])
@@ -1561,7 +1577,7 @@ __all__ = [
     "_active_stack", "_apply_fixture_defaults", "_apply_timing_edit", "_attr_pools", "_blackout_saved_level", "_cs_loaded",
     "_fader_dim", "_fixture_defaults", "_fx_params", "_group_live_sync", "_code_active", "_code_recording", "_make_set_speed_master",
     "_midi_doc", "_name_after", "_on_cue_fire", "_osc_cmd", "_osc_fader", "_osc_key",
-    "_preset_live_push", "_prog_fx_ids", "_prog_snapshots", "_prog_time", "_start_magenta_sine", "_stop_fx",
+    "_preset_live_push", "_prog_fx_ids", "_prog_snapshots", "_prog_time", "_prog_fade", "_start_magenta_sine", "_stop_fx",
     "_stop_prog_fx_preview", "_tap_times", "active_fader", "active_fx", "ai", "all_subs",
     "audio_engine", "audio_mapper", "audio_midi", "key_color", "strobe_engine",
     "audio_router",

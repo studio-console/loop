@@ -329,7 +329,8 @@ class ShowFile:
 
     @staticmethod
     def save_state(output_state, fader_pool, active_fader,
-                   prog_time=None, fader_dim=0.0):
+                   prog_time=None, fader_dim=0.0,
+                   prog_fade=None):
         """Save live session state: master level, active fader, fdr→stack assignments."""
         execs = {}
         for eid, ex in fader_pool.faders.items():
@@ -349,12 +350,14 @@ class ShowFile:
             "faders":      execs,
             "prog_time":      prog_time or {"on": False, "fade": 0.0, "delay": 0.0},
             "fader_dim":      float(fader_dim),
+             "prog_fade":      prog_fade or {"on": False, "time": 2.0},
+
         }
         _write_file(ShowFile.STATE, doc)
 
     @staticmethod
     def load_state(output_state, fader_pool, stack_pool, active_fader,
-                   prog_time=None, fader_dim=None):
+                   prog_time=None, fader_dim=None, prog_fade=None):
         """Restore master level, active fader, and fdr→stack assignments."""
         doc = _read_file(ShowFile.STATE)
         if not doc:
@@ -386,6 +389,11 @@ class ShowFile:
             prog_time['delay'] = float(pt.get('delay', 0.0))
         if fader_dim is not None and "fader_dim" in doc:
             fader_dim[0] = float(doc["fader_dim"])
+        if prog_fade is not None and "prog_fade" in doc:
+            pf = doc["prog_fade"]
+            prog_fade['on']   = bool(pf.get('on',   False))
+            prog_fade['time'] = float(pf.get('time', 2.0))
+
         print(f"  Loaded state    — master={output_state.master_level:.0%} "
               f"active_exec={active_fader[0] if active_fader else '?'}")
         return True

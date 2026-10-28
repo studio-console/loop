@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-14
 **Version:** v0.22
-**Smoke test:** 496/496 PASS
+**Smoke test:** 507/507 PASS
 **Branch:** main, up to date with origin/main
 
 ---
@@ -26,8 +26,10 @@
 - AI engine integration
 - Save/load show, backup, named saves in `studio_saves/`
 - Commands are case-insensitive (`stk`, `STK`, `fdr`, `FDR` all work)
+- PROGRAMMER FADE: `PROG FADE <seconds>` makes plain `AT` edits fade in/out over that time (global on/off; explicit `IN <sec>` and cue timing untouched); `PROG FADE OFF` / `CLEAR` to cancel
+- Encoder bar popup: floating window (header → view → "enc bar") with a row of 0-100 sliders ("pool items": dim, pan, tilt, zoom, focus, iris, frost, r, g, b, amber, white, uv, lime, ...) that drive the programmer for the selected fixtures, plus the attribute pool recall panels below. Extensible via `_ENCODER_ITEMS`; slider defaults vary per item (dim 0, pan/tilt 50, ...). Uses MA2/3 console logic (0-100 normalized, converted to native 0-255).
 - Codebase is now a package (`studio_console/`) instead of one 21k-line file — same behavior, verified against the smoke test at every step (see below)
-- The same smoke test also runs under pytest (`pytest` from the project root) with per-check pass/fail, `-k` filtering, JUnit XML — alongside, not instead of, the original `STUDIO_HEADLESS` oracle. Both report 496 checks
+- The same smoke test also runs under pytest (`pytest` from the project root) with per-check pass/fail, `-k` filtering, JUnit XML — alongside, not instead of, the original `STUDIO_HEADLESS` oracle. Both report 507 checks (headless oracle; pytest port still 496, not regenerated)
 
 ## Recent changes
 
@@ -117,15 +119,21 @@
 
 11. **CLAUDE.md + CURRENT.md added** for AI handoff efficiency
 
+## Recent changes (cont.)
+
+- **PROGRAMMER FADE (PROG FADE)** (2026-10-25): global fade for plain `AT` edits — `PROG FADE <sec>` toggles; explicit `IN <sec>` and cue timing untouched; discrete channels snap; CLEAR stage 2 builds remove-fades. Wired into `state.py`, `studio_project.py`, `models/fixtures.py`, GUI header/core/right_column, command reference, smoke tests (496→507).
+- **Header submenus** (2026-10-25): top bar converted to a `dpg.menu_bar` — former clusters (hw/view/tools/sys) are now click-to-open menus, removing the horizontal scrollbar and keeping the bar compact on any viewport.
+
 ## Known / pending
 
 - **File split is done** (see Recent changes #6) and pushed to origin
 - **`GUIEngine._tick()` decomposed** (see Recent changes #5) — pushed to origin
-- **`tests_smoke.py` ported to pytest** (see Recent changes #4) — the previously-deferred item; `tests_smoke.py` itself stays the untouched oracle, `pytest` is now an additional, equally-verified way to run the same 496 checks
+- **`tests_smoke.py` ported to pytest** (see Recent changes #4) — the previously-deferred item; `tests_smoke.py` itself stays the untouched oracle, `pytest` is now an additional, equally-verified way to run the same 496 checks (headless oracle now 507 after PROGRAMMER FADE)
 - **Real-hardware strobe-timing verification outstanding** (see Recent changes #1) — the f3dc09c sACN fixes (single FX driver, true 44Hz wire rate) are concurrency/timing properties of live output that the headless suite cannot exercise, since it runs the compute path with no socket. Needs a physical run on the rig to confirm the improvement. Same applies to the multicast-egress pin: verified at the socket level (`IP_MULTICAST_IF` moves off `0.0.0.0` onto the wired IP) but not yet confirmed arriving at fixtures.
 - **Rolling-shutter `set_shutter_delay_ms()` is wired to its slider but not yet applied to wire timing** (see Recent changes #1) — the setter clamps/stores the value live and the slider reports it, but honoring a per-universe offset requires switching the sacn sender to `manual_flush=True` and driving per-universe `send_out(out, t)` scheduling (proven callable against the installed library). That refactor is deferred until a live camera test shows it is actually needed.
 - **Popup minimized-state persistence is an open bug, not a shipped feature** (see Recent changes #2) — closed/open state persists via the tick poll; arrow-minimized popups restore full-size because DearPyGui 2.3.1 exposes no live way to read a window's collapsed state (verified: no `is_item_collapsed()`, `get_item_rect_size()` reports expanded numbers while collapsed, config `collapsed` never syncs back from real arrow clicks). Work is paused per user request — anything in `gui/core.py` beyond the `09e9b2b` open/closed tick poll is uncommitted scratch from three reverted approaches, not design; see the KNOWN BUG note for the full trail so nobody re-attempts those paths blind.
 - No other known outstanding scope items from the split
+- **Manual GUI test outstanding (user reminder):** see `NEEDS_TO_BE_TESTED.md` for the running list — PROGRAMMER FADE end-to-end (status-bar `○ fade` toggle now preserves the slider time, plain AT edits fading, CLEAR out-fades), the new encoder-bar programmer-fade time slider (0.1–10s), and the submenu-based header bar (hw/view/tools/sys menus) need a live run — headless smoke covers the command/model path only. Re-verify all new features in the GUI before shipping.
 - DeepSeek API ($2 budget, refilled once mid-split) used across the split's phases 1/3/4/6 plus the earlier rename/GUI-polish sessions — exact final balance not tracked here, check with whoever's account it is
 
 ## How to hand off to a new AI session

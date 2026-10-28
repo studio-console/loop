@@ -84,20 +84,101 @@ class ValuePreset:
         ref_key = f"{self.attribute}_ref"
         targets = (programmer._get_sub_selection() if scope == 'sub'
                    else [f for f in programmer.selection if isinstance(f, MasterFixture)])
-        for f in targets:
-            programmer._ensure_data(f)
-            fid = str(f.fixture_id)
-            programmer.data[fid].update(self.channels)
-            for ch, val in self.channels.items():
-                if ch == 'dim':
-                    f.set_dimmer(val)
-                else:
-                    f.set_channel(ch, val)
-            applied += 1
-            masters_written.add(str(f.master_id) if scope == 'sub' else fid)
-        for mfid in masters_written:
-            programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
         unit = "sub-fixture" if scope == 'sub' else "fixture"
+
+        _cfg = getattr(programmer, 'fade_cfg', None)
+        _fade_on = (not getattr(programmer, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
+                    and (_cfg.get('time') or 0) > 0)
+
+        if _fade_on:
+            import time as _t
+            _now = _t.monotonic()
+            _dur = float(_cfg['time'])
+            # snapshot pre-state for targets
+            _pre = {}
+            for f in targets:
+                fid = str(f.fixture_id)
+                if fid in programmer.data:
+                    _pre[fid] = dict(programmer.data[fid])
+            _new_fades = []
+            _new_pairs = set()
+            _snap_writes = []
+            _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
+                         'prism', 'frost', 'animation', 'control', 'color'}
+            for f in targets:
+                programmer._ensure_data(f)
+                fid = str(f.fixture_id)
+                for ch, val in self.channels.items():
+                    # learn target
+                    programmer.data[fid][ch] = val
+                    src_val = _pre.get(fid, {}).get(ch,
+                                0.0 if ch == 'dim' else 0)
+                    for _lf in programmer.live_fades:
+                        if _lf['fid'] == fid and _lf['channel'] == ch:
+                            _elapsed = _now - _lf['start']
+                            _dur_lf = _lf['duration']
+                            if _elapsed < _dur_lf:
+                                if _elapsed < 0.05:
+                                    src_val = _lf['dst']
+                                else:
+                                    _frac = _elapsed / _dur_lf
+                                    src_val = (_lf['src'] + (_lf['dst'] - _lf['src']) * _frac)
+                            else:
+                                src_val = _lf['dst']
+                            break
+                    if src_val != val:
+                        _fadeable = (isinstance(src_val, (int, float))
+                                     and isinstance(val, (int, float))
+                                     and not isinstance(src_val, bool)
+                                     and not isinstance(val, bool))
+                        if ch in _DISCRETE:
+                            _fadeable = False
+                        if _fadeable:
+                            _new_fades.append({
+                                'fid': fid, 'channel': ch,
+                                'src': src_val, 'dst': val,
+                                'start': _now, 'duration': _dur,
+                            })
+                            _new_pairs.add((fid, ch))
+                        else:
+                            _snap_writes.append((fid, ch, val))
+                    # fixture side-effect
+                    if ch == 'dim':
+                        f.set_dimmer(val)
+                    else:
+                        f.set_channel(ch, val)
+                applied += 1
+                masters_written.add(str(f.master_id) if scope == 'sub' else fid)
+            programmer.live_fades = [lf for lf in programmer.live_fades
+                                    if (lf['fid'], lf['channel']) not in _new_pairs]
+            programmer.live_fades.extend(_new_fades)
+            # revert data to src
+            for fid, vals in _pre.items():
+                programmer.data[fid] = dict(vals)
+            for f in targets:
+                fid = str(f.fixture_id)
+                if fid not in _pre:
+                    programmer.data.pop(fid, None)
+            for fid, ch, dv in _snap_writes:
+                programmer.data.setdefault(fid, {})[ch] = dv
+            for mfid in masters_written:
+                programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
+        else:
+            for f in targets:
+                programmer._ensure_data(f)
+                fid = str(f.fixture_id)
+                programmer.data[fid].update(self.channels)
+                for ch, val in self.channels.items():
+                    if ch == 'dim':
+                        f.set_dimmer(val)
+                    else:
+                        f.set_channel(ch, val)
+                applied += 1
+                masters_written.add(str(f.master_id) if scope == 'sub' else fid)
+            for mfid in masters_written:
+                programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
+
         print(f"Applied {self} to {applied} {unit}(s).")
         return applied
 
@@ -251,24 +332,90 @@ class AttributePreset:
     def apply(self, programmer):
         # Stamp the ref on the MASTER fixture id regardless of which fid
         # the actual channel values live under — mirrors ColorPreset.
-        # apply()'s masters_written pattern. The old "'.' not in fid"
+        # apply()'s masters_written pattern. The old \"'.' not in fid\"
         # check assumed attribute data was always keyed at master level,
         # which only holds for a multi-pixel fixture with a genuine
         # master-level attribute entry; every 1-pixel profile (every
         # built-in profile except the RGB pixel tubes — Generic_RGB,
         # Generic_RGBW, Generic_Moving, Generic_Moving_Wash) stores its
-        # attribute values under its own sub-fixture key ("7.1"), so the
+        # attribute values under its own sub-fixture key (\"7.1\"), so the
         # ref was silently never written for any of those — an
         # attribute preset applied fine but never linked back to the
         # cue that recorded it, so UPDATE <TYPE> n never found anything
         # to live-push to.
         ref_key = f"{self.attribute}_ref"
         masters_written = set()
-        for fid, vals in self.data.items():
-            programmer.data.setdefault(fid, {}).update(vals)
-            masters_written.add(str(fid).split('.')[0])
-        for mfid in masters_written:
-            programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
+
+        _cfg = getattr(programmer, 'fade_cfg', None)
+        _fade_on = (not getattr(programmer, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
+                    and (_cfg.get('time') or 0) > 0)
+
+        if _fade_on:
+            import time as _t
+            _now = _t.monotonic()
+            _dur = float(_cfg['time'])
+            _pre = {}
+            for fid, vals in self.data.items():
+                if fid in programmer.data:
+                    _pre[fid] = dict(programmer.data[fid])
+            _new_fades = []
+            _new_pairs = set()
+            _snap_writes = []
+            _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
+                         'prism', 'frost', 'animation', 'control', 'color'}
+            for fid, vals in self.data.items():
+                programmer.data.setdefault(fid, {}).update(vals)
+                for ch, val in vals.items():
+                    src_val = _pre.get(fid, {}).get(ch, 0)
+                    for _lf in programmer.live_fades:
+                        if _lf['fid'] == fid and _lf['channel'] == ch:
+                            _elapsed = _now - _lf['start']
+                            _dur_lf = _lf['duration']
+                            if _elapsed < _dur_lf:
+                                if _elapsed < 0.05:
+                                    src_val = _lf['dst']
+                                else:
+                                    _frac = _elapsed / _dur_lf
+                                    src_val = (_lf['src'] + (_lf['dst'] - _lf['src']) * _frac)
+                            else:
+                                src_val = _lf['dst']
+                            break
+                    if src_val != val:
+                        _fadeable = (isinstance(src_val, (int, float))
+                                     and isinstance(val, (int, float))
+                                     and not isinstance(src_val, bool)
+                                     and not isinstance(val, bool))
+                        if ch in _DISCRETE:
+                            _fadeable = False
+                        if _fadeable:
+                            _new_fades.append({
+                                'fid': fid, 'channel': ch,
+                                'src': src_val, 'dst': val,
+                                'start': _now, 'duration': _dur,
+                            })
+                            _new_pairs.add((fid, ch))
+                        else:
+                            _snap_writes.append((fid, ch, val))
+                masters_written.add(str(fid).split('.')[0])
+            programmer.live_fades = [lf for lf in programmer.live_fades
+                                    if (lf['fid'], lf['channel']) not in _new_pairs]
+            programmer.live_fades.extend(_new_fades)
+            for fid, vals in _pre.items():
+                programmer.data[fid] = dict(vals)
+            for fid in self.data:
+                if fid not in _pre:
+                    programmer.data.pop(fid, None)
+            for fid, ch, dv in _snap_writes:
+                programmer.data.setdefault(fid, {})[ch] = dv
+            for mfid in masters_written:
+                programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
+        else:
+            for fid, vals in self.data.items():
+                programmer.data.setdefault(fid, {}).update(vals)
+                masters_written.add(str(fid).split('.')[0])
+            for mfid in masters_written:
+                programmer.data.setdefault(mfid, {})[ref_key] = self.preset_id
 
     def to_dict(self):
         return {

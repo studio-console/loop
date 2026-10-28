@@ -94,6 +94,7 @@ from studio_console.gui.left_column import GUIEngineLeftColumn
 from studio_console.gui.right_column import GUIEngineRightColumn
 from studio_console.gui.stage import GUIEngineStage
 from studio_console.gui.pools_panel import GUIEnginePoolsPanel
+from studio_console.gui.encoder_bar import GUIEngineEncoderBar
 from studio_console.gui.hardware_popups import GUIEngineHardwarePopups
 from studio_console.gui.misc_popups import GUIEngineMiscPopups
 from studio_console.gui.fx_editor import GUIEngineFXEditor
@@ -109,7 +110,7 @@ from studio_console.gui.viz3d import GUIEngineViz3D
 
 class GUIEngine(GUIEngineCore, GUIEngineHeader, GUIEngineLeftColumn,
                  GUIEngineRightColumn, GUIEngineStage, GUIEnginePoolsPanel,
-                 GUIEngineHardwarePopups, GUIEngineMiscPopups, GUIEngineFXEditor,
+                 GUIEngineEncoderBar, GUIEngineHardwarePopups, GUIEngineMiscPopups, GUIEngineFXEditor,
                  GUIEngineAIPopups, GUIEngineColorPicker, GUIEngineSpeedMaster,
                  GUIEngineFaderPage, GUIEngineAudioMonitors, GUIEngineAudioRouting,
                  GUIEngineAudioLevels, GUIEngineViz3D):
@@ -125,7 +126,7 @@ from studio_console.state import (
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
     _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
-    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
+    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _prog_fade, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
     audio_engine, audio_mapper, audio_midi, key_color, strobe_engine,
     audio_router,

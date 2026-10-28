@@ -641,6 +641,8 @@ class programmer:
         self._undo_stack      = []  # list of (data_snapshot, selection_ids) dicts
         self._UNDO_MAX        = 20
         self.live_fades       = []  # [{fid,channel,src,dst,start,duration}, ...] for AT…IN fades
+        self.fade_cfg         = None  # shared dict: {'on': bool, 'time': float} (PROG FADE)
+        self._fade_learning   = False  # True while execute() is learning fade targets (set_* snap only)
 
     def _push_undo(self):
         """snapshot current programmer state onto the undo stack."""
@@ -649,6 +651,7 @@ class programmer:
             'data':      copy.deepcopy(self.data),
             'disabled':  copy.deepcopy(self.disabled),
             'selection': [f.fixture_id for f in self.selection],
+            'live_fades': copy.deepcopy(self.live_fades),
         })
         if len(self._undo_stack) > self._UNDO_MAX:
             self._undo_stack.pop(0)
@@ -701,6 +704,14 @@ class programmer:
                 restored.append(m)
                 restored += m.all_subs()
         self.selection = restored
+        # Restore live fades if the snapshot captured them; otherwise (old
+        # snapshots) fall back to dropping any in-flight out-fades so a
+        # restored programmer state isn't fighting a stale fade.
+        if 'live_fades' in snap:
+            self.live_fades = copy.deepcopy(snap['live_fades'])
+        elif getattr(self, 'live_fades', None):
+            self.live_fades = [f for f in self.live_fades
+                               if not f.get('remove')]
         return snap.get('description', 'programmer edit')
 
     def undo(self):
@@ -781,6 +792,7 @@ class programmer:
                     fixture.virtual_dimmer = 0.0
         self.selection = []
         self.data.clear()
+        self.live_fades.clear()
         self.disabled  = {}
         self._clear_stage = 0
         print("programmer cleared.")
@@ -799,6 +811,7 @@ class programmer:
         self._last_clear_time = now
 
         if self._clear_stage == 0:
+            self._push_undo()
             self.selection = []
             # Also release any fx_kill overrides on the first tap —
             # fx_kill is an instantaneous state, not a recorded value.
@@ -807,13 +820,70 @@ class programmer:
             self._clear_stage = 1
             return "selection cleared  (clear again to wipe programmer)"
         elif self._clear_stage == 1:
+            self._push_undo()
             for fid in list(self.data.keys()):
                 fixture = self._get_fixture_by_fid(fid)
                 if fixture:
                     fixture.clear_dirty()
                     if hasattr(fixture, 'virtual_dimmer'):
                         fixture.virtual_dimmer = 0.0
-            self.data.clear()
+            _cfg = getattr(self, 'fade_cfg', None)
+            _fade_on = bool(_cfg and _cfg.get('on')
+                           and (_cfg.get('time') or 0) > 0)
+            if _fade_on:
+                import time as _t
+                _dur = float(_cfg['time'])
+                _now = _t.monotonic()
+                # Cancel any pending fades, then ramp every current value to 0
+                self.live_fades.clear()
+                _cue_merged = {}
+                try:
+                    from __main__ import fader_pool
+                    if fader_pool is not None:
+                        for _fdr in getattr(fader_pool, 'faders', {}).values():
+                            _stk = getattr(_fdr, 'stack', None)
+                            if _stk is None or getattr(_stk, 'current', None) is None:
+                                continue
+                            _cue = _stk.cues.get(_stk.current)
+                            if _cue is None or not getattr(_cue, 'data', None):
+                                continue
+                            for _fid, _vals in (_cue.data or {}).items():
+                                if _fid not in _cue_merged:
+                                    _cue_merged[_fid] = {}
+                                _cue_merged[_fid].update(_vals)
+                except Exception:
+                    _cue_merged = {}
+                # Remove dim and metadata immediately (no fade) so the running
+                # cue's dim shows through; only colour/attribute channels fade.
+                for fid in list(self.data.keys()):
+                    d = self.data.get(fid)
+                    if isinstance(d, dict):
+                        d.pop('dim', None)
+                        for k in [k for k in list(d.keys())
+                                  if k.endswith('_ref') or k == 'group_ref']:
+                            d.pop(k, None)
+                        if not d:
+                            self.data.pop(fid, None)
+                _remove = []
+                for fid in list(self.data.keys()):
+                    for ch, val in list(self.data[fid].items()):
+                        if isinstance(val, bool) or not isinstance(val, (int, float)):
+                            continue
+                        _dst = 0.0 if ch == 'dim' else 0
+                        try:
+                            _cv = _cue_merged.get(fid, {}).get(ch)
+                        except Exception:
+                            _cv = None
+                        if _cv is not None:
+                            try:
+                                _dst = type(val)(_cv)
+                            except Exception:
+                                pass
+                        _remove.append({'fid': fid, 'channel': ch,
+                                        'src': val, 'dst': _dst,
+                                        'start': _now, 'duration': _dur,
+                                        'remove': True})
+                self.live_fades.extend(_remove)
             self.disabled = {}
             self._clear_stage = 2
             return "programmer cleared  (clear again to clear programmer output)"
@@ -845,12 +915,66 @@ class programmer:
     def set_dimmer(self, level):
         self._push_undo()
         value = max(0.0, min(1.0, level / 100))
+        _cfg = getattr(self, 'fade_cfg', None)
+        _fade_on = (not getattr(self, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
+                    and (_cfg.get('time') or 0) > 0)
+        _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
+                     'prism', 'frost', 'animation', 'control', 'color'}
         for f in self.selection:
             if isinstance(f, MasterFixture):
                 self._ensure_data(f)
-                self.data[str(f.fixture_id)]['dim'] = value
-                # Re-enable if it was disabled
                 fid = str(f.fixture_id)
+                if _fade_on:
+                    import time as _t
+                    _now = _t.monotonic()
+                    _dur = float(_cfg['time'])
+                    _pre = dict(self.data.get(fid, {}))
+                    self.data[fid]['dim'] = value
+                    src_val = _pre.get('dim', 0.0)
+                    for _lf in self.live_fades:
+                        if _lf['fid'] == fid and _lf['channel'] == 'dim':
+                            _elapsed = _now - _lf['start']
+                            _dur_lf = _lf['duration']
+                            if _elapsed < _dur_lf:
+                                if _elapsed < 0.05:
+                                    src_val = _lf['dst']
+                                else:
+                                    _frac = _elapsed / _dur_lf
+                                    src_val = (_lf['src'] + (_lf['dst'] - _lf['src']) * _frac)
+                            else:
+                                src_val = _lf['dst']
+                            break
+                    _new_fades = []
+                    _new_pairs = set()
+                    _snap_writes = []
+                    if src_val != value:
+                        _fadeable = (isinstance(src_val, (int, float))
+                                     and isinstance(value, (int, float))
+                                     and not isinstance(src_val, bool)
+                                     and not isinstance(value, bool))
+                        if 'dim' in _DISCRETE:
+                            _fadeable = False
+                        if _fadeable:
+                            _new_fades.append({
+                                'fid': fid, 'channel': 'dim',
+                                'src': src_val, 'dst': value,
+                                'start': _now, 'duration': _dur,
+                            })
+                            _new_pairs.add((fid, 'dim'))
+                        else:
+                            _snap_writes.append((fid, 'dim', value))
+                    self.live_fades = [lf for lf in self.live_fades
+                                      if (lf['fid'], lf['channel']) not in _new_pairs]
+                    self.live_fades.extend(_new_fades)
+                    if 'dim' in _pre:
+                        self.data[fid]['dim'] = _pre['dim']
+                    else:
+                        self.data[fid].pop('dim', None)
+                    for fid2, ch, dv in _snap_writes:
+                        self.data.setdefault(fid2, {})[ch] = dv
+                else:
+                    self.data[fid]['dim'] = value
                 if fid in self.disabled:
                     self.disabled[fid].pop('dim', None)
                 f.set_dimmer(value)
@@ -858,17 +982,71 @@ class programmer:
 
     def set_rgb(self, r, g, b):
         self._push_undo()
+        _cfg = getattr(self, 'fade_cfg', None)
+        _fade_on = (not getattr(self, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
+                    and (_cfg.get('time') or 0) > 0)
+        _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
+                     'prism', 'frost', 'animation', 'control', 'color'}
+        _channels = {'red': r, 'green': g, 'blue': b}
         for f in self._get_sub_selection():
             self._ensure_data(f)
             fid = str(f.fixture_id)
-            self.data[fid]['red']   = r
-            self.data[fid]['green'] = g
-            self.data[fid]['blue']  = b
-            # Re-enable if they were disabled
+            if _fade_on:
+                import time as _t
+                _now = _t.monotonic()
+                _dur = float(_cfg['time'])
+                _pre = dict(self.data.get(fid, {}))
+                self.data[fid].update(_channels)
+                _new_fades = []
+                _new_pairs = set()
+                _snap_writes = []
+                for ch, val in _channels.items():
+                    src_val = _pre.get(ch, 0)
+                    for _lf in self.live_fades:
+                        if _lf['fid'] == fid and _lf['channel'] == ch:
+                            _elapsed = _now - _lf['start']
+                            _dur_lf = _lf['duration']
+                            if _elapsed < _dur_lf:
+                                if _elapsed < 0.05:
+                                    src_val = _lf['dst']
+                                else:
+                                    _frac = _elapsed / _dur_lf
+                                    src_val = (_lf['src'] + (_lf['dst'] - _lf['src']) * _frac)
+                            else:
+                                src_val = _lf['dst']
+                            break
+                    if src_val != val:
+                        _fadeable = (isinstance(src_val, (int, float))
+                                     and isinstance(val, (int, float))
+                                     and not isinstance(src_val, bool)
+                                     and not isinstance(val, bool))
+                        if ch in _DISCRETE:
+                            _fadeable = False
+                        if _fadeable:
+                            _new_fades.append({
+                                'fid': fid, 'channel': ch,
+                                'src': src_val, 'dst': val,
+                                'start': _now, 'duration': _dur,
+                            })
+                            _new_pairs.add((fid, ch))
+                        else:
+                            _snap_writes.append((fid, ch, val))
+                self.live_fades = [lf for lf in self.live_fades
+                                  if (lf['fid'], lf['channel']) not in _new_pairs]
+                self.live_fades.extend(_new_fades)
+                for ch in _channels:
+                    if ch in _pre:
+                        self.data[fid][ch] = _pre[ch]
+                    else:
+                        self.data[fid].pop(ch, None)
+                for fid2, ch, dv in _snap_writes:
+                    self.data.setdefault(fid2, {})[ch] = dv
+            else:
+                self.data[fid].update(_channels)
             if fid in self.disabled:
-                self.disabled[fid].pop('red',   None)
-                self.disabled[fid].pop('green', None)
-                self.disabled[fid].pop('blue',  None)
+                for ch in _channels:
+                    self.disabled[fid].pop(ch, None)
             f.set_rgb(r, g, b)
         self._print_programmer()
 
@@ -877,10 +1055,65 @@ class programmer:
             self.set_dimmer(value)
             return
         self._push_undo()
+        _cfg = getattr(self, 'fade_cfg', None)
+        _fade_on = (not getattr(self, '_fade_learning', False)
+                    and _cfg and _cfg.get('on')
+                    and (_cfg.get('time') or 0) > 0)
+        _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot', 'macro',
+                     'prism', 'frost', 'animation', 'control', 'color'}
         for f in self._get_sub_selection():
             self._ensure_data(f)
             fid = str(f.fixture_id)
-            self.data[fid][channel] = value
+            if _fade_on:
+                import time as _t
+                _now = _t.monotonic()
+                _dur = float(_cfg['time'])
+                _pre = dict(self.data.get(fid, {}))
+                self.data[fid][channel] = value
+                src_val = _pre.get(channel, 0)
+                for _lf in self.live_fades:
+                    if _lf['fid'] == fid and _lf['channel'] == channel:
+                        _elapsed = _now - _lf['start']
+                        _dur_lf = _lf['duration']
+                        if _elapsed < _dur_lf:
+                            if _elapsed < 0.05:
+                                src_val = _lf['dst']
+                            else:
+                                _frac = _elapsed / _dur_lf
+                                src_val = (_lf['src'] + (_lf['dst'] - _lf['src']) * _frac)
+                        else:
+                            src_val = _lf['dst']
+                        break
+                _new_fades = []
+                _new_pairs = set()
+                _snap_writes = []
+                if src_val != value:
+                    _fadeable = (isinstance(src_val, (int, float))
+                                 and isinstance(value, (int, float))
+                                 and not isinstance(src_val, bool)
+                                 and not isinstance(value, bool))
+                    if channel in _DISCRETE:
+                        _fadeable = False
+                    if _fadeable:
+                        _new_fades.append({
+                            'fid': fid, 'channel': channel,
+                            'src': src_val, 'dst': value,
+                            'start': _now, 'duration': _dur,
+                        })
+                        _new_pairs.add((fid, channel))
+                    else:
+                        _snap_writes.append((fid, channel, value))
+                self.live_fades = [lf for lf in self.live_fades
+                                  if (lf['fid'], lf['channel']) not in _new_pairs]
+                self.live_fades.extend(_new_fades)
+                if channel in _pre:
+                    self.data[fid][channel] = _pre[channel]
+                else:
+                    self.data[fid].pop(channel, None)
+                for fid2, ch, dv in _snap_writes:
+                    self.data.setdefault(fid2, {})[ch] = dv
+            else:
+                self.data[fid][channel] = value
             if fid in self.disabled:
                 self.disabled[fid].pop(channel, None)
             f.set_channel(channel, value)
@@ -1043,8 +1276,22 @@ class programmer:
                 except ValueError:
                     pass
 
-            if _fade_dur is not None and _fade_dur > 0 and self.selection:
+            # No explicit IN <sec> — fall back to global programmer fade
+            # (PROG FADE) when enabled. One time for both directions;
+            # cue timing is never involved.
+            _global_fade = False
+            _has_selection_or_data = self.selection or getattr(self, 'data', {})
+            if _fade_dur is None and _has_selection_or_data:
+                _cfg = getattr(self, 'fade_cfg', None)
+                if _cfg and _cfg.get('on') and (_cfg.get('time') or 0) > 0:
+                    _fade_dur = float(_cfg['time'])
+                    _global_fade = True
+
+            if _fade_dur is not None and _fade_dur > 0 and _has_selection_or_data:
                 import time as _t
+                _snap_writes = []
+                _new_fades = []
+                _new_pairs = set()
                 # snapshot pre-action programmer state for the selection
                 _pre = {}
                 for f in self.selection:
@@ -1057,30 +1304,106 @@ class programmer:
                             if sfid in self.data:
                                 _pre[sfid] = dict(self.data[sfid])
                 # Apply action to learn the target values
+                self._fade_learning = True
                 self._parse_action(_act)
+                self._fade_learning = False
                 # Read post-action state for the selection
                 _now = _t.monotonic()
                 for f in self.selection:
                     fid = str(f.fixture_id)
                     for ch, dst_val in list(self.data.get(fid, {}).items()):
-                        src_val = _pre.get(fid, {}).get(ch, dst_val)
+                        if ch.endswith('_ref') or ch == 'group_ref':
+                            continue
+                        src_val = _pre.get(fid, {}).get(ch, 0.0 if ch == 'dim' else 0)
+                        # If an active fade exists for this fid/channel, derive the
+                        # fade source from it so a new command can fade out from
+                        # where the previous fade is headed. If the previous fade
+                        # was just created (no tick elapsed yet), use its dst as
+                        # the source since the value hasn't had time to move.
+                        for _lf in self.live_fades:
+                            if _lf['fid'] == fid and _lf['channel'] == ch:
+                                _elapsed = _now - _lf['start']
+                                _dur = _lf['duration']
+                                if _elapsed < _dur:
+                                    if _elapsed < 0.05:
+                                        # Fade just started — use dst as source
+                                        src_val = _lf['dst']
+                                    else:
+                                        _frac = _elapsed / _dur
+                                        src_val = _lf['src'] + (_lf['dst'] - _lf['src']) * _frac
+                                else:
+                                    # Fade already completed — use its dst
+                                    src_val = _lf['dst']
+                                break
                         if src_val != dst_val:
-                            self.live_fades.append({
-                                'fid': fid, 'channel': ch,
-                                'src': src_val, 'dst': dst_val,
-                                'start': _now, 'duration': _fade_dur,
-                            })
+                            _fadeable = (isinstance(src_val, (int, float))
+                                         and isinstance(dst_val, (int, float))
+                                         and not isinstance(src_val, bool)
+                                         and not isinstance(dst_val, bool))
+                            _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot',
+                                         'macro', 'prism', 'frost', 'animation',
+                                         'control', 'color'}
+                            if _global_fade and ch in _DISCRETE:
+                                _fadeable = False
+                            if _fadeable:
+                                _new_fades.append({
+                                    'fid': fid, 'channel': ch,
+                                    'src': src_val, 'dst': dst_val,
+                                    'start': _now, 'duration': _fade_dur,
+                                })
+                                _new_pairs.add((fid, ch))
+                            else:
+                                _snap_writes.append((fid, ch, dst_val))
                     if isinstance(f, MasterFixture):
                         for sub in f.all_subs():
                             sfid = str(sub.fixture_id)
                             for ch, dst_val in list(self.data.get(sfid, {}).items()):
-                                src_val = _pre.get(sfid, {}).get(ch, dst_val)
+                                if ch.endswith('_ref') or ch == 'group_ref':
+                                    continue
+                                src_val = _pre.get(sfid, {}).get(ch, 0.0 if ch == 'dim' else 0)
+                                # If an active fade exists for this fid/channel, derive the
+                                # fade source from it so a new command can fade out from
+                                # where the previous fade is headed. If the previous fade
+                                # was just created (no tick elapsed yet), use its dst as
+                                # the source since the value hasn't had time to move.
+                                for _lf in self.live_fades:
+                                    if _lf['fid'] == sfid and _lf['channel'] == ch:
+                                        _elapsed = _now - _lf['start']
+                                        _dur = _lf['duration']
+                                        if _elapsed < _dur:
+                                            if _elapsed < 0.05:
+                                                # Fade just started — use dst as source
+                                                src_val = _lf['dst']
+                                            else:
+                                                _frac = _elapsed / _dur
+                                                src_val = _lf['src'] + (_lf['dst'] - _lf['src']) * _frac
+                                        else:
+                                            # Fade already completed — use its dst
+                                            src_val = _lf['dst']
+                                        break
                                 if src_val != dst_val:
-                                    self.live_fades.append({
-                                        'fid': sfid, 'channel': ch,
-                                        'src': src_val, 'dst': dst_val,
-                                        'start': _now, 'duration': _fade_dur,
-                                    })
+                                    _fadeable = (isinstance(src_val, (int, float))
+                                                 and isinstance(dst_val, (int, float))
+                                                 and not isinstance(src_val, bool)
+                                                 and not isinstance(dst_val, bool))
+                                    _DISCRETE = {'gobo', 'gobo_rot', 'gobo2', 'gobo2_rot',
+                                                 'macro', 'prism', 'frost', 'animation',
+                                                 'control', 'color'}
+                                    if _global_fade and ch in _DISCRETE:
+                                        _fadeable = False
+                                    if _fadeable:
+                                        _new_fades.append({
+                                            'fid': sfid, 'channel': ch,
+                                            'src': src_val, 'dst': dst_val,
+                                            'start': _now, 'duration': _fade_dur,
+                                        })
+                                        _new_pairs.add((sfid, ch))
+                                    else:
+                                        _snap_writes.append((sfid, ch, dst_val))
+                # Cancel pending fades for channels we're re-asserting
+                self.live_fades = [f for f in self.live_fades
+                                   if (f['fid'], f['channel']) not in _new_pairs]
+                self.live_fades.extend(_new_fades)
                 # Revert programmer to pre-action state; fades will fill in the values
                 for fid, vals in _pre.items():
                     self.data[fid] = dict(vals)
@@ -1094,6 +1417,9 @@ class programmer:
                             sfid = str(sub.fixture_id)
                             if sfid not in _pre:
                                 self.data.pop(sfid, None)
+                # Snap (non-fadeable) channels keep their target value immediately
+                for fid, ch, dv in _snap_writes:
+                    self.data.setdefault(fid, {})[ch] = dv
             else:
                 self._parse_action(_act if _fade_dur is not None else action_tokens)
 

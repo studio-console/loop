@@ -306,6 +306,9 @@ COMMAND_REFERENCE = [
         ("stk 1 CHASE SPEED 2",      "link stk 1 chase tempo to speed Master 2"),
         ("PROG TIME 2",             "programmer time: all cues fade at 2s"),
         ("PROG TIME OFF",           "disable programmer time override"),
+        ("PROG FADE 2",            "programmer fade: plain AT edits fade in/out over 2s"),
+        ("PROG FADE OFF",          "disable programmer fade (AT edits snap)"),
+        ("PROG FADE CLEAR",        "cancel all in-flight programmer fades"),
     ]),
     ("faders & pages", [
         ("FADER 1 GO / BACK / STOP","direct fader control"),

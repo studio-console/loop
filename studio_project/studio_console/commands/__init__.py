@@ -66,6 +66,7 @@ from .fader import (
 from .programmer import (
     cmd_014_prog_time,
     cmd_015_prog_fade_clear,
+    cmd_015b_prog_fade,
     cmd_043_snapshot,
     cmd_044_blind,
     cmd_045_live,
@@ -176,6 +177,7 @@ _DISPATCH = [
     cmd_013_page,
     cmd_014_prog_time,
     cmd_015_prog_fade_clear,
+    cmd_015b_prog_fade,
     cmd_016_fader_select,
     cmd_017_go_fade,
     cmd_018_go,

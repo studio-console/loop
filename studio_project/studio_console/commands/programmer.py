@@ -27,7 +27,7 @@ from studio_console.state import (
     _active_stack, _apply_fixture_defaults, _apply_timing_edit, _attr_pools, _blackout_saved_level, _cs_loaded,
     _fader_dim, _fixture_defaults, _fx_params, _code_active, _code_recording, _make_set_speed_master,
     _midi_doc, _name_after, _on_cue_fire, _osc_cmd, _osc_fader, _osc_key,
-    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _start_magenta_sine, _stop_fx,
+    _preset_live_push, _prog_fx_ids, _prog_snapshots, _prog_time, _prog_fade, _start_magenta_sine, _stop_fx,
     _stop_prog_fx_preview, _tap_times, active_fader, active_fx, ai, all_subs,
     audio_engine, audio_mapper, beam_pool, color_pool, control_pool, cs1,
     cue_back, cue_go, cue_pool, cue_reload, dim_pool, export_presets,
@@ -106,6 +106,35 @@ def cmd_015_prog_fade_clear(t0, tokens, raw):
         n = len(prog.live_fades)
         prog.live_fades.clear()
         return f"prog fades cleared ({n} active)"
+
+
+def cmd_015b_prog_fade(t0, tokens, raw):
+    """PROGRAMMER FADE — one global on/off + time for all plain AT edits.
+
+    PROG FADE <seconds>  → on, plain AT edits fade over <seconds>
+    PROG FADE OFF        → off, plain AT edits snap instantly again
+    PROG FADE            → report current setting
+    Explicit per-command IN <sec> always wins; cue timing untouched.
+    """
+    if t0 == 'PROG' and len(tokens) >= 2 and tokens[1] == 'FADE':
+        if len(tokens) >= 3 and tokens[2] == 'CLEAR':
+            return None  # handled by cmd_015_prog_fade_clear
+        if len(tokens) == 2:
+            state = "ON" if _prog_fade['on'] else "OFF"
+            return f"programmer fade {state} · {_prog_fade['time']:.1f}s"
+        if len(tokens) == 3 and tokens[2] == 'OFF':
+            _prog_fade['on'] = False
+            return "programmer fade OFF — AT edits snap instantly"
+        try:
+            t = float(tokens[2])
+        except ValueError:
+            return "PROG FADE: usage  PROG FADE <seconds> | OFF | CLEAR"
+        if t <= 0:
+            return "PROG FADE: time must be > 0 (or OFF)"
+        _prog_fade['time'] = t
+        _prog_fade['on'] = True
+        return f"programmer fade ON · {t:.1f}s — plain AT edits fade in and out"
+    return None
 
 
 def cmd_043_snapshot(t0, tokens, raw):
@@ -371,6 +400,7 @@ def cmd_111_clear_len2(t0, tokens, raw):
             _is_dim = _pclear == 'DIM'
             _sel_fids = {str(f.fixture_id) for f in prog.selection} if prog.selection else None
             _targets  = _sel_fids or set(prog.data.keys())
+            prog._push_undo()
             _n_written = 0
             for fid in _targets:
                 # Colour channels live in sub-fixture keys; dim in master keys

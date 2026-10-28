@@ -36,7 +36,7 @@ class GUIEngineCore:
         "ai_history_window", "attr_window", "ai_prompts_window", "ai_bar_window",
         "color_picker_window", "speed_master_window", "fader_page_window",
         "audio_window", "fx_params_window", "viz3d_window", "code_editor_window",
-        "audio_routing_window", "cue_timing_window",
+        "audio_routing_window", "cue_timing_window", "encoder_bar_window",
     ]
     # Was os.path.dirname(os.path.abspath(__file__)) — that resolved
     # relative to studio_project.py itself when this class lived there
@@ -287,93 +287,32 @@ class GUIEngineCore:
     _PERSISTED_CHECKBOXES = [("cpick_live", "cpick_live"),
                               ("pool_pages_link_main", "pool_pages_linked")]
     def _popup_is_collapsed(self, tag):
-        """Read a popup's minimized state from the config mirror.
+        """Live minimized-state check: does the window have a content region?
 
-        DPG 2.3.1 has NO live getter for collapse state:
-        - is_item_collapsed() doesn't exist;
-        - get_item_rect_size() stays at the expanded size while collapsed
-          (measured: 773x726 on a collapsed window);
-        - the config dict's 'collapsed' only reflects configure_item()
-          writes — ImGui's title-bar arrow toggles nothing back into
-          Python, so a raw arrow-minimized window reads as expanded.
+        A minimized window renders no content, so the state registry omits
+        rect_min entirely (KeyError) — present = expanded, absent =
+        minimized. Verified empirically against real DPG: an expanded
+        window answers its rect, a collapsed one raises KeyError on the
+        same call. Everything else claimed "live" was measured dead:
+        is_item_collapsed() doesn't exist, get_item_rect_size() stays at
+        the expanded numbers while collapsed, and the config dict's
+        'collapsed' only tracks configure_item() writes.
 
-        The mirror IS reliable for configure_item writes, and
-        _install_popup_collapse_tracker() funnels every arrow click
-        through configure_item — which makes this config read correct for
-        the user-driven minimize path too.
+        Two guards: unknown tags answer False (never "minimized" by
+        accident), and the poll's settle window (see _tick_popup_
+        persistence) covers never-yet-rendered windows, whose content
+        region doesn't exist yet either.
         """
         try:
-            return bool(dpg.get_item_configuration(tag).get("collapsed"))
+            if not dpg.does_item_exist(tag):
+                return False
+            try:
+                dpg.get_item_rect_min(tag)
+            except KeyError:
+                return True
+            return False
         except Exception:
             return False
-
-    def _on_popup_collapse(self, sender, app_data, user_data):
-        """Per-window collapse/expand callback (item toggled-open handler).
-
-        DPG fires this on user_data's window whenever its collapse state
-        toggles — arrow click, label double-click, anything. The firing
-        itself IS the live signal this DPG version otherwise withholds
-        (no is_item_collapsed; rect stale; config mirror only tracks
-        configure_item writes).
-
-        app_data carries the new OPEN state (the handler is named
-        "toggled open": True = expanded). The mirror is written to match
-        so _popup_is_collapsed() and every save/poll read sees the truth,
-        and the state is queued in _popup_collapse_pending so the poll
-        persists it in the same tick. Never blind-flip the mirror instead:
-        if DPG already synced it before firing, a blind flip would fight
-        back against the user's own click — visibly. If app_data ever
-        arrives as a non-bool (old binding quirk), fall back to a
-        mirror flip.
-        """
-        try:
-            if isinstance(app_data, bool):
-                dpg.configure_item(user_data, collapsed=(not app_data))
-            else:
-                cur = self._popup_is_collapsed(user_data)
-                dpg.configure_item(user_data, collapsed=(not cur))
-                app_data = "non-bool-fallback"
-        except Exception:
-            pass
-        if os.environ.get("STUDIO_POPUP_DEBUG"):
-            print("[popupdbg] collapse fired:", user_data,
-                  "app_data:", app_data,
-                  "mirror now:", self._popup_is_collapsed(user_data),
-                  flush=True)
-        try:
-            pending = getattr(self, "_popup_collapse_pending", None)
-            if pending is None:
-                pending = self._popup_collapse_pending = {}
-            pending[user_data] = self._popup_is_collapsed(user_data)
-        except Exception:
-            pass
-
-    def _install_popup_collapse_tracker(self):
-        """Bind a toggled-open handler to every tracked popup window.
-
-        DPG reports toggled_open_handler_applicable=True on windows
-        (verified on monitors_window's own item_info). One shared
-        _on_popup_collapse per window, with the window tag as user_data.
-        Best-effort per window: a missing tag (headless fake dpg, an odd
-        build) is skipped without breaking the rest. The ids are kept in
-        _collapse_handler_ids so a self-test can prove the tracker is
-        actually registered — silent registration failure is how the
-        dead dpg.after bug shipped unnoticed before.
-        """
-        self._popup_collapse_pending = {}
-        self._collapse_handler_ids = {}
-        for tag in self._POPUP_TAGS:
-            try:
-                with dpg.item_handler_registry(
-                        tag=f"popup_collapse_reg_{tag}"):
-                    dpg.add_item_toggled_open_handler(
-                        callback=self._on_popup_collapse,
-                        user_data=tag)
-                dpg.bind_item_handler_registry(tag,
-                    f"popup_collapse_reg_{tag}")
-                self._collapse_handler_ids[tag] = True
-            except Exception:
-                continue
 
     def _save_popup_layout(self):
         layout = {}
@@ -480,28 +419,24 @@ class GUIEngineCore:
         """
         if not getattr(self, "_popup_poll_armed", False):
             return
-        # Apply pending collapse-arrow decisions first (recorded by
-        # _on_popup_arrow_click): configure_item syncs the config mirror
-        # — the only readable minimize state — then invalidate the
-        # signature so this same tick persists the transition.
-        pending = getattr(self, "_popup_collapse_pending", None)
-        if pending:
-            for _tag, _want in list(pending.items()):
-                try:
-                    dpg.configure_item(_tag, collapsed=_want)
-                except Exception:
-                    pass
-            pending.clear()
-            self._popup_show_sig = None
+        # A freshly-restored window has no content region until its first
+        # render — a couple of ticks, well under a second. Polling before
+        # that would read every restored-expanded window as collapsed and
+        # immediately save the lie. So no signatures are adopted (and no
+        # writes happen) until 2s after the restore armed the poll.
+        _now = time.monotonic()
+        if getattr(self, "_popup_first_poll", None) is None:
+            self._popup_first_poll = _now
+        if _now - self._popup_first_poll < 2.0:
+            return
         sig = []
         for tag in self._POPUP_TAGS:
             try:
                 # (shown, collapsed): a minimized window is still "shown",
                 # so collapse changes must be part of the signature too or
                 # minimizing via the title-bar arrow never triggers a save.
-                # Collapsed is read live off the rendered rect — the config
-                # dict mirror doesn't see arrow clicks (see
-                # _popup_is_collapsed).
+                # Collapsed is a live check on the window's content region
+                # (see _popup_is_collapsed).
                 sig.append((bool(dpg.is_item_shown(tag)),
                             self._popup_is_collapsed(tag)))
             except Exception:
@@ -571,6 +506,7 @@ class GUIEngineCore:
         self._build_changelog_popup()
         self._build_pages_popup()
         self._build_attr_popup()
+        self._build_encoder_bar_popup()
         self._build_code_editor_popup()
         self._build_fx_params_popup()
         self._build_monitors_popup()
@@ -724,12 +660,6 @@ class GUIEngineCore:
         # against that; this flag is checked first instead, with no dpg
         # call involved.
         self._gui_built = True
-        # AFTER all popups exist: toggled-open handlers bind to real item
-        # ids, so installing any earlier (e.g. right after create_context)
-        # silently binds zero of them — every bind misses a not-yet-built
-        # window and the whole collapse tracker is dead on arrival. The
-        # self-test's "tracker regs" DIAG line proves the count each run.
-        self._install_popup_collapse_tracker()
     def _on_cmd_execute(self):
         raw = dpg.get_value("cmd_input").strip()
         if not raw:
@@ -761,7 +691,7 @@ class GUIEngineCore:
                 self._ai.push_cmd_history(raw)
             except Exception:
                 pass
-    def _on_delete_key(self):
+    def _on_delete_key(self, sender=None, app_data=None, user_data=None):
         # Only fire CLEAR when cmd_input is empty (so Delete still edits text normally)
         if dpg.get_value("cmd_input"):
             return
@@ -1026,8 +956,15 @@ class GUIEngineCore:
                 _src     = _fade['src']
                 _dst     = _fade['dst']
                 if _elapsed >= _dur:
-                    # Fade complete — write final value
-                    self._prog.data.setdefault(_fid, {})[_ch] = _dst
+                    if _fade.get('remove'):
+                        _d = self._prog.data.get(_fid)
+                        if _d is not None:
+                            _d.pop(_ch, None)
+                            if not _d:
+                                self._prog.data.pop(_fid, None)
+                    else:
+                        # Fade complete — write final value
+                        self._prog.data.setdefault(_fid, {})[_ch] = _dst
                 else:
                     # Interpolate
                     _frac = _elapsed / _dur
@@ -1184,6 +1121,21 @@ class GUIEngineCore:
                 dpg.configure_item("sb_pt_lbl", label="○ pan·tilt")
                 if self._dim_btn_theme:
                     dpg.bind_item_theme("sb_pt_lbl", self._dim_btn_theme)
+        except Exception:
+            pass
+
+        try:
+            from __main__ import _prog_fade
+            pf = _prog_fade
+            if pf.get('on'):
+                pf_label = f"● fade {pf['time']:.1f}s"
+                dpg.configure_item("sb_pf_lbl", label=pf_label)
+                if self._go_theme:
+                    dpg.bind_item_theme("sb_pf_lbl", self._go_theme)
+            else:
+                dpg.configure_item("sb_pf_lbl", label="○ fade")
+                if self._dim_btn_theme:
+                    dpg.bind_item_theme("sb_pf_lbl", self._dim_btn_theme)
         except Exception:
             pass
 
@@ -2082,15 +2034,8 @@ class GUIEngineCore:
                     dpg.show_item("monitors_window")
                     dpg.configure_item("monitors_window", collapsed=True)
                     time.sleep(1.5)
-                    print("[selftest] DIAG shown:",
-                          dpg.is_item_shown("monitors_window"),
-                          "config collapsed:",
-                          dpg.get_item_configuration("monitors_window").get(
-                              "collapsed"), flush=True)
-                    print("[selftest] DIAG tracker regs:",
-                          len(getattr(self, "_collapse_handler_ids", {})),
-                          "pending now:", getattr(
-                              self, "_popup_collapse_pending", "NONE"),
+                    print("[selftest] DIAG live read:",
+                          self._popup_is_collapsed("monitors_window"),
                           flush=True)
                     try:
                         d = _json.load(open(self._POPUP_LAYOUT_FILE))
@@ -2099,32 +2044,49 @@ class GUIEngineCore:
                         col = "ERR:%s" % e
                     print("[selftest] file collapsed after MINIMIZE:", col,
                           flush=True)
-                    # handler-leg: invoke the REAL toggled-open callback
-                    # with DPG's own 3-arg signature (sender, app_data=
-                    # new OPEN state, user_data=window tag), the way the
-                    # item handler delivers it — first an expand, then
-                    # a re-minimize — and assert the file tracks both.
-                    def _collapse_fire(open_state):
-                        self._on_popup_collapse(None, open_state,
-                                                "monitors_window")
-                    _collapse_fire(True)    # expand
-                    time.sleep(0.4)
+                    # user-driven leg: after a real arrow-click the window's
+                    # content region is equally absent — configure holds it
+                    # here to prove the read sees the minimized state, then
+                    # expands via configure the way ImGui does on click:
+                    # both directions must land in the file.
+                    dpg.configure_item("monitors_window", collapsed=False)
+                    # distribution probe: is the rect read stable for an
+                    # expanded window, or does it flap absent (which would
+                    # poison the file with spurious minimized=True)?
+                    _samples = []
+                    for _i in range(20):
+                        try:
+                            dpg.get_item_rect_min("monitors_window")
+                            _samples.append("E")
+                        except KeyError:
+                            _samples.append("M")
+                        except Exception:
+                            _samples.append("?")
+                        time.sleep(0.1)
+                    print("[selftest] expand 20x100ms reads:",
+                          "".join(_samples),
+                          "shown:", dpg.is_item_shown("monitors_window"),
+                          "config:",
+                          dpg.get_item_configuration(
+                              "monitors_window").get("collapsed"),
+                          flush=True)
+                    time.sleep(0.6)
                     try:
                         c1 = _json.load(open(self._POPUP_LAYOUT_FILE)).get(
                             "monitors_window", {}).get("collapsed")
                     except Exception as e:
                         c1 = "ERR:%s" % e
-                    print("[selftest] handler-expand -> file collapsed:", c1,
+                    print("[selftest] live-read expand -> file:", c1,
                           flush=True)
-                    _collapse_fire(False)   # re-minimize
-                    time.sleep(0.4)
+                    dpg.configure_item("monitors_window", collapsed=True)
+                    time.sleep(0.6)
                     try:
                         c2 = _json.load(open(self._POPUP_LAYOUT_FILE)).get(
                             "monitors_window", {}).get("collapsed")
                     except Exception as e:
                         c2 = "ERR:%s" % e
-                    print("[selftest] handler-minimize -> file collapsed:",
-                          c2, flush=True)
+                    print("[selftest] live-read re-minimize -> file:", c2,
+                          flush=True)
                     os._exit(0 if (show is False and col is True
                                    and c1 is False and c2 is True) else 1)
                 else:  # verify — restart must reproduce the saved state

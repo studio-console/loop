@@ -240,6 +240,7 @@ record stk 7 cue 1 My Cue
 fader 3 output vfade
 fader 3 priority hi
 stk 2 wrap on
+prog fade 2        prog fade off      prog fade clear
 ```
 
 ---

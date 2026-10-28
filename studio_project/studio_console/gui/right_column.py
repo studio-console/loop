@@ -314,11 +314,11 @@ class GUIEngineRightColumn:
             if result:
                 for line in str(result).splitlines():
                     self._log(f"  {line}")
-    def _on_blind_toggle(self):
+    def _on_blind_toggle(self, sender=None, app_data=None, user_data=None):
         """Toggle BLIND mode — suppress programmer from DMX output."""
         if self._cmd and self._out:
             self._cmd("LIVE" if self._out.blind else "BLIND")
-    def _on_pt_toggle(self):
+    def _on_pt_toggle(self, sender=None, app_data=None, user_data=None):
         """programmer time toggle: click to set 2s fade, click again to turn off."""
         if self._cmd:
             # Deferred import — see core.py's _tick for the same pattern
@@ -329,7 +329,34 @@ class GUIEngineRightColumn:
                 self._cmd("PROG TIME OFF")
             else:
                 self._cmd("PROG TIME 2")
-    def _on_highlight_toggle(self):
+    def _on_pf_toggle(self, sender=None, app_data=None, user_data=None):
+        """programmer fade toggle: click to enable (using current slider time),
+        click again to turn off."""
+        if self._cmd:
+            from __main__ import _prog_fade
+            pf = _prog_fade
+            if pf.get('on'):
+                self._cmd("PROG FADE OFF")
+                try:
+                    import dearpygui.dearpygui as dpg
+                    dpg.configure_item("enc_prog_fade_toggle", label="○ fade off")
+                    dpg.configure_item("sb_pf_lbl", label="○ fade")
+                except Exception:
+                    pass
+            else:
+                t = float(pf.get('time', 2.0) or 2.0)
+                t = max(0.1, min(10.0, t))
+                pf['time'] = t
+                pf['on'] = True
+                self._cmd(f"PROG FADE {t:.1f}")
+                try:
+                    import dearpygui.dearpygui as dpg
+                    dpg.configure_item("enc_prog_fade_toggle", label="● fade on")
+                    dpg.configure_item("sb_pf_lbl", label="● fade")
+                    dpg.set_value("enc_prog_fade_time", t)
+                except Exception:
+                    pass
+    def _on_highlight_toggle(self, sender=None, app_data=None, user_data=None):
         """Toggle HIGHLIGHT mode — selected fixtures go full-white at full dim."""
         if not self._out:
             return
