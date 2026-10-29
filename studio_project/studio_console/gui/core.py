@@ -641,6 +641,12 @@ class GUIEngineCore:
 
         dpg.create_viewport(title="Studio Console", width=W, height=H,
                             resizable=True, x_pos=0, y_pos=32)
+        # Paint the viewport background the same pure black as the themed
+        # windows so there's no grey letterbox around/behind the cards.
+        try:
+            dpg.set_viewport_clear_color((0, 0, 0, 255))
+        except Exception:
+            pass
         dpg.setup_dearpygui()
         dpg.show_viewport()
         # Default to fullscreen on launch (was windowed) — DPG's own
